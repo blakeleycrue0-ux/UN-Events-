@@ -1,0 +1,32 @@
+"""MP3 import/playback, PIN, continuous clips, capability and persistence checks."""
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+ b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
+ c=b.new_context(permissions=['camera'],accept_downloads=True)
+ page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ page.goto('http://127.0.0.1:8001');page.wait_for_function('!!db')
+ page.locator('input[type=file]').first.set_input_files(Path(__file__).parent/'fixtures/tone.mp3')
+ page.wait_for_function("!!soundBlobs.notice")
+ page.click('#enableAudio');page.get_by_role('button',name='Probar: Aviso de zona videovigilada',exact=True).click()
+ page.wait_for_function("events.some(e=>e.type==='audio'&&e.message==='Reproduciendo MP3: notice')")
+ page.click('#silence');assert page.evaluate('activeAudio===null')
+ page.once('dialog',lambda d:d.accept('123456'));page.click('#pin');page.wait_for_function("!!localStorage.getItem('security-pin')")
+ page.click('#unlock');assert page.locator('body').evaluate("e=>e.classList.contains('locked')")
+ page.once('dialog',lambda d:d.accept('123456'));page.click('#unlock');page.wait_for_function("!document.body.classList.contains('locked')")
+ page.reload();page.wait_for_function("!!soundBlobs.notice")
+ print('PASS MP3 import, IndexedDB persistence, Web Audio decode/play/stop and PIN lock/unlock')
+ page.click('#camera');page.wait_for_function('!!state.stream')
+ assert page.locator('#torch').is_disabled()
+ page.evaluate("frame.captureStream=undefined;state.mask={x:0,y:0,w:.2,h:.2}")
+ page.click('#record');page.wait_for_function("document.getElementById('error').textContent.includes('no permite grabar vídeo procesado')")
+ assert not page.evaluate('state.recording')
+ page.evaluate("delete frame.captureStream;state.mask=null")
+ print('PASS unsupported torch disabled; native recorder blocked when privacy mask cannot be applied')
+ page.select_option('#clip','10');page.select_option('#recordMode','continuous');page.click('#arm')
+ page.wait_for_function('state.recording')
+ page.wait_for_function("events.filter(e=>e.type==='grabación'&&e.message.startsWith('Iniciada')).length>=2",timeout=25000)
+ page.click('#arm');page.wait_for_function('!state.recording');page.wait_for_timeout(1500);assert not page.evaluate('state.recording')
+ print('PASS continuous clip rotation and disarm stops recording without restart')
+ page.click('#camera');page.wait_for_function('!state.stream');assert not errors,errors
+ b.close()

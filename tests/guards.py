@@ -1,0 +1,32 @@
+"""Failure/permission guards. AI predictions and quota failures are injected fixtures."""
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+ b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
+ c=b.new_context(permissions=['camera'],accept_downloads=True,viewport={'width':390,'height':844})
+ page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ page.goto('http://127.0.0.1:8001');page.wait_for_function('!!db');page.click('#camera');page.wait_for_function('!!state.stream')
+ page.click('#enableAudio');page.select_option('#mode','alarm')
+ page.evaluate("""()=>{state.model={detect:async()=>({object:[{label:'person',score:.99,boxRaw:[.4,.4,.2,.2]}]})};document.getElementById('person').checked=true;document.getElementById('aiInterval').value='1';document.getElementById('confirmation').value='1';state.lastAlarm=0;state.zone={x:.1,y:.1,w:.8,h:.8};}""")
+ page.wait_for_timeout(3500);assert not page.evaluate('state.alarm')
+ page.evaluate("state.zone=null");page.check('#autoAlarm');page.wait_for_timeout(3500);assert not page.evaluate('state.alarm')
+ page.evaluate("state.zone={x:.1,y:.1,w:.8,h:.8}");page.wait_for_function('state.alarm',timeout=12000)
+ page.select_option('#mode','silent');page.wait_for_function('!state.alarm && !siren')
+ print('PASS automatic siren requires explicit opt-in, zone, confirmed person and ALARMA; SILENCIOSO stops sound')
+ page.uncheck('#person')
+ page.evaluate("state.mask={x:0,y:0,w:.3,h:.3};processed()")
+ assert page.evaluate('Array.from(fx.getImageData(5,5,1,1).data).slice(0,3).every(x=>x===0)')
+ page.click('#photo')
+ page.evaluate("state.mask=null;state.zone=null")
+ print('PASS privacy mask pixel output and photo download')
+ page.evaluate("""()=>{window.originalStore=store;store=(name,method,value)=>name==='clips'&&method==='put'?Promise.reject(new Error('Injected quota failure')):originalStore(name,method,value)}""")
+ page.click('#record');page.wait_for_function('state.recording');page.wait_for_timeout(1500);page.click('#record');page.wait_for_function('state.storageFailed')
+ assert 'No se ha guardado' in page.locator('#error').inner_text()
+ assert page.get_by_text('Descargar clip pendiente:',exact=False).count()>0
+ assert page.locator('#rec').is_hidden()
+ print('PASS simulated quota failure: REC off, automatic recording halted, emergency download offered')
+ page.evaluate('()=>{store=originalStore}')
+ page.click('#camera');page.wait_for_function('!state.stream')
+ page.screenshot(path='/workspace/security-setup/mobile.png',full_page=True)
+ assert not errors,errors
+ b.close()
+ print('PASS mobile controls and no uncaught errors')
