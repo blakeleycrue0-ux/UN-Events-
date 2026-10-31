@@ -1,4 +1,5 @@
 "use strict";
+var _a;
 if (!Element.prototype.replaceChildren)
   Element.prototype.replaceChildren = function(...nodes) {
     while (this.firstChild) this.removeChild(this.firstChild);
@@ -50,6 +51,7 @@ const settingIds = [
   "autoWarning",
   "eventLight",
   "autoAlarm",
+  "alarmSource",
   "confirmation",
   "cooldown",
   "alarmDuration",
@@ -145,9 +147,9 @@ function store(name, method, value) {
   });
 }
 async function storage() {
-  var _a;
+  var _a2;
   try {
-    if ((_a = navigator.storage) == null ? void 0 : _a.estimate) {
+    if ((_a2 = navigator.storage) == null ? void 0 : _a2.estimate) {
       const e = await navigator.storage.estimate();
       $("storage").textContent = "Uso del origen: ".concat((e.usage / 1048576).toFixed(1), " MB / ").concat((e.quota / 1048576).toFixed(0), " MB (cuota estimada, no garant\xEDa)");
       return e;
@@ -333,8 +335,8 @@ function draw() {
     rect(drag.rect, drawMode === "mask" ? "#ff9c9c" : "#70d39a", "Selecci\xF3n");
 }
 async function torch(on) {
-  var _a, _b;
-  const track = (_a = state.stream) == null ? void 0 : _a.getVideoTracks()[0];
+  var _a2, _b;
+  const track = (_a2 = state.stream) == null ? void 0 : _a2.getVideoTracks()[0];
   if (!((_b = track == null ? void 0 : track.getCapabilities) == null ? void 0 : _b.call(track).torch)) {
     $("torch").checked = false;
     return;
@@ -365,12 +367,12 @@ async function torch(on) {
   }
 }
 async function startCamera() {
-  var _a, _b, _c;
+  var _a2, _b, _c;
   const generation = ++cameraGeneration;
   await stopCamera(false);
   if (generation !== cameraGeneration) return;
   $("error").textContent = "";
-  if (!window.isSecureContext || !((_a = navigator.mediaDevices) == null ? void 0 : _a.getUserMedia)) {
+  if (!window.isSecureContext || !((_a2 = navigator.mediaDevices) == null ? void 0 : _a2.getUserMedia)) {
     error(
       "Se requiere HTTPS (o localhost) y un navegador con acceso a c\xE1mara."
     );
@@ -465,7 +467,7 @@ async function startCamera() {
   }
 }
 async function stopCamera(invalidate = true) {
-  var _a;
+  var _a2;
   if (invalidate) cameraGeneration++;
   clearTimeout(loopTimer);
   await stopRecording();
@@ -475,7 +477,7 @@ async function stopCamera(invalidate = true) {
   clearTimeout(torchTimer);
   torchTimer = null;
   await torch(false);
-  (_a = state.stream) == null ? void 0 : _a.getTracks().forEach((t) => t.stop());
+  (_a2 = state.stream) == null ? void 0 : _a2.getTracks().forEach((t) => t.stop());
   state.stream = null;
   video.srcObject = null;
   $("videoViewport").style.opacity = "0";
@@ -567,10 +569,10 @@ async function startRecording(reason) {
       if (e.data.size) chunks.push(e.data);
     };
     current.onerror = (e) => {
-      var _a;
+      var _a2;
       state.storageFailed = true;
       error(
-        "Fallo de grabaci\xF3n: " + (((_a = e.error) == null ? void 0 : _a.message) || "error del codificador"),
+        "Fallo de grabaci\xF3n: " + (((_a2 = e.error) == null ? void 0 : _a2.message) || "error del codificador"),
         "p\xE9rdida"
       );
       stopRecording();
@@ -656,6 +658,8 @@ async function enableAudio() {
   }
 }
 function stopSounds() {
+  state.warningPending = false;
+  $("sequenceStatus").textContent = "";
   soundGeneration++;
   activeAudio == null ? void 0 : activeAudio.pause();
   activeAudio = null;
@@ -761,6 +765,64 @@ async function alarm(reason, manual = false) {
     stopSounds,
     Math.min(30, +$("alarmDuration").value) * 1e3
   );
+}
+function threatActive() {
+  if (!state.stream || document.hidden || state.cameraMuted) return false;
+  if ($("alarmSource").value === "motion")
+    return $("motion").checked && state.motionFrames >= 2;
+  return $("person").checked && state.persons.length > 0 && Date.now() - (state.personResultAt || 0) < Math.max(1, +$("aiInterval").value) * 2e3;
+}
+function considerThreat() {
+  const allowed = state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone;
+  if (!allowed || !threatActive()) {
+    state.threatSince = 0;
+    if (state.warningPending) {
+      stopSounds();
+      log(
+        "alarma",
+        "Aviso cancelado: la detecci\xF3n desapareci\xF3. No se activa sirena."
+      );
+      $("sequenceStatus").textContent = "Detecci\xF3n terminada \xB7 sirena cancelada";
+    }
+    return;
+  }
+  state.threatSince || (state.threatSince = Date.now());
+  if (Date.now() - state.threatSince >= Math.max(1, +$("confirmation").value) * 1e3 && !state.warningPending && !state.alarm && Date.now() - state.lastAlarm >= Math.max(10, +$("cooldown").value) * 1e3)
+    warnThenAlarm();
+}
+async function warnThenAlarm() {
+  stopSounds();
+  state.warningPending = true;
+  state.lastAlarm = Date.now();
+  const generation = soundGeneration;
+  $("sequenceStatus").textContent = "Reproduciendo aviso \xB7 sirena solo si contin\xFAa la detecci\xF3n";
+  log("alarma", "Aviso previo iniciado: " + $("alarmSource").value);
+  try {
+    await loadSounds();
+    if (!state.warningPending || generation !== soundGeneration) return;
+    await sound("warning");
+    if (!state.warningPending || !activeAudio) {
+      $("sequenceStatus").textContent = "Aviso no reproducido \xB7 sirena cancelada";
+      state.warningPending = false;
+      return;
+    }
+    activeAudio.onended = () => {
+      if (!state.warningPending) return;
+      state.warningPending = false;
+      if (state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone && threatActive())
+        alarm("Detecci\xF3n persistente despu\xE9s del aviso", true);
+      else {
+        $("sequenceStatus").textContent = "Sin detecci\xF3n \xB7 sirena cancelada";
+        log("alarma", "Sirena cancelada al terminar aviso");
+      }
+    };
+  } catch (e) {
+    stopSounds();
+    error(
+      "Aviso no reproducido. Sirena autom\xE1tica cancelada: " + e.message,
+      "audio"
+    );
+  }
 }
 function detected(type) {
   if (!state.armed || $("mode").value === "disarmed") return;
@@ -916,20 +978,13 @@ async function tick() {
           h: p.boxRaw[3],
           score: p.score
         })).filter((p) => inside(p, state.zone));
+        state.personResultAt = Date.now();
         if (state.persons.length) {
           if (!state.personPresent) {
             detected("persona");
             state.personPresent = true;
           }
           state.personMissing = 0;
-          if (state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone) {
-            if (state.lastPersonAt && Date.now() - state.lastPersonAt > Math.max(1, +$("aiInterval").value) * 2500)
-              state.confirmed = 0;
-            state.lastPersonAt = Date.now();
-            state.confirmed || (state.confirmed = Date.now());
-            if (Date.now() - state.confirmed >= Math.max(1, +$("confirmation").value) * 1e3)
-              alarm("Persona confirmada en zona restringida");
-          }
         } else {
           state.confirmed = 0;
           state.personMissing = (state.personMissing || 0) + 1;
@@ -951,6 +1006,7 @@ async function tick() {
       state.confirmed = 0;
       state.personPresent = false;
     }
+    considerThreat();
     draw();
     const ms = performance.now() - started;
     state.slow = ms > 220 || state.slow && ms > 100;
@@ -980,6 +1036,7 @@ $("camera").onclick = () => state.stream ? stopCamera() : startCamera();
 $("restart").onclick = startCamera;
 $("device").onchange = startCamera;
 $("arm").onclick = () => {
+  enableAudio();
   if (!state.stream) {
     error("Inicia la c\xE1mara primero");
     return;
@@ -1020,7 +1077,7 @@ $("hide").onclick = () => {
 };
 $("unlock").onclick = async () => {
   if (document.body.classList.contains("locked")) {
-    const pin = prompt("PIN local");
+    const pin = await requestPin("Desbloquear SECURITY CAM");
     if (pin === null || await hash(pin) !== localStorage.getItem("security-pin"))
       return error("PIN incorrecto", "modo");
     document.body.classList.remove("locked");
@@ -1028,9 +1085,83 @@ $("unlock").onclick = async () => {
     document.body.classList.remove("hidden-controls");
   else if (localStorage.getItem("security-pin"))
     document.body.classList.add("locked");
-  else return error("Establece primero un PIN local", "modo");
+  else {
+    $("pin").click();
+    return;
+  }
   $("unlock").textContent = document.body.classList.contains("locked") ? "Desbloquear" : "Bloquear controles";
 };
+function requestPin(title) {
+  return new Promise((resolve) => {
+    const panel = document.createElement("div");
+    panel.className = "pin-screen";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-label", title);
+    const card = document.createElement("form");
+    card.className = "pin-card";
+    const heading = document.createElement("h2");
+    heading.textContent = title;
+    const hint = document.createElement("p");
+    hint.textContent = "PIN local de 6 a 12 cifras. Protege los controles, no cifra las grabaciones.";
+    const input = document.createElement("input");
+    input.id = "pinEntry";
+    input.type = "password";
+    input.inputMode = "numeric";
+    input.maxLength = 12;
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", "PIN");
+    const keys = document.createElement("div");
+    keys.className = "pin-keys";
+    for (const digit of [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "Borrar",
+      "0",
+      "Cancelar"
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = digit;
+      button.onclick = () => {
+        if (digit === "Cancelar") {
+          panel.remove();
+          resolve(null);
+        } else if (digit === "Borrar") input.value = input.value.slice(0, -1);
+        else if (input.value.length < 12) input.value += digit;
+        input.focus();
+      };
+      keys.append(button);
+    }
+    const accept = document.createElement("button");
+    accept.id = "pinAccept";
+    accept.type = "submit";
+    accept.textContent = "Continuar";
+    accept.className = "pin-accept";
+    card.onsubmit = (e) => {
+      e.preventDefault();
+      if (!/^\d{6,12}$/.test(input.value)) {
+        hint.textContent = "Introduce de 6 a 12 cifras.";
+        return;
+      }
+      const value = input.value;
+      panel.remove();
+      resolve(value);
+    };
+    input.oninput = () => input.value = input.value.replace(/\D/g, "").slice(0, 12);
+    card.append(heading, hint, input, keys, accept);
+    panel.append(card);
+    document.body.append(panel);
+    input.focus();
+  });
+}
 async function hash(s) {
   if (!crypto.subtle) throw Error("PIN requiere HTTPS");
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -1038,9 +1169,7 @@ async function hash(s) {
 }
 $("pin").onclick = async () => {
   try {
-    const pin = prompt(
-      "Nuevo PIN local (m\xEDnimo 6 cifras). No cifra los clips."
-    );
+    const pin = await requestPin("Crear tu PIN de seguridad");
     if (pin === null) return;
     if (!/^\d{6,}$/.test(pin)) return error("Usa al menos 6 cifras", "modo");
     localStorage.setItem("security-pin", await hash(pin));
@@ -1148,57 +1277,41 @@ $("clearLog").onclick = () => {
     renderEvents();
   }
 };
+let builtInSound;
 async function loadSounds() {
-  for (const s of await store("sounds", "getAll")) {
-    if (soundURLs[s.id]) URL.revokeObjectURL(soundURLs[s.id]);
-    soundURLs[s.id] = URL.createObjectURL(s.blob);
-    soundBlobs[s.id] = s.blob;
-    $("label-" + s.id).textContent = s.name;
-  }
+  if (!builtInSound)
+    builtInSound = fetch("assets/aviso-seguridad.mp3").then((r) => {
+      if (!r.ok) throw Error("No se puede cargar el aviso de seguridad");
+      return r.blob();
+    }).catch((e) => {
+      builtInSound = null;
+      throw e;
+    });
+  const blob = await builtInSound;
+  soundBlobs.warning = blob;
+  soundBlobs.notice = blob;
 }
 for (const [id, label] of [
-  ["notice", "Aviso de zona videovigilada"],
-  ["warning", "Respeto a la propiedad"],
-  ["siren", "Sirena de seguridad"]
+  ["warning", "Escuchar aviso"],
+  ["siren", "Probar sirena"]
 ]) {
-  const wrap = document.createElement("div"), name = document.createElement("p"), test = document.createElement("button"), input = document.createElement("input");
-  name.id = "label-" + id;
-  name.textContent = label + (id === "siren" ? " \xB7 sintetizada" : " \xB7 sin MP3");
-  test.textContent = "Probar: " + label;
-  test.onclick = async () => {
+  const button = document.createElement("button");
+  button.textContent = label;
+  button.onclick = async () => {
     stopSounds();
+    await enableAudio();
+    await loadSounds();
     await sound(id);
-    alarmTimer = setTimeout(
-      stopSounds,
-      Math.min(30, +$("alarmDuration").value) * 1e3
-    );
+    if (id === "siren")
+      alarmTimer = setTimeout(stopSounds, +$("alarmDuration").value * 1e3);
   };
-  input.type = "file";
-  input.accept = "audio/mpeg,.mp3";
-  input.setAttribute("aria-label", "Importar MP3: " + label);
-  input.onchange = async () => {
-    try {
-      const file = input.files[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024)
-        throw Error(
-          "M\xE1ximo 5 MB por audio; usa avisos cortos para ahorrar memoria"
-        );
-      await store("sounds", "put", { id, name: file.name, blob: file });
-      await loadSounds();
-      log("audio", "MP3 importado: " + label);
-    } catch (e) {
-      error("No se puede guardar el MP3: " + e.message, "audio");
-    }
-  };
-  wrap.append(name, test, input);
-  $("sounds").append(wrap);
+  $("sounds").append(button);
 }
 $("diagnose").onclick = async () => {
-  var _a, _b, _c, _d;
+  var _a2, _b, _c, _d;
   const results = {
     HTTPS: isSecureContext,
-    c\u00E1maraAPI: !!((_a = navigator.mediaDevices) == null ? void 0 : _a.getUserMedia),
+    c\u00E1maraAPI: !!((_a2 = navigator.mediaDevices) == null ? void 0 : _a2.getUserMedia),
     c\u00E1maraActiva: !!state.stream,
     grabaci\u00F3nAPI: !!window.MediaRecorder,
     formato: mime(),
@@ -1262,9 +1375,9 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("pagehide", () => {
-  var _a;
+  var _a2;
   stopSounds();
-  (_a = state.stream) == null ? void 0 : _a.getTracks().forEach((t) => t.stop());
+  (_a2 = state.stream) == null ? void 0 : _a2.getTracks().forEach((t) => t.stop());
 });
 setInterval(
   () => $("clock").textContent = (/* @__PURE__ */ new Date()).toLocaleString("es-ES"),
@@ -1318,3 +1431,30 @@ for (const id of ["brightness", "contrast", "zoom"])
   });
 window.addEventListener("resize", draw);
 updatePreview();
+$("fullZone").onclick = () => {
+  state.zone = { x: 0, y: 0, w: 1, h: 1 };
+  state.previous = null;
+  save();
+  draw();
+  $("sequenceStatus").textContent = "Zona: imagen completa. Ori\xE9ntala solo a tu propiedad.";
+};
+function prepareDetection() {
+  state.threatSince = 0;
+  if (state.warningPending) stopSounds();
+  if ($("autoAlarm").checked) {
+    enableAudio();
+    $("mode").value = "alarm";
+    setMode();
+    if ($("alarmSource").value === "person") {
+      $("person").checked = true;
+      loadModel();
+    } else $("motion").checked = true;
+    if (!state.zone)
+      $("sequenceStatus").textContent = "Selecciona la zona de tu propiedad antes de activar la alarma.";
+  }
+  save();
+}
+$("autoAlarm").addEventListener("change", prepareDetection);
+$("alarmSource").addEventListener("change", prepareDetection);
+loadSounds().catch((e) => error(e.message, "audio"));
+(_a = $("extraToolsModeAnchor")) == null ? void 0 : _a.append($("mode").closest("label"));

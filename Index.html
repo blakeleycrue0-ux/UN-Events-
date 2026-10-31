@@ -9,14 +9,19 @@
   </head>
   <body>
     <header>
-      <strong>SECURITY CAM</strong><span id="status">DESARMADO</span
+      <strong
+        >SECURITY CAM<span class="brand-subtitle">HOME SECURITY</span></strong
+      ><span id="status">DESARMADO</span
       ><span id="alarmStatus" hidden>ALARMA ACTIVA</span><time id="clock"></time
       ><button id="unlock">Bloquear controles</button>
     </header>
     <main>
       <section class="monitor">
         <div id="stage">
-          <div id="videoViewport"><video id="video" autoplay muted playsinline></video></div><canvas id="overlay"></canvas>
+          <div id="videoViewport">
+            <video id="video" autoplay muted playsinline></video>
+          </div>
+          <canvas id="overlay"></canvas>
           <div class="badges">
             <span id="live">SIN CÁMARA</span><span id="rec" hidden>REC</span>
           </div>
@@ -32,6 +37,26 @@
         </div>
         <input id="nightMode" type="hidden" value="auto" />
         <p id="nightHint"></p>
+        <div class="quick-setup controls">
+          <div class="setup-heading">
+            <span>PROTECCIÓN AUTOMÁTICA</span
+            ><span class="local-badge">Solo en tu dispositivo</span>
+          </div>
+          <label
+            >Detectar<select id="alarmSource">
+              <option value="person">Solo personas</option>
+              <option value="motion">Movimiento</option>
+            </select></label
+          >
+          <label class="switch-row"
+            >Aviso de voz y después sirena<input id="autoAlarm" type="checkbox"
+          /></label>
+          <button id="fullZone">Usar toda la imagen de mi propiedad</button>
+          <p>
+            La sirena se cancela si la detección desaparece durante el aviso.
+          </p>
+        </div>
+        <p id="sequenceStatus" role="status"></p>
         <div class="quick-mode controls">
           <label
             >Modo
@@ -46,6 +71,7 @@
         <button id="silence" class="quiet-stop">SILENCIAR TODO</button>
         <details class="controls extra-tools">
           <summary>Más controles</summary>
+          <div id="extraToolsModeAnchor"></div>
           <div class="toolbar">
             <button id="enableAudio">Habilitar sonido</button
             ><button id="photo">Fotografía</button>
@@ -145,23 +171,28 @@
                 type="range"
                 min="0"
                 max="100"
-                value="70" /></label
-            ><label
-              ><input id="autoVoice" type="checkbox" /> Avisos automáticos (modo
-              disuasorio)</label
-            ><label
-              ><input id="autoNotice" type="checkbox" /> Incluir aviso de zona
-              videovigilada</label
-            ><label
-              ><input id="autoWarning" type="checkbox" checked /> Incluir
-              advertencia de propiedad</label
-            >
+                value="70"
+            /></label>
+            <div hidden>
+              <label
+                ><input id="autoVoice" type="checkbox" /> Avisos automáticos
+                (modo disuasorio)</label
+              >
+            </div>
+            <div hidden>
+              <label
+                ><input id="autoNotice" type="checkbox" /> Incluir aviso de zona
+                videovigilada</label
+              >
+            </div>
+            <div hidden>
+              <label
+                ><input id="autoWarning" type="checkbox" checked /> Incluir
+                advertencia de propiedad</label
+              >
+            </div>
             <div id="sounds"></div>
             <label
-              ><input id="autoAlarm" type="checkbox" /> Permitir alarma
-              automática por persona confirmada dentro de la zona
-              restringida</label
-            ><label
               >Confirmación (segundos)<input
                 id="confirmation"
                 type="number"
@@ -184,9 +215,9 @@
               </select></label
             >
             <p>
-              La alarma automática requiere modo ALARMA, permiso explícito, IA
-              activa y zona dibujada. Movimiento por sí solo nunca activa la
-              sirena.
+              La alarma automática requiere permiso explícito y una zona de tu
+              propiedad. La sirena solo empieza si continúa la detección después
+              del aviso.
             </p>
           </article>
           <article>

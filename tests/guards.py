@@ -9,7 +9,7 @@ with sync_playwright() as p:
  page.evaluate("""()=>{state.model={detect:async()=>({object:[{label:'person',score:.99,boxRaw:[.4,.4,.2,.2]}]})};document.getElementById('person').checked=true;document.getElementById('aiInterval').value='1';document.getElementById('confirmation').value='1';state.lastAlarm=0;state.zone={x:.1,y:.1,w:.8,h:.8};}""")
  page.wait_for_timeout(3500);assert not page.evaluate('state.alarm')
  page.evaluate("state.zone=null");page.check('#autoAlarm');page.wait_for_timeout(3500);assert not page.evaluate('state.alarm')
- page.evaluate("state.zone={x:.1,y:.1,w:.8,h:.8}");page.wait_for_function('state.alarm',timeout=12000)
+ page.evaluate("state.zone={x:.1,y:.1,w:.8,h:.8}");page.wait_for_function('state.warningPending',timeout=12000)
  page.select_option('#mode','silent');page.wait_for_function('!state.alarm && !siren')
  print('PASS automatic siren requires explicit opt-in, zone, confirmed person and ALARMA; SILENCIOSO stops sound')
  page.uncheck('#person')

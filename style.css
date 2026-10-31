@@ -324,5 +324,340 @@ footer {
   }
 }
 
-#videoViewport{position:absolute;inset:auto;overflow:hidden;opacity:0;}
-#videoViewport #video{position:absolute;inset:0;width:100%;height:100%;}
+#videoViewport {
+  position: absolute;
+  inset: auto;
+  overflow: hidden;
+  opacity: 0;
+}
+#videoViewport #video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* Compact security-console design with one clear protection setup. */
+:root {
+  background: #101214;
+  color: #f4f4f0;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+body {
+  background: radial-gradient(ellipse at top, #202429 0, #101214 65%);
+}
+header {
+  max-width: 1200px;
+  margin: auto;
+  border: 0;
+  padding: 24px 22px;
+  gap: 14px;
+}
+header strong {
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+}
+.brand-subtitle {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  color: #a2a7ad;
+  margin-top: 5px;
+}
+header #status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  background: #183126;
+  border: 1px solid #2c5943;
+  border-radius: 20px;
+  padding: 8px 12px;
+}
+header #unlock {
+  margin-left: auto;
+  font-size: 12px;
+  background: transparent;
+  border-color: #44494e;
+}
+main {
+  max-width: 1200px;
+  padding: 8px 22px 30px;
+}
+#stage {
+  border-radius: 20px;
+  border-color: #343a40;
+  box-shadow: 0 14px 42px #0004;
+}
+.badges span {
+  border-radius: 20px;
+  padding: 6px 12px;
+  letter-spacing: 0.08em;
+}
+#live.active {
+  background: #153627;
+  color: #9be7b7;
+}
+#cameraMessage {
+  font-size: 11px;
+  background: #0d1018b3;
+  border-radius: 8px;
+  padding: 5px 9px;
+  bottom: 12px;
+  left: 12px;
+}
+button,
+select {
+  border-radius: 12px;
+  min-height: 48px;
+  font-weight: 550;
+  border-color: #394149;
+  background: #262c32;
+}
+button {
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+button:hover {
+  background: #353e47;
+  border-color: #7b858f;
+}
+.primary {
+  gap: 10px;
+  margin: 18px 0 10px;
+}
+.primary button {
+  flex: 1;
+  min-width: 140px;
+}
+.primary #arm {
+  background: #f4cf58;
+  color: #191b1d;
+  border-color: #f4cf58;
+  font-weight: 750;
+  font-size: 13px;
+}
+.primary #arm:hover {
+  background: #ffdf79;
+}
+#nightToggle[aria-pressed="true"] {
+  background: #233c38;
+  color: #c1f0dc;
+}
+.quiet-stop {
+  background: transparent;
+  min-height: 42px;
+  font-size: 12px;
+  color: #b9c1c8;
+  border-color: #394149;
+  margin: 10px 0;
+}
+.quick-setup {
+  background: #20262b;
+  border: 1px solid #394149;
+  border-radius: 18px;
+  padding: 18px;
+  margin: 16px 0 10px;
+}
+.setup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: #f4cf58;
+}
+.local-badge {
+  font-size: 10px;
+  letter-spacing: 0;
+  color: #a5adb4;
+  font-weight: 400;
+}
+.quick-setup label {
+  font-size: 14px;
+  margin: 18px 0;
+}
+.quick-setup select {
+  min-width: 155px;
+  background: #151a1e;
+}
+.quick-setup button {
+  width: 100%;
+  background: #2c343b;
+  font-size: 12px;
+}
+.quick-setup p {
+  margin-bottom: 0;
+  font-size: 11px;
+}
+.switch-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 46px;
+  height: 27px;
+  border-radius: 30px;
+  background: #545c63;
+  border: 0;
+  cursor: pointer;
+}
+.switch-row input:before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.15s;
+}
+.switch-row input:checked {
+  background: #f4cf58;
+}
+.switch-row input:checked:before {
+  transform: translateX(19px);
+  background: #25282b;
+}
+summary {
+  font-weight: 500;
+  color: #d4dbe0;
+  font-size: 13px;
+  padding: 18px;
+}
+details {
+  background: #1a1f23;
+  border-color: #333b42;
+  border-radius: 14px;
+}
+.panels article {
+  background: #20262b;
+  border-radius: 14px;
+}
+#sequenceStatus {
+  font-size: 13px;
+  color: #f4cf58;
+}
+#sounds {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#sounds button {
+  flex: 1;
+}
+#health {
+  color: #929da6;
+}
+#nightHint {
+  font-size: 11px;
+}
+footer {
+  font-size: 11px;
+  color: #8a949d;
+}
+@media (max-width: 600px) {
+  header {
+    padding: 16px 14px;
+    gap: 9px;
+  }
+  header strong {
+    font-size: 15px;
+  }
+  header #clock {
+    font-size: 10px;
+    order: 4;
+    margin-left: 0;
+  }
+  header #unlock {
+    padding: 7px;
+    min-height: 34px;
+    font-size: 10px;
+  }
+  main {
+    padding: 0 12px 22px;
+  }
+  .primary button {
+    min-width: 42%;
+    font-size: 12px;
+  }
+  .setup-heading {
+    font-size: 10px;
+  }
+  .local-badge {
+    font-size: 9px;
+  }
+  #stage {
+    border-radius: 16px;
+  }
+  .quick-setup {
+    padding: 16px;
+  }
+  .quick-setup label {
+    font-size: 13px;
+  }
+}
+
+.pin-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: #101214f7;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  backdrop-filter: blur(12px);
+}
+.pin-card {
+  width: 100%;
+  max-width: 340px;
+  text-align: center;
+}
+.pin-card h2 {
+  font-size: 24px;
+  line-height: 1.3;
+}
+.pin-card input {
+  width: 100%;
+  padding: 16px;
+  border: 1px solid #59636c;
+  background: #242b31;
+  border-radius: 14px;
+  color: white;
+  text-align: center;
+  font-size: 28px;
+  letter-spacing: 0.35em;
+  margin: 16px 0;
+}
+.pin-keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.pin-keys button {
+  height: 64px;
+  font-size: 23px;
+  border-radius: 18px;
+}
+.pin-keys button:nth-child(10),
+.pin-keys button:nth-child(12) {
+  font-size: 12px;
+}
+.pin-accept {
+  width: 100%;
+  margin-top: 18px;
+  background: #f4cf58;
+  color: #15181b;
+  border: 0;
+}
+.pin-card p {
+  font-size: 12px;
+}
