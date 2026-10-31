@@ -29,3 +29,7 @@ Pendiente en el iPhone destino: Safari/versión iOS, permisos HTTPS, linterna re
 ## Inicio simplificado
 
 `tests/protect.py` pasa con la nueva pantalla: el usuario selecciona Movimiento y toca Proteger esta imagen; se comprueba cámara real sintética, contexto de sonido activo, zona autorizada y modo de alarma. Una secuencia controlada atraviesa el detector real (sin inyectar banderas de armado ni detección) y reproduce el audio completo antes de activar una sirena Web Audio. El desarmado y navegación a evidencias también se comprueban. No demuestra volumen físico ni comportamiento de Safari en un iPhone.
+
+## Reproducción multimedia para iPhone
+
+Se sustituyó Web Audio por HTMLAudioElement tanto para el MP3 de aviso como para la sirena local. `tests/media_audio.py` comprueba reproducción real con tiempo avanzando, elemento sin mute, volumen positivo, petición de sesión playback mediante API simulada, silencio inmediato, rechazo de play() inyectado y pausa inesperada. Las pruebas de protección, clips, PIN y secuencia volvieron a pasar con el nuevo reproductor. No se ha verificado el altavoz ni el comportamiento del interruptor de silencio en un iPhone. Las pruebas anteriores que citan Web Audio corresponden al motor sustituido.

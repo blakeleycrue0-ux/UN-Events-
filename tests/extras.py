@@ -15,7 +15,7 @@ with sync_playwright() as p:
  page.click('#unlock');assert page.locator('body').evaluate("e=>e.classList.contains('locked')")
  page.click('#unlock');page.fill('#pinEntry','123456');page.click('#pinAccept');page.wait_for_function("!document.body.classList.contains('locked')")
  page.reload();page.wait_for_function("!!soundBlobs.warning")
- print('PASS Bundled MP3 loading, Web Audio decode/play/stop and PIN lock/unlock')
+ print('PASS Bundled MP3 loading, native media play/stop and PIN lock/unlock')
  page.click('#camera');page.wait_for_function('!!state.stream')
  assert page.locator('#torch').is_disabled()
  page.evaluate("frame.captureStream=undefined;state.mask={x:0,y:0,w:.2,h:.2}")
