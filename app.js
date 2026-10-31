@@ -300,6 +300,8 @@ function viewRect() {
   return { x: (r.width - w) / 2, y: (r.height - h) / 2, w, h };
 }
 function draw() {
+  var _a2;
+  if ((_a2 = document.getElementById("cameraPage")) == null ? void 0 : _a2.hidden) return;
   const r = overlay.getBoundingClientRect();
   if (overlay.width !== Math.round(r.width) || overlay.height !== Math.round(r.height)) {
     overlay.width = r.width;

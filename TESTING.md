@@ -33,3 +33,10 @@ Pendiente en el iPhone destino: Safari/versión iOS, permisos HTTPS, linterna re
 ## Reproducción multimedia para iPhone
 
 Se sustituyó Web Audio por HTMLAudioElement tanto para el MP3 de aviso como para la sirena local. `tests/media_audio.py` comprueba reproducción real con tiempo avanzando, elemento sin mute, volumen positivo, petición de sesión playback mediante API simulada, silencio inmediato, rechazo de play() inyectado y pausa inesperada. Las pruebas de protección, clips, PIN y secuencia volvieron a pasar con el nuevo reproductor. No se ha verificado el altavoz ni el comportamiento del interruptor de silencio en un iPhone. Las pruebas anteriores que citan Web Audio corresponden al motor sustituido.
+
+## Inicio con cristal y preparación remota
+
+- `tests/shell.py`: Inicio sin permiso de cámara, visor sin cámara local, navegación que conserva captura y regreso a evidencias: pasó.
+- `node --test tests/signaling.test.mjs`: autenticación, rechazo de claves, negociación autorizada, revocación y guardas de producción: pasó (2 tests).
+- `tests/remote.py`: no pasó. Ambos pares negociaron offer/answer y recopilaron cero candidatos ICE; una prueba mínima de dos RTCPeerConnection independiente de esta app también produjo cero candidatos y no conectó. No se atribuye la falta de vídeo a una causa de red concreta sin más evidencia.
+- No se ha desplegado WSS ni TURN ni comprobado vídeo desde redes distintas. La aplicación presenta ese requisito y no afirma conexión antes de observarla. El código de señalización está preparado para despliegue; esto no es una afirmación de disponibilidad remota.

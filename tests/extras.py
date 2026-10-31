@@ -5,7 +5,7 @@ with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],accept_downloads=True)
  page=c.new_page();page.add_init_script("document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('details').forEach(d=>d.open=true))");errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('http://127.0.0.1:8001');page.wait_for_function('!!db')
+ page.goto('http://127.0.0.1:8001/#camera');page.wait_for_function('!!db')
  page.wait_for_function("!!soundBlobs.warning")
  assert page.locator('input[type=file]').count()==0
  page.click('#enableAudio');page.get_by_role('button',name='Escuchar aviso',exact=True).click()
