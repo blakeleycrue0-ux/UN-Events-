@@ -2,14 +2,18 @@
 function showPage(name) {
   if (!["home", "camera", "remote"].includes(name)) name = "home";
   const viewport = $("videoViewport");
-  if (name !== "camera" && state.stream) $("captureDock").append(viewport);
+  if (
+    (name !== "camera" || document.body.classList.contains("auth-pending")) &&
+    state.stream
+  )
+    $("captureDock").append(viewport);
   else if (name === "camera") $("stage").insertBefore(viewport, $("overlay"));
   document.body.dataset.page = name;
   $("landingPage").hidden = name !== "home";
   $("cameraPage").hidden = name !== "camera";
   $("remotePage").hidden = name !== "remote";
   $("backHome").hidden = name === "home";
-  $("unlock").hidden = name !== "camera";
+  $("unlock").hidden = false;
   if (name === "camera") requestAnimationFrame(draw);
   window.scrollTo(0, 0);
 }

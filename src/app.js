@@ -345,6 +345,7 @@ function viewRect() {
   return { x: (r.width - w) / 2, y: (r.height - h) / 2, w, h };
 }
 function draw() {
+  if (document.body.classList.contains("auth-pending")) return;
   if (document.getElementById("cameraPage")?.hidden) return;
   const r = overlay.getBoundingClientRect();
   if (
@@ -725,6 +726,7 @@ function playbackSession() {
   }
 }
 async function enableAudio() {
+  if (audioReady) return true;
   playbackSession();
   try {
     if (!activeAudio && !siren) {
@@ -1248,7 +1250,7 @@ $("unlock").onclick = async () => {
     ? "Desbloquear"
     : "Bloquear controles";
 };
-function requestPin(title) {
+function requestPin(title, options = {}) {
   return new Promise((resolve) => {
     const panel = document.createElement("div");
     panel.className = "pin-screen";
@@ -1261,11 +1263,12 @@ function requestPin(title) {
     heading.textContent = title;
     const hint = document.createElement("p");
     hint.textContent =
+      options.hint ||
       "PIN local de 6 a 12 cifras. Protege los controles, no cifra las grabaciones.";
     const input = document.createElement("input");
     input.id = "pinEntry";
     input.type = "password";
-    input.inputMode = "numeric";
+    input.inputMode = "none";
     input.maxLength = 12;
     input.autocomplete = "off";
     input.setAttribute("aria-label", "PIN");
@@ -1288,6 +1291,7 @@ function requestPin(title) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = digit;
+      if (digit === "Cancelar" && options.required) button.disabled = true;
       button.onclick = () => {
         if (digit === "Cancelar") {
           panel.remove();
@@ -1309,6 +1313,7 @@ function requestPin(title) {
         hint.textContent = "Introduce de 6 a 12 cifras.";
         return;
       }
+      if (options.onGesture) options.onGesture();
       const value = input.value;
       panel.remove();
       resolve(value);
@@ -1316,7 +1321,38 @@ function requestPin(title) {
     input.oninput = () =>
       (input.value = input.value.replace(/\D/g, "").slice(0, 12));
     card.append(heading, hint, input, keys, accept);
+    if (state.armed) {
+      const silence = document.createElement("button");
+      silence.type = "button";
+      silence.id = "pinSilence";
+      silence.textContent = "Silenciar sonidos";
+      silence.onclick = stopSounds;
+      card.append(silence);
+    }
     panel.append(card);
+    panel.onkeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (!options.required) {
+          panel.remove();
+          resolve(null);
+        }
+      }
+      if (event.key === "Tab") {
+        const nodes = [...panel.querySelectorAll("input,button")].filter(
+          (el) => !el.disabled,
+        );
+        const first = nodes[0],
+          last = nodes[nodes.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
     document.body.append(panel);
     input.focus();
   });
@@ -1656,8 +1692,6 @@ $("autoAlarm").addEventListener("change", prepareDetection);
 $("alarmSource").addEventListener("change", prepareDetection);
 loadSounds().catch((e) => error(e.message, "audio"));
 
-$("extraToolsModeAnchor")?.append($("mode").closest("label"));
-
 let protecting = false;
 function renderProtection() {
   const title = $("protectionTitle"),
@@ -1777,6 +1811,12 @@ $("protect").onclick = async () => {
     $("contrast").value = "100";
     $("gamma").value = "100";
     $("confirmation").value = "1";
+    $("confidence").value = "60";
+    $("aiInterval").value = "3";
+    $("sensitivity").value = "60";
+    $("nightSensitivity").value = "75";
+    $("lowPower").checked = true;
+    $("torchLimit").value = "30";
     state.threatSince = 0;
     state.lastAlarm = 0;
     setMode();

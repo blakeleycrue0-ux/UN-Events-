@@ -40,3 +40,9 @@ Se sustituyó Web Audio por HTMLAudioElement tanto para el MP3 de aviso como par
 - `node --test tests/signaling.test.mjs`: autenticación, rechazo de claves, negociación autorizada, revocación y guardas de producción: pasó (2 tests).
 - `tests/remote.py`: no pasó. Ambos pares negociaron offer/answer y recopilaron cero candidatos ICE; una prueba mínima de dos RTCPeerConnection independiente de esta app también produjo cero candidatos y no conectó. No se atribuye la falta de vídeo a una causa de red concreta sin más evidencia.
 - No se ha desplegado WSS ni TURN ni comprobado vídeo desde redes distintas. La aplicación presenta ese requisito y no afirma conexión antes de observarla. El código de señalización está preparado para despliegue; esto no es una afirmación de disponibilidad remota.
+
+## PIN obligatorio y diseño unificado
+
+Pasaron los formularios reales de `tests/security.py`: doble confirmación, rechazo de PIN incorrecto, entrada al recargar, cancelación que conserva el estado, autorización para activar/desactivar, bloqueo manual, silencio de emergencia sin desarmar y cambio confirmado de PIN (el anterior deja de funcionar). Pasaron también protección con audio y sirena, reproducción multimedia, navegación, grabaciones guardadas y reproducibles, máscaras y clips continuos a través de los controles actuales.
+
+Las capturas se inspeccionaron en un viewport móvil de 390 px. No hay bypass de PIN en producción: los helpers de Playwright crean e introducen un PIN real. Sigue pendiente la validación física de Safari, cámara y audio tras el formulario. El acceso remoto conserva las limitaciones documentadas anteriormente.
