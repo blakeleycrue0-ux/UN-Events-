@@ -6,7 +6,7 @@ with sync_playwright() as p:
  c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto('http://127.0.0.1:8001');unlock_app(page);assert page.locator('#landingPage').is_visible();assert not page.evaluate('!!state.stream');page.screenshot(path='/workspace/security-setup/glass-home-mobile.png',full_page=True)
  page.click('#openViewer');assert page.locator('#remotePage').is_visible();assert not page.evaluate('!!state.stream')
- page.click('#connectRemote');assert 'WSS' in page.locator('#remoteStatus').inner_text() or 'URL' in page.locator('#remoteStatus').inner_text()
+ page.click('#connectRemote');assert 'Inicia sesión' in page.locator('#remoteStatus').inner_text()
  page.click('#backHome');page.click('#openCamera');page.wait_for_selector('#cameraPage:visible');page.locator('.extra-tools').evaluate('d=>d.open=true');page.click('#camera');page.wait_for_function('!!state.stream && video.videoWidth>0')
  page.click('#backHome');assert page.locator('#landingPage').is_visible();assert page.evaluate("!!state.stream && document.getElementById('captureDock').contains(video)")
  before=page.evaluate('video.currentTime');page.wait_for_timeout(1200);assert page.evaluate('video.currentTime')>before

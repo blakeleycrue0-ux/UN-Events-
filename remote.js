@@ -4,16 +4,25 @@ function remoteStatus(message) {
   $("remoteStatus").textContent = message;
 }
 function updateRemoteRole() {
+  var _a;
+  const cloud = ((_a = $("remoteProvider")) == null ? void 0 : _a.value) === "supabase";
   const host = $("remoteRole").value === "camera";
-  $("hostCredentials").hidden = !host;
-  $("viewerCredentials").hidden = host;
+  $("hostCredentials").hidden = cloud || !host;
+  $("viewerCredentials").hidden = cloud || host;
+  if (typeof updateSupabaseUI === "function") updateSupabaseUI();
 }
 $("remoteRole").onchange = () => {
   disconnectRemote();
   updateRemoteRole();
 };
 updateRemoteRole();
+let remoteProviderTransport = null;
+let remoteAttempt = 0;
 function remoteSend(data) {
+  if (remoteProviderTransport) {
+    remoteProviderTransport.send(data);
+    return;
+  }
   if ((signalingSocket == null ? void 0 : signalingSocket.readyState) === WebSocket.OPEN)
     signalingSocket.send(JSON.stringify(data));
 }
@@ -32,6 +41,10 @@ function closeRemotePeer() {
   $("remoteVideoBox").hidden = true;
 }
 function disconnectRemote() {
+  remoteAttempt++;
+  const provider = remoteProviderTransport;
+  remoteProviderTransport = null;
+  provider == null ? void 0 : provider.close();
   remoteActive = false;
   closeRemotePeer();
   if (signalingSocket) {
@@ -156,11 +169,16 @@ async function handleRemoteMessage(message) {
     );
   } else if (message.type === "closed") disconnectRemote();
 }
-$("connectRemote").onclick = () => {
+$("connectRemote").onclick = async () => {
+  var _a;
   disconnectRemote();
   try {
     if (!window.RTCPeerConnection)
       throw Error("WebRTC no est\xE1 disponible en este navegador.");
+    if (((_a = $("remoteProvider")) == null ? void 0 : _a.value) === "supabase") {
+      await connectSupabaseRemote(remoteAttempt);
+      return;
+    }
     const endpoint = new URL($("signalUrl").value);
     const local = ["localhost", "127.0.0.1"].includes(endpoint.hostname) && ["localhost", "127.0.0.1"].includes(location.hostname);
     if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== "/" || !local && endpoint.protocol !== "wss:" || local && !["ws:", "wss:"].includes(endpoint.protocol))

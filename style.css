@@ -1203,4 +1203,35 @@ body.auth-pending > #captureDock {
   font-size: 14px;
 }
 
-#cameraPage #health{display:none}
+#cameraPage #health {
+  display: none;
+}
+
+#supabaseSetup {
+  background: #ffffff12;
+  border-color: #ffffff55;
+  padding: 0 15px 12px;
+}
+#supabaseSetup summary {
+  color: white;
+  padding: 15px 0;
+  font-size: 12px;
+}
+#supabaseAccount {
+  margin-top: 16px;
+}
+#supabaseStatus {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #f0f6ff;
+}
+#supabasePanel button {
+  margin: 4px 4px 12px 0;
+}
+#supabaseLogin {
+  background: white;
+  color: #1454ab;
+}
+#supabaseSetup input {
+  font-size: 12px;
+}

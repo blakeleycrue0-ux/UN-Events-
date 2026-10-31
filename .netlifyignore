@@ -1,0 +1,9 @@
+node_modules/
+src/
+server/
+supabase/
+tests/
+.env
+.env.*
+*.key
+*.pem

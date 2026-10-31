@@ -61,6 +61,65 @@
       </div>
       <div class="glass remote-card">
         <label
+          >Conexión<select id="remoteProvider">
+            <option value="supabase">Mi cuenta de Supabase</option>
+            <option value="server">Servidor WSS propio</option>
+          </select></label
+        >
+        <div id="supabasePanel">
+          <details id="supabaseSetup" open>
+            <summary>Configurar mi proyecto (una vez)</summary>
+            <label
+              >URL pública de Supabase<input
+                id="supabaseUrl"
+                type="url"
+                placeholder="https://tu-proyecto.supabase.co" /></label
+            ><label
+              >Clave pública publishable / anon<input
+                id="supabasePublicKey"
+                type="text"
+                autocomplete="off"
+                placeholder="sb_publishable_…"
+            /></label>
+            <p>Solo la clave pública. Nunca uses secret ni service_role.</p>
+          </details>
+          <div id="supabaseLoginFields">
+            <label
+              >Email de tu cuenta<input
+                id="supabaseEmail"
+                type="email"
+                autocomplete="username" /></label
+            ><label
+              >Contraseña de tu cuenta<input
+                id="supabasePassword"
+                type="password"
+                autocomplete="current-password" /></label
+            ><button id="supabaseLogin">Iniciar sesión</button>
+          </div>
+          <div id="supabaseAccount" hidden>
+            <p id="supabaseAccountStatus"></p>
+            <button id="supabaseLogout">Cerrar sesión</button>
+            <div id="supabaseCameraFields">
+              <label
+                >Nombre de esta cámara<input
+                  id="supabaseCameraName"
+                  maxlength="60"
+                  value="Entrada"
+              /></label>
+            </div>
+            <div id="supabaseViewerFields">
+              <label
+                >Cámara de mi cuenta<select id="supabaseCameraList">
+                  <option value="">Busca tus cámaras</option>
+                </select></label
+              ><button id="supabaseRefresh">Buscar cámaras</button>
+            </div>
+          </div>
+          <p id="supabaseStatus" role="status">
+            Sin sesión. Usa la misma cuenta en tus dos móviles.
+          </p>
+        </div>
+        <label
           >Papel de este móvil<select id="remoteRole">
             <option value="viewer">Ver la cámara de casa</option>
             <option value="camera">Compartir la cámara de este móvil</option>
@@ -125,14 +184,14 @@
       <details class="glass remote-info">
         <summary>Preparar la conexión desde fuera</summary>
         <p>
-          Netlify aloja esta interfaz. Hace falta desplegar el servicio
-          autenticado incluido y configurar un relay TURN para redes móviles o
-          routers que bloquean conexiones directas. Hasta hacerlo no se puede
-          prometer acceso desde fuera de casa.
+          Con Supabase, usa la misma cuenta en los dos móviles. El proyecto debe
+          tener configurados los permisos de cámaras, Realtime privado y la
+          función de conexión. Necesitas también un relay TURN para que el vídeo
+          atraviese redes distintas.
         </p>
         <p>
-          En el móvil cámara inicia primero la vigilancia. Mantén Safari visible
-          y el móvil desbloqueado. El PIN local no es la clave de acceso remoto.
+          Los clips siguen guardándose en el móvil cámara. Mantén Safari visible
+          y el móvil desbloqueado. El PIN local no sustituye tu cuenta remota.
         </p>
       </details>
     </section>
@@ -416,6 +475,7 @@
     </div>
     <script src="app.js"></script>
     <script src="remote.js"></script>
+    <script src="supabase-remote.js"></script>
     <script src="security.js"></script>
     <script src="shell.js"></script>
   </body>

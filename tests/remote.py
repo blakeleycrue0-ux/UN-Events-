@@ -11,8 +11,8 @@ with sync_playwright() as p:
  camera.screenshot(path='/workspace/security-setup/glass-home.png',full_page=True)
  camera.click('#openCamera');camera.locator('.extra-tools').evaluate('d=>d.open=true');camera.click('#camera');camera.wait_for_function('!!state.stream && video.videoWidth>0')
  camera.locator('.settings').evaluate('d=>d.open=true');camera.select_option('#clip','10');camera.click('#record');camera.wait_for_function('state.recording')
- camera.goto('http://127.0.0.1:8001/#remote');unlock_app(camera);camera.select_option('#remoteRole','camera');camera.fill('#signalUrl','ws://127.0.0.1:8787');camera.fill('#hostAccess','local-test-key-not-for-deployment-1234567890');camera.click('#connectRemote');confirm_action(camera);camera.wait_for_selector('#pairingResult:visible');key=camera.locator('#createdPair').input_value();assert len(key)==48
- viewer.goto('http://127.0.0.1:8001');unlock_app(viewer);viewer.click('#openViewer');viewer.fill('#signalUrl','ws://127.0.0.1:8787');viewer.fill('#pairKey',key);viewer.click('#connectRemote')
+ camera.goto('http://127.0.0.1:8001/#remote');unlock_app(camera);camera.select_option('#remoteProvider','server');camera.select_option('#remoteRole','camera');camera.fill('#signalUrl','ws://127.0.0.1:8787');camera.fill('#hostAccess','local-test-key-not-for-deployment-1234567890');camera.click('#connectRemote');confirm_action(camera);camera.wait_for_selector('#pairingResult:visible');key=camera.locator('#createdPair').input_value();assert len(key)==48
+ viewer.goto('http://127.0.0.1:8001');unlock_app(viewer);viewer.click('#openViewer');viewer.select_option('#remoteProvider','server');viewer.fill('#signalUrl','ws://127.0.0.1:8787');viewer.fill('#pairKey',key);viewer.click('#connectRemote')
  viewer.wait_for_function("document.getElementById('remoteVideo').videoWidth>0 && remotePeer.connectionState==='connected'",timeout=40000)
  assert not viewer.evaluate('!!state.stream')
  before=viewer.locator('#remoteVideo').evaluate('v=>v.getVideoPlaybackQuality().totalVideoFrames');viewer.wait_for_timeout(1200);after=viewer.locator('#remoteVideo').evaluate('v=>v.getVideoPlaybackQuality().totalVideoFrames');assert after>before

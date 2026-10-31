@@ -1,0 +1,4 @@
+[functions.ice-config]
+# The function validates every bearer token with this project's Auth API and RLS.
+# This supports projects using asymmetric JWT signing keys too.
+verify_jwt = false

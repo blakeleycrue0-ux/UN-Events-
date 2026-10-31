@@ -46,3 +46,9 @@ Se sustituyó Web Audio por HTMLAudioElement tanto para el MP3 de aviso como par
 Pasaron los formularios reales de `tests/security.py`: doble confirmación, rechazo de PIN incorrecto, entrada al recargar, cancelación que conserva el estado, autorización para activar/desactivar, bloqueo manual, silencio de emergencia sin desarmar y cambio confirmado de PIN (el anterior deja de funcionar). Pasaron también protección con audio y sirena, reproducción multimedia, navegación, grabaciones guardadas y reproducibles, máscaras y clips continuos a través de los controles actuales.
 
 Las capturas se inspeccionaron en un viewport móvil de 390 px. No hay bypass de PIN en producción: los helpers de Playwright crean e introducen un PIN real. Sigue pendiente la validación física de Safari, cámara y audio tras el formulario. El acceso remoto conserva las limitaciones documentadas anteriormente.
+
+## Integración Supabase preparada
+
+Se añaden tests locales de PostgreSQL/RLS con PGlite, de la función Edge con Auth/RLS simulados y del cliente real Supabase con HTTP de fixture. Comprueban aislamiento de cuentas, denegación a anónimos/cuentas deshabilitadas, secreto TURN fuera del cliente, credenciales efímeras, rechazo de claves privadas en UI, sesión en memoria y error explícito si falta TURN. No se ha aplicado SQL ni desplegado ninguna función en un Supabase real; el vídeo exterior y las políticas de Realtime del servicio siguen sin verificar.
+
+Resultado de esta fase Supabase: pasaron 3 pruebas Node (políticas PostgreSQL y 2 casos de función Edge), la prueba del SDK con respuestas HTTP controladas y las regresiones de PIN, protección con audio/sirena, reproducción multimedia e Inicio. No se han ejecutado migraciones ni funciones en un proyecto remoto.
