@@ -1,0 +1,10 @@
+{
+  "package": "@vladmandic/human",
+  "version": "3.3.6",
+  "source": "https://registry.npmjs.org/@vladmandic/human/-/human-3.3.6.tgz",
+  "sha256": {
+    "models/centernet.json": "bfb942eaacc5becf738d536663bc4580a0ae9e560722306e6d4dd7fe4a09de05",
+    "models/centernet.bin": "1b635a15009071f506f9f2b3519b31c072c534888989f30d269ffd44734ef7ef",
+    "vendor/human.source.js": "5f240e5d2d60459f07aaa7df2cb129fd3f954c78dd05581cf6f8a30646779013"
+  }
+}
