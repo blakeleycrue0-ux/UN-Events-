@@ -21,3 +21,7 @@ Pendiente en el iPhone destino: Safari/versión iOS, permisos HTTPS, linterna re
 - `tests/live.py`: móvil de 390 px con ajustes plegados; vídeo nativo visible; lienzo de anotaciones transparente fuera de zonas. Se bloquea intencionadamente la promesa de inferencia y se comprueba que el contador real de fotogramas del vídeo sigue avanzando (al menos 5 fotogramas en 1,3 s). ON/OFF nocturno cambia filtros reales y persiste tras recarga.
 - Se volvieron a ejecutar smoke, guards y extras después de separar el vídeo, análisis reducido y reloj de grabación. Las pruebas funcionales abren explícitamente los paneles avanzados; la prueba de interfaz comprueba que están cerrados por defecto.
 - Sigue sin haber medida de fluidez/latencia en el iPhone físico.
+
+## Aviso fijo y sirena condicionada
+
+`tests/warning.py` pasó con el MP3 real adjuntado de 22,125 segundos: reproducción efectiva con Web Audio, ausencia de sirena durante la explicación, cancelación cuando desaparece una detección controlada y sirena únicamente al completar el audio con detección persistente. No hay selectores para subir MP3. Se actualizaron y ejecutaron smoke, guards y extras; el PIN utiliza teclado propio en pantalla. Detecciones de estas pruebas son controladas y no miden precisión física.
