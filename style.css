@@ -624,3 +624,338 @@ footer {
   color: #6b7f88;
   line-height: 1.6;
 }
+/* Separate welcome/monitor screens; camera controls keep their working layout. */
+[hidden] {
+  display: none !important;
+}
+body[data-page="home"],
+body[data-page="remote"] {
+  min-height: 100vh;
+  background: #167ef7 url("assets/home-background.jpg") center/cover scroll;
+  color: #fff;
+}
+body[data-page="home"] .app-header,
+body[data-page="remote"] .app-header {
+  color: #fff;
+}
+body[data-page="home"] .brand-subtitle,
+body[data-page="remote"] .brand-subtitle {
+  color: #d8e9ff;
+}
+body[data-page="home"] .brand-mark,
+body[data-page="remote"] .brand-mark {
+  color: #fff;
+  background: #ffffff24;
+  border: 1px solid #ffffff4d;
+}
+#backHome {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  font-size: 24px;
+  padding: 4px 12px;
+  min-height: 38px;
+}
+.landing-page,
+.remote-page {
+  max-width: 1100px;
+  margin: auto;
+  padding: 40px 24px 70px;
+}
+.welcome {
+  padding: 40px 0 46px;
+  max-width: 670px;
+}
+.eyebrow {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.2em;
+  color: inherit;
+  opacity: 0.75;
+}
+.welcome h1 {
+  font-size: clamp(40px, 6vw, 72px);
+  line-height: 1.06;
+  letter-spacing: -2px;
+  color: white;
+  margin: 20px 0;
+}
+.welcome p,
+.remote-title p {
+  color: #dfedff;
+  font-size: 17px;
+  font-weight: 400;
+  max-width: 440px;
+}
+.glass {
+  background: #ffffff18;
+  border: 1px solid #ffffff68;
+  box-shadow: 0 12px 40px #003d8814;
+  border-radius: 25px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.house-card {
+  padding: 23px 25px;
+  position: relative;
+  margin: 0 0 18px;
+}
+.house-card h2 {
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  margin: 8px 0;
+}
+.house-card p {
+  color: #e8f3ff;
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.home-state {
+  position: absolute;
+  right: 23px;
+  top: 24px;
+  font-size: 10px;
+  padding: 7px 10px;
+  background: #ffffff24;
+  border-radius: 20px;
+}
+.role-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.role-card {
+  padding: 24px;
+  text-align: left;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  min-height: 230px;
+}
+.role-card:hover {
+  background: #ffffff30;
+}
+.role-number {
+  font-size: 12px;
+  color: #d1e8ff;
+  border: 1px solid #ffffff65;
+  width: 33px;
+  height: 33px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.role-card strong {
+  font-size: 23px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+.role-card > span:not(.role-number) {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #e1efff;
+}
+.role-card b {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: auto;
+}
+.home-shortcuts {
+  display: flex;
+  gap: 12px;
+  margin: 22px 0;
+}
+.home-shortcuts button {
+  background: #fff;
+  color: #1257b2;
+  border-color: #fff;
+  flex: 1;
+  border-radius: 24px;
+  font-size: 12px;
+  padding: 13px;
+}
+.landing-footnote {
+  color: #e1efff;
+  font-size: 11px;
+  line-height: 1.7;
+  max-width: 700px;
+}
+.remote-title {
+  padding: 30px 0;
+}
+.remote-title h1 {
+  font-size: 39px;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  margin: 15px 0;
+  color: #fff;
+}
+.remote-card {
+  padding: 23px;
+  max-width: 650px;
+}
+.remote-card label {
+  display: block;
+  color: white;
+  font-size: 12px;
+  margin: 0 0 20px;
+}
+.remote-card input,
+.remote-card select {
+  display: block;
+  width: 100%;
+  margin-top: 9px;
+  background: #ffffffed;
+  color: #164679;
+  border: 0;
+  border-radius: 14px;
+  padding: 13px;
+  font: inherit;
+  font-size: 14px;
+  min-height: 47px;
+}
+.remote-card p,
+.remote-info p {
+  color: #e2efff;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.remote-card button {
+  border-radius: 25px;
+  font-size: 13px;
+}
+.remote-primary {
+  background: #fff !important;
+  color: #1257b2;
+  min-width: 150px;
+}
+.remote-card #disconnectRemote {
+  background: transparent;
+  color: white;
+  border-color: #ffffff80;
+  margin-left: 8px;
+}
+.remote-info {
+  max-width: 650px;
+  color: white;
+  margin-top: 18px;
+}
+.remote-info summary {
+  color: white;
+}
+.remote-info p {
+  padding: 0 20px;
+}
+.remote-video-box {
+  max-width: 900px;
+  margin-top: 20px;
+  background: #0b1523;
+  border-radius: 22px;
+  overflow: hidden;
+}
+.remote-video-box video {
+  position: static;
+  width: 100%;
+  display: block;
+  max-height: 65vh;
+  object-fit: contain;
+}
+.remote-video-box p {
+  color: #bdd0df;
+  padding: 0 16px 10px;
+  font-size: 11px;
+}
+.remote-card #pairingResult {
+  padding-top: 18px;
+  border-top: 1px solid #ffffff44;
+  margin-top: 18px;
+}
+#captureDock {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0.01;
+  pointer-events: none;
+}
+body[data-page="home"].locked .landing-page,
+body[data-page="remote"].locked .remote-page {
+  display: none;
+}
+body.locked #unlock {
+  display: block !important;
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass {
+    background: #176cdbcc;
+  }
+}
+@media (max-width: 600px) {
+  .landing-page,
+  .remote-page {
+    padding: 20px 20px 40px;
+  }
+  .welcome {
+    padding: 35px 5px 30px;
+  }
+  .welcome h1 {
+    font-size: 46px;
+    letter-spacing: -1.6px;
+  }
+  .welcome p {
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .role-cards {
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+  .role-card {
+    min-height: 185px;
+    padding: 21px;
+    gap: 12px;
+    border-radius: 24px;
+  }
+  .role-card strong {
+    font-size: 22px;
+  }
+  .house-card {
+    padding: 20px;
+  }
+  .house-card h2 {
+    font-size: 23px;
+  }
+  .home-state {
+    position: static;
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 9px;
+  }
+  .home-shortcuts {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .home-shortcuts button {
+    min-height: 47px;
+  }
+  .remote-title h1 {
+    font-size: 35px;
+  }
+  .remote-card {
+    padding: 20px;
+  }
+  .remote-card #disconnectRemote {
+    margin: 10px 0 0;
+    width: 100%;
+  }
+  .remote-primary {
+    width: 100%;
+  }
+}

@@ -4,7 +4,7 @@ with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'])
  c.add_init_script("""window.torchCalls=[];MediaStreamTrack.prototype.getCapabilities=function(){return {torch:true}};MediaStreamTrack.prototype.applyConstraints=async function(c){if(c.advanced)torchCalls.push({on:c.advanced[0].torch,time:Date.now()})};""")
- page=c.new_page();page.add_init_script("document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('details').forEach(d=>d.open=true))");page.goto('http://127.0.0.1:8001');page.click('#camera');page.wait_for_function('!!state.stream && !document.getElementById("torch").disabled')
+ page=c.new_page();page.add_init_script("document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('details').forEach(d=>d.open=true))");page.goto('http://127.0.0.1:8001/#camera');page.click('#camera');page.wait_for_function('!!state.stream && !document.getElementById("torch").disabled')
  assert page.locator('#eventLight').is_enabled()
  page.fill('#torchLimit','5');page.check('#torch');page.wait_for_function("torchCalls.some(c=>c.on)")
  page.wait_for_function("!document.getElementById('torch').checked",timeout=8000)

@@ -345,6 +345,7 @@ function viewRect() {
   return { x: (r.width - w) / 2, y: (r.height - h) / 2, w, h };
 }
 function draw() {
+  if (document.getElementById("cameraPage")?.hidden) return;
   const r = overlay.getBoundingClientRect();
   if (
     overlay.width !== Math.round(r.width) ||
@@ -906,7 +907,7 @@ async function warnThenAlarm() {
       state.warningPending = false;
       return;
     }
-    state.warningStarted=Date.now();
+    state.warningStarted = Date.now();
     activeAudio.onended = () => {
       if (!state.warningPending) return;
       state.warningPending = false;
@@ -1195,7 +1196,9 @@ $("arm").onclick = () => {
 };
 $("record").onclick = () =>
   state.recording ? stopRecording() : startRecording("manual");
-$("alarm").onclick = async () => {if(await enableAudio())await alarm("Activación manual", true)};
+$("alarm").onclick = async () => {
+  if (await enableAudio()) await alarm("Activación manual", true);
+};
 $("silence").onclick = stopSounds;
 $("enableAudio").onclick = enableAudio;
 $("photo").onclick = () => {

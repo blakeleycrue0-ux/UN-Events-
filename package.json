@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "esbuild src/app.js --target=safari12 --outfile=app.js && esbuild vendor/human.source.js --target=safari12 --minify --outfile=vendor/human.js",
+    "build": "esbuild src/app.js --target=safari12 --outfile=app.js && esbuild vendor/human.source.js --target=safari12 --minify --outfile=vendor/human.js && esbuild src/remote.js --target=safari12 --outfile=remote.js && esbuild src/shell.js --target=safari12 --outfile=shell.js",
     "start": "python3 -m http.server 8001 --bind 127.0.0.1",
-    "test": "python3 tests/smoke.py"
+    "test": "python3 tests/smoke.py",
+    "signal": "node server/signaling.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.12"
+  },
+  "dependencies": {
+    "ws": "8.22.1"
   }
 }

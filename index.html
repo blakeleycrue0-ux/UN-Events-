@@ -9,11 +9,128 @@
   </head>
   <body>
     <header class="app-header">
+      <button id="backHome" aria-label="Volver al inicio">←</button>
       <div class="brand-mark">S</div>
       <strong>SECURITY CAM<span class="brand-subtitle">MI HOGAR</span></strong
       ><button id="unlock">PIN</button>
     </header>
-    <main>
+    <section id="landingPage" class="landing-page">
+      <div class="welcome">
+        <span class="eyebrow">BIENVENIDO A TU HOGAR</span>
+        <h1>Tu casa.<br />Siempre contigo.</h1>
+        <p>Un espacio para proteger lo que más importa.</p>
+      </div>
+      <div class="glass house-card">
+        <div>
+          <span class="eyebrow">MI ESPACIO</span>
+          <h2>Mi casa</h2>
+        </div>
+        <span id="homeLocalState" class="home-state"
+          >Protección local desactivada</span
+        >
+        <p id="homeLocalDetail">Elige el papel de este móvil para empezar.</p>
+      </div>
+      <div class="role-cards">
+        <button id="openCamera" class="glass role-card">
+          <span class="role-number">01</span
+          ><strong>Este móvil será la cámara</strong
+          ><span
+            >Vigilar, detectar y guardar grabaciones en este dispositivo.</span
+          ><b>Configurar vigilancia →</b></button
+        ><button id="openViewer" class="glass role-card">
+          <span class="role-number">02</span
+          ><strong>Quiero ver otra cámara</strong
+          ><span>Conectar con el móvil que se queda en casa.</span
+          ><b>Abrir monitor remoto →</b>
+        </button>
+      </div>
+      <div class="home-shortcuts">
+        <button id="homeClips">Mis grabaciones</button
+        ><button id="homeConnection">Conexión entre móviles</button>
+      </div>
+      <p class="landing-footnote">
+        Cámara local disponible. La conexión desde otra red necesita el servicio
+        remoto configurado; no se conecta por el mero hecho de abrir esta web.
+      </p>
+    </section>
+    <section id="remotePage" class="remote-page" hidden>
+      <div class="remote-title">
+        <span class="eyebrow">TUS DISPOSITIVOS</span>
+        <h1>Conecta con tu hogar.</h1>
+        <p>Un móvil vigila. El otro te permite mirar.</p>
+      </div>
+      <div class="glass remote-card">
+        <label
+          >Papel de este móvil<select id="remoteRole">
+            <option value="viewer">Ver la cámara de casa</option>
+            <option value="camera">Compartir la cámara de este móvil</option>
+          </select></label
+        >
+        <label
+          >Servidor de conexión<input
+            id="signalUrl"
+            type="url"
+            placeholder="wss://conexion.tudominio.com"
+        /></label>
+        <div id="hostCredentials">
+          <label
+            >Clave de instalación del servidor<input
+              id="hostAccess"
+              type="password"
+              autocomplete="off"
+          /></label>
+          <p>
+            Solo la necesita el móvil cámara. No se guarda en este navegador.
+          </p>
+        </div>
+        <div id="viewerCredentials">
+          <label
+            >Clave de emparejamiento<input
+              id="pairKey"
+              type="password"
+              autocomplete="off"
+              placeholder="Pega la clave creada en el móvil cámara"
+          /></label>
+        </div>
+        <button id="connectRemote" class="remote-primary">Conectar</button
+        ><button id="disconnectRemote">Desconectar</button>
+        <p id="remoteStatus" role="status">
+          Sin conexión remota. No se está publicando vídeo.
+        </p>
+        <div id="pairingResult" hidden>
+          <label
+            >Clave privada para el otro móvil<input
+              id="createdPair"
+              readonly
+              type="password" /></label
+          ><button id="copyPair">Copiar clave</button>
+          <p>
+            Caduca en una hora. Desconectar la cámara invalida la clave.
+            Compártela solo con tu otro móvil por un canal de confianza.
+          </p>
+        </div>
+      </div>
+      <div id="remoteVideoBox" class="remote-video-box" hidden>
+        <video id="remoteVideo" autoplay muted playsinline controls></video>
+        <p>
+          Solo vídeo. Las grabaciones continúan guardándose en el móvil cámara.
+        </p>
+      </div>
+      <details class="glass remote-info">
+        <summary>Preparar la conexión desde fuera</summary>
+        <p>
+          Netlify aloja esta interfaz. Hace falta desplegar el servicio
+          autenticado incluido y configurar un relay TURN para redes móviles o
+          routers que bloquean conexiones directas. Hasta hacerlo no se puede
+          prometer acceso desde fuera de casa.
+        </p>
+        <p>
+          En el móvil cámara inicia primero la vigilancia. Mantén Safari visible
+          y el móvil desbloqueado. El PIN local no es la clave de acceso remoto.
+        </p>
+      </details>
+    </section>
+    <main id="cameraPage" hidden>
       <section class="home-card">
         <div class="home-top">
           <span>MI SISTEMA</span><span id="status">DESARMADO</span
@@ -374,6 +491,9 @@
         </footer>
       </details>
     </main>
+    <div id="captureDock" aria-hidden="true"></div>
     <script src="app.js"></script>
+    <script src="remote.js"></script>
+    <script src="shell.js"></script>
   </body>
 </html>
