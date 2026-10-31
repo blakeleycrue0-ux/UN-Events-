@@ -15,3 +15,9 @@ Comprobaciones realizadas y completadas:
 Los archivos de prueba no son audios ElevenLabs. La precisión de IA con personas, los falsos positivos de movimiento y la detección nocturna no se han medido en una vivienda real. La prueba de inferencia demuestra ejecución del modelo, no su precisión. La prueba de cuota fuerza un error de escritura; no llena el disco.
 
 Pendiente en el iPhone destino: Safari/versión iOS, permisos HTTPS, linterna real, duración y formato de clips, exportación/descargas, reproducción audible de los MP3, interrupciones del sistema, comportamiento prolongado, batería/calor, límites y expulsión de IndexedDB, velocidad de IA, precisión diurna/nocturna y ajuste de zonas. No se ha publicado en Netlify ni se ha validado un despliegue público. No hay transmisión remota.
+
+## Corrección de fluidez e interfaz
+
+- `tests/live.py`: móvil de 390 px con ajustes plegados; vídeo nativo visible; lienzo de anotaciones transparente fuera de zonas. Se bloquea intencionadamente la promesa de inferencia y se comprueba que el contador real de fotogramas del vídeo sigue avanzando (al menos 5 fotogramas en 1,3 s). ON/OFF nocturno cambia filtros reales y persiste tras recarga.
+- Se volvieron a ejecutar smoke, guards y extras después de separar el vídeo, análisis reducido y reloj de grabación. Las pruebas funcionales abren explícitamente los paneles avanzados; la prueba de interfaz comprueba que están cerrados por defecto.
+- Sigue sin haber medida de fluidez/latencia en el iPhone físico.

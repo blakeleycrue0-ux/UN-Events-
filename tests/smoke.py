@@ -6,7 +6,7 @@ import os
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM','/usr/bin/chromium'),headless=True,args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
     context=browser.new_context(permissions=['camera'],accept_downloads=True)
-    page=context.new_page()
+    page=context.new_page();page.add_init_script("document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('details').forEach(d=>d.open=true))")
     errors=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     page.on('console',lambda m:print('BROWSER',m.type,m.text[:300]) if m.type=='error' else None)

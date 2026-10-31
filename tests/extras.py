@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],accept_downloads=True)
- page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ page=c.new_page();page.add_init_script("document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('details').forEach(d=>d.open=true))");errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto('http://127.0.0.1:8001');page.wait_for_function('!!db')
  page.locator('input[type=file]').first.set_input_files(Path(__file__).parent/'fixtures/tone.mp3')
  page.wait_for_function("!!soundBlobs.notice")
