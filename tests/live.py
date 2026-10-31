@@ -5,8 +5,8 @@ with sync_playwright() as p:
  c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto('http://127.0.0.1:8001');page.wait_for_function('!!db')
  assert page.locator('details[open]').count()==0
- assert page.locator('#camera').is_visible() and page.locator('#nightToggle').is_visible()
- page.click('#camera');page.wait_for_function('!!state.stream && video.videoWidth>0');page.wait_for_timeout(700)
+ assert page.locator('#protect').is_visible()
+ page.locator('.extra-tools').evaluate('d=>d.open=true');page.click('#camera');page.wait_for_function('!!state.stream && video.videoWidth>0');page.wait_for_timeout(700)
  assert page.locator('#video').evaluate("v=>getComputedStyle(v).opacity")=='1'
  assert page.evaluate('ctx.getImageData(overlay.width/2,overlay.height/2,1,1).data[3]')==0
  # A pending inference suspends the analysis loop, but never the native media element.
@@ -20,7 +20,7 @@ with sync_playwright() as p:
  page.wait_for_timeout(600);page.screenshot(path='/workspace/security-setup/live-simple.png')
  page.click('#nightToggle');assert 'OFF' in page.locator('#nightToggle').inner_text()
  assert 'brightness(100%)' in page.locator('#video').evaluate('v=>v.style.filter')
- page.reload();assert 'OFF' in page.locator('#nightToggle').inner_text()
+ page.reload();assert 'OFF' in page.locator('#nightToggle').text_content()
  print('PASS night control toggles real filters and persists; settings are collapsed on mobile')
  assert not errors,errors
  b.close()

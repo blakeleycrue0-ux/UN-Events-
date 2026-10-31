@@ -25,3 +25,7 @@ Pendiente en el iPhone destino: Safari/versión iOS, permisos HTTPS, linterna re
 ## Aviso fijo y sirena condicionada
 
 `tests/warning.py` pasó con el MP3 real adjuntado de 22,125 segundos: reproducción efectiva con Web Audio, ausencia de sirena durante la explicación, cancelación cuando desaparece una detección controlada y sirena únicamente al completar el audio con detección persistente. No hay selectores para subir MP3. Se actualizaron y ejecutaron smoke, guards y extras; el PIN utiliza teclado propio en pantalla. Detecciones de estas pruebas son controladas y no miden precisión física.
+
+## Inicio simplificado
+
+`tests/protect.py` pasa con la nueva pantalla: el usuario selecciona Movimiento y toca Proteger esta imagen; se comprueba cámara real sintética, contexto de sonido activo, zona autorizada y modo de alarma. Una secuencia controlada atraviesa el detector real (sin inyectar banderas de armado ni detección) y reproduce el audio completo antes de activar una sirena Web Audio. El desarmado y navegación a evidencias también se comprueban. No demuestra volumen físico ni comportamiento de Safari en un iPhone.

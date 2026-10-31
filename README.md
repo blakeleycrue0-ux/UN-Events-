@@ -29,7 +29,7 @@ DESARMADO muestra la cámara y permite acciones manuales. SILENCIOSO procesa det
 
 El monitor utiliza el vídeo nativo de la cámara; no muestra capturas del análisis. El lienzo superior solo dibuja zonas, máscaras y detecciones. Una inferencia lenta no espera para actualizar el vídeo. El movimiento se analiza directamente a 128/192 px; los clips procesados tienen su propio reloj de 5/10 fps. La fuente solicita 720p con restricciones ideales: el iPhone puede entregar otra resolución.
 
-La pantalla principal contiene cámara, vigilancia, grabación y **Noche: AUTO / ON / OFF**. Más controles, ajustes y evidencias están plegados. Noche automática usa luminancia medida con histéresis (activar por debajo de 40/255, desactivar por encima de 65/255). ON fuerza la mejora y OFF la desactiva. El vídeo nativo usa brillo/contraste CSS para evitar copiar píxeles a la pantalla. Gamma se aplica a imágenes de análisis, fotos y clips procesados; no se promete corrección gamma exacta en el directo nativo. No hay visión infrarroja ni recuperación de objetos sin luz.
+La pantalla principal contiene el estado de protección, selector Personas/Movimiento y el botón Proteger esta imagen. Noche es automática; los controles manuales de cámara quedan en el panel secundario. Más controles, ajustes y evidencias están plegados. Noche automática usa luminancia medida con histéresis (activar por debajo de 40/255, desactivar por encima de 65/255). ON fuerza la mejora y OFF la desactiva. El vídeo nativo usa brillo/contraste CSS para evitar copiar píxeles a la pantalla. Gamma se aplica a imágenes de análisis, fotos y clips procesados; no se promete corrección gamma exacta en el directo nativo. No hay visión infrarroja ni recuperación de objetos sin luz.
 
 ## Compatibilidad y límites reales
 
@@ -68,7 +68,7 @@ python3 tests/live.py
 
 La cámara de Chromium es sintética. Se prueba codificación real, guardado/transacción, reproducción del clip, marca importante, cámara sin audio, sirena real Web Audio, movimiento con una secuencia controlada, dibujo de zona y carga/inferencia real del modelo local. Las pruebas de autorización usan predicciones de IA inyectadas (no demuestran precisión de reconocimiento); las de cuota fuerzan el fallo de guardado (no llenan el disco). El test de linterna simula capacidades y órdenes: no demuestra funcionamiento de un flash físico. El tono MP3 de tests/fixtures es un tono de diagnóstico generado, no un archivo ElevenLabs. WebKit no está instalado en esta máquina.
 
-Antes de usarlo en una entrada real, verifica en tu iPhone: permisos HTTPS, cámara trasera estable durante varias horas, MP4 descargado y reproducible, importación de tus MP3/volumen, flash si se ofrece, comportamiento con poca luz, zona y máscara, falsos positivos, velocidad/consumo, límites de Safari y recuperación tras interrupciones. No se ha medido precisión con personas reales ni rendimiento térmico de un iPhone.
+Antes de usarlo en una entrada real, verifica en tu iPhone: permisos HTTPS, cámara trasera estable durante varias horas, MP4 descargado y reproducible, reproducción del aviso incluido y volumen, flash si se ofrece, comportamiento con poca luz, zona y máscara, falsos positivos, velocidad/consumo, límites de Safari y recuperación tras interrupciones. No se ha medido precisión con personas reales ni rendimiento térmico de un iPhone.
 
 ## Dependencias locales
 
@@ -79,3 +79,11 @@ Antes de usarlo en una entrada real, verifica en tu iPhone: permisos HTTPS, cám
 Se confirma la detección durante el tiempo configurado antes de reproducir el audio suministrado. Solo después de que termine el aviso se inicia la sirena si la detección continúa, con vigilancia, permiso automático y zona válidos. Si desaparece durante la explicación, se detiene el aviso y se cancela la sirena. Para personas esto se evalúa con cada resultado de IA; el intervalo de análisis determina el retraso de cancelación y no equivale a seguimiento perfecto. Para movimiento se cancela al dejar de observar movimiento confirmado; una persona inmóvil puede no mantener ese detector. Un fallo de audio cancela la escalada; no se sustituye por una sirena inesperada. `tests/warning.py` reproduce el MP3 real completo y prueba cancelación y escalada con detecciones controladas.
 
 El PIN se introduce y crea desde un teclado numérico propio de la app, sin cuadros de prompt del navegador. Conserva las limitaciones de seguridad local descritas arriba.
+
+## Pantalla Inicio y protección en un paso
+
+La nueva pantalla separa el estado de protección de la vista de cámara. **Proteger esta imagen** habilita sonido desde el gesto, inicia cámara, prepara el detector elegido y autoriza alarma sobre la zona guardada o toda la imagen de la propiedad, según el texto visible. Si no puede preparar cámara, sonido o IA, muestra el error y no dice que esté protegida. Movimiento es una alternativa cuando IA no puede cargar. No basta con ver un rectángulo para que la sirena esté armada: el estado Inicio lo indica expresamente. El botón también desarma. Brillo, contraste y gamma se restablecen automáticamente al activar y sus controles ya no se muestran; el modo noche automático sigue basado en luz medida.
+
+La confirmación del flujo rápido es de un segundo. Movimiento conserva actividad durante 2,5 s para tolerar pausas entre fotogramas; después cancela el aviso si no hay nuevos cambios. Personas se evalúa según su intervalo de inferencia. El aviso dura 22,1 s antes de sirena y sigue cancelándose si la detección termina. El contador y los mensajes distinguen preparar, desarmado, vigilancia silenciosa, aviso y sirena. La interfaz no puede verificar el altavoz físico ni el modo silencioso del iPhone.
+
+`tests/protect.py` utiliza el botón real de inicio sin inyectar banderas de armado, zona o audio; un vídeo de movimiento controlado pasa por el detector real, reproduce el MP3 y activa la sirena al terminar si persiste.

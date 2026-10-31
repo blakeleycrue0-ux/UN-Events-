@@ -844,7 +844,7 @@ async function alarm(reason, manual = false) {
 function threatActive() {
   if (!state.stream || document.hidden || state.cameraMuted) return false;
   if ($("alarmSource").value === "motion")
-    return $("motion").checked && state.motionFrames >= 2;
+    return $("motion").checked && Date.now() - (state.lastMotionAt || 0) < 2500;
   return (
     $("person").checked &&
     state.persons.length > 0 &&
@@ -884,6 +884,7 @@ function considerThreat() {
 async function warnThenAlarm() {
   stopSounds();
   state.warningPending = true;
+  state.warningStarted = Date.now();
   state.lastAlarm = Date.now();
   const generation = soundGeneration;
   $("sequenceStatus").textContent =
@@ -1079,8 +1080,10 @@ async function tick() {
       const moving =
         diff / Math.max(1, count) > 0.015 + (100 - sensitivity) * 0.001;
       state.motionFrames = moving ? (state.motionFrames || 0) + 1 : 0;
-      if ($("motion").checked && state.motionFrames >= 2)
+      if ($("motion").checked && state.motionFrames >= 2) {
+        state.lastMotionAt = Date.now();
         detected("movimiento");
+      }
     }
     state.previous = grey;
     if (
@@ -1620,7 +1623,7 @@ $("fullZone").onclick = () => {
 function prepareDetection() {
   state.threatSince = 0;
   if (state.warningPending) stopSounds();
-  if ($("autoAlarm").checked) {
+  if ($("autoAlarm").checked && state.armed) {
     enableAudio();
     $("mode").value = "alarm";
     setMode();
@@ -1639,3 +1642,148 @@ $("alarmSource").addEventListener("change", prepareDetection);
 loadSounds().catch((e) => error(e.message, "audio"));
 
 $("extraToolsModeAnchor")?.append($("mode").closest("label"));
+
+let protecting = false;
+function renderProtection() {
+  const title = $("protectionTitle"),
+    hint = $("protectionHint");
+  document.body.dataset.protection = state.alarm
+    ? "alarm"
+    : state.warningPending
+      ? "warning"
+      : state.armed
+        ? "armed"
+        : "idle";
+  if (protecting) {
+    title.textContent = "Preparando protección";
+    hint.textContent = state.stream
+      ? "Comprobando sonido y detector…"
+      : "Esperando permiso de cámara…";
+  } else if (state.alarm) {
+    title.textContent =
+      siren || activeAudio ? "Alarma activada" : "Alarma sin sonido";
+    hint.textContent =
+      siren || activeAudio
+        ? "Sirena en curso. Puedes silenciarla inmediatamente."
+        : "El navegador no ha iniciado el audio. Revisa el error de sonido.";
+  } else if (state.warningPending) {
+    title.textContent = "Aviso de seguridad";
+    const left = Math.max(
+      0,
+      Math.ceil(22.13 - (Date.now() - state.warningStarted) / 1000),
+    );
+    hint.textContent =
+      "Aviso de voz · " +
+      left +
+      " s. Después, sirena si continúa la detección.";
+  } else if (state.armed && audioContext?.state !== "running") {
+    title.textContent = "Sonido interrumpido";
+    hint.textContent = "Toca Reactivar sonido. Safari ha suspendido el audio.";
+  } else if (
+    state.armed &&
+    $("mode").value === "alarm" &&
+    $("autoAlarm").checked &&
+    state.zone
+  ) {
+    title.textContent = "Tu entrada está protegida";
+    hint.textContent =
+      $("alarmSource").value === "person"
+        ? "Personas → aviso de voz → sirena si permanecen."
+        : "Movimiento → aviso de voz → sirena si continúa.";
+  } else if (state.armed) {
+    title.textContent = "Vigilancia sin alarma";
+    hint.textContent =
+      "Este modo detecta, pero no activa la sirena. Usa Proteger esta imagen para habilitarla.";
+  } else {
+    title.textContent = "Protección desactivada";
+    hint.textContent = state.persons.length
+      ? "Se ve una persona, pero la alarma está desactivada."
+      : "La cámara puede estar encendida sin tener la alarma activada.";
+  }
+  $("protect").disabled = protecting;
+  $("protect").textContent = protecting
+    ? "PREPARANDO…"
+    : state.armed
+      ? "DESACTIVAR PROTECCIÓN"
+      : "PROTEGER ESTA IMAGEN";
+  if (state.armed && audioContext?.state !== "running")
+    $("protect").textContent = "REACTIVAR SONIDO";
+}
+$("protect").onclick = async () => {
+  if (protecting) return;
+  if (state.armed && audioContext?.state !== "running") {
+    if(await enableAudio()){state.lastAlarm=0;state.threatSince=0;}
+    renderProtection();
+    return;
+  }
+  if (state.armed) {
+    $("mode").value = "disarmed";
+    setMode();
+    renderProtection();
+    return;
+  }
+  protecting = true;
+  renderProtection();
+  try {
+    // Resume audio inside this user gesture, before camera permission/model awaits.
+    if (!(await enableAudio()))
+      throw Error("El sonido está bloqueado. Toca de nuevo para habilitarlo.");
+    await loadSounds();
+    if (!state.stream) {
+      $("person").checked = false;
+      await startCamera();
+    }
+    if (!state.stream)
+      throw Error("No se ha podido iniciar la cámara. Revisa el permiso.");
+    if ($("alarmSource").value === "person") {
+      $("person").checked = true;
+      await loadModel();
+      if (!state.model)
+        throw Error(
+          "Personas no está disponible en este dispositivo. Selecciona Movimiento.",
+        );
+    } else {
+      $("motion").checked = true;
+      $("person").checked = false;
+    }
+    if (audioContext.state !== "running")
+      throw Error(
+        "Safari ha suspendido el sonido. Vuelve a tocar Proteger esta imagen.",
+      );
+    if (+$("volume").value === 0) $("volume").value = "70";
+    // This button explicitly authorizes the saved zone, or the full property frame.
+    state.zone ||= { x: 0, y: 0, w: 1, h: 1 };
+    $("autoAlarm").checked = true;
+    $("mode").value = "alarm";
+    $("nightMode").value = "auto";
+    $("brightness").value = "100";
+    $("contrast").value = "100";
+    $("gamma").value = "100";
+    $("confirmation").value = "1";
+    state.threatSince = 0;
+    state.lastAlarm = 0;
+    setMode();
+    updatePreview();
+    draw();
+    save();
+    $("error").textContent = "";
+  } catch (e) {
+    error(e.message, "alarma");
+  } finally {
+    protecting = false;
+    renderProtection();
+  }
+};
+setInterval(renderProtection, 500);
+renderProtection();
+
+$("navHome").onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
+for (const [id, selector] of [
+  ["navClips", ".evidence"],
+  ["navSettings", ".settings"],
+])
+  $(id).onclick = () => {
+    const panel = document.querySelector(selector);
+    panel.open = true;
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
