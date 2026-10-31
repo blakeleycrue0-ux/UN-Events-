@@ -16,8 +16,7 @@
     <main>
       <section class="monitor">
         <div id="stage">
-          <video id="video" autoplay muted playsinline></video
-          ><canvas id="overlay"></canvas>
+          <div id="videoViewport"><video id="video" autoplay muted playsinline></video></div><canvas id="overlay"></canvas>
           <div class="badges">
             <span id="live">SIN CÁMARA</span><span id="rec" hidden>REC</span>
           </div>
@@ -25,22 +24,15 @@
             Inicia la cámara para comenzar. No se solicita micrófono.
           </div>
         </div>
-        <div class="toolbar controls">
+        <div class="toolbar controls primary">
           <button id="camera">Iniciar cámara</button
-          ><button id="arm">ACTIVAR VIGILANCIA</button
-          ><button id="record">Grabar manual</button
-          ><button id="alarm" class="danger">Alarma manual</button
-          ><button id="silence">SILENCIAR TODO</button
-          ><button id="photo">Fotografía</button
-          ><button id="fullscreen">Pantalla completa</button
-          ><button id="hide">Ocultar controles</button>
+          ><button id="arm">ACTIVAR VIGILANCIA</button>
+          <button id="record">Grabar manual</button
+          ><button id="nightToggle" aria-pressed="false">Noche: AUTO</button>
         </div>
-        <p id="health" role="status"></p>
-        <p id="error" role="alert"></p>
-      </section>
-      <section class="controls panels">
-        <article>
-          <h2>Vigilancia</h2>
+        <input id="nightMode" type="hidden" value="auto" />
+        <p id="nightHint"></p>
+        <div class="quick-mode controls">
           <label
             >Modo
             <select id="mode">
@@ -49,218 +41,244 @@
               <option value="deter">DISUASORIO</option>
               <option value="alarm">ALARMA</option>
             </select></label
-          ><label
-            >Cámara
-            <select id="device">
-              <option value="">Trasera automática</option>
-            </select></label
-          ><button id="restart">Reiniciar cámara</button
-          ><label
-            ><input id="motion" type="checkbox" checked /> Detectar
-            movimiento</label
-          ><label
-            >Sensibilidad
-            <input
-              id="sensitivity"
-              type="range"
-              min="1"
-              max="100"
-              value="60" /></label
-          ><label
-            ><input id="person" type="checkbox" /> Detectar personas (cargar IA
-            local)</label
-          ><label
-            >Confianza persona
-            <input
-              id="confidence"
-              type="range"
-              min="30"
-              max="95"
-              value="60" /></label
-          ><label
-            >Intervalo IA (segundos)<input
-              id="aiInterval"
-              type="number"
-              min="1"
-              max="30"
-              value="3" /></label
-          ><button id="zone">Dibujar zona restringida</button
-          ><button id="mask">Dibujar máscara privada</button
-          ><button id="clearZones">Borrar zonas</button>
-          <p>
-            Arrastra sobre el vídeo. La zona verde limita ambos detectores; la
-            máscara negra también oculta esa región en fotos y grabaciones
-            procesadas.
-          </p>
-        </article>
-        <article>
-          <h2>Grabación y almacenamiento</h2>
-          <label
-            >Modo
-            <select id="recordMode">
-              <option value="manual">Solo manual</option>
-              <option value="motion">Movimiento</option>
-              <option value="person">Personas</option>
-              <option value="continuous">Continua en clips</option>
-            </select></label
-          ><label
-            >Duración
-            <select id="clip">
-              <option>10</option>
-              <option selected>20</option>
-              <option>30</option>
-              <option>60</option>
-            </select>
-            segundos</label
-          ><label
-            ><input id="autoDelete" type="checkbox" /> Borrar clips antiguos no
-            importantes al superar el 80% de cuota</label
           >
-          <p id="storage">Comprobando almacenamiento…</p>
-          <p>
-            Safari puede eliminar datos locales. Descarga las evidencias
-            importantes. Si no puede guardar un clip, se ofrecerá su descarga y
-            se detendrá la grabación automática.
-          </p>
-        </article>
-        <article>
-          <h2>Audio y alarma</h2>
-          <button id="enableAudio">Habilitar sonido</button
-          ><label
-            >Volumen general<input
-              id="volume"
-              type="range"
-              min="0"
-              max="100"
-              value="70" /></label
-          ><label
-            ><input id="autoVoice" type="checkbox" /> Avisos automáticos (modo
-            disuasorio)</label
-          ><label
-            ><input id="autoNotice" type="checkbox" /> Incluir aviso de zona
-            videovigilada</label
-          ><label
-            ><input id="autoWarning" type="checkbox" checked /> Incluir
-            advertencia de propiedad</label
-          >
-          <div id="sounds"></div>
-          <label
-            ><input id="autoAlarm" type="checkbox" /> Permitir alarma automática
-            por persona confirmada dentro de la zona restringida</label
-          ><label
-            >Confirmación (segundos)<input
-              id="confirmation"
-              type="number"
-              min="1"
-              max="60"
-              value="3" /></label
-          ><label
-            >Intervalo mínimo (segundos)<input
-              id="cooldown"
-              type="number"
-              min="10"
-              max="3600"
-              value="60" /></label
-          ><label
-            >Duración sirena<select id="alarmDuration">
-              <option>5</option>
-              <option selected>10</option>
-              <option>15</option>
-              <option>30</option>
-            </select></label
-          >
-          <p>
-            La alarma automática requiere modo ALARMA, permiso explícito, IA
-            activa y zona dibujada. Movimiento por sí solo nunca activa la
-            sirena.
-          </p>
-        </article>
-        <article>
-          <h2>Imagen y dispositivo</h2>
-          <label
-            >Brillo<input
-              id="brightness"
-              type="range"
-              min="50"
-              max="200"
-              value="100" /></label
-          ><label
-            >Contraste<input
-              id="contrast"
-              type="range"
-              min="50"
-              max="200"
-              value="100" /></label
-          ><label
-            >Gamma<input
-              id="gamma"
-              type="range"
-              min="50"
-              max="200"
-              value="100" /></label
-          ><label
-            >Sensibilidad nocturna<input
-              id="nightSensitivity"
-              type="range"
-              min="1"
-              max="100"
-              value="75" /></label
-          ><label
-            >Zoom digital<input
-              id="zoom"
-              type="range"
-              min="100"
-              max="250"
-              value="100" /></label
-          ><label
-            ><input id="lowPower" type="checkbox" checked /> Bajo consumo
-            (análisis reducido)</label
-          ><label
-            ><input id="eventLight" type="checkbox" disabled /> Iluminar al
-            detectar (DISUASORIO, si hay linterna)</label
-          ><label
-            ><input id="torch" type="checkbox" disabled /> Linterna
-            continua</label
-          ><label
-            ><input id="alarmFlash" type="checkbox" disabled /> Luz lenta
-            durante alarma (cada 2 segundos)</label
-          ><label
-            >Límite linterna (segundos)<input
-              id="torchLimit"
-              type="number"
-              min="5"
-              max="120"
-              value="30"
-          /></label>
-          <p id="torchInfo">
-            Se comprobará la capacidad real al iniciar la cámara.
-          </p>
-          <button id="diagnose">Diagnóstico y prueba integral</button>
-          <pre id="diagnostics"></pre>
-          <button id="pin">Establecer PIN local</button>
-          <p>
-            El PIN solo bloquea estos controles; no cifra evidencias ni protege
-            frente a alguien con acceso al navegador.
-          </p>
-        </article>
+        </div>
+        <button id="silence" class="quiet-stop">SILENCIAR TODO</button>
+        <details class="controls extra-tools">
+          <summary>Más controles</summary>
+          <div class="toolbar">
+            <button id="enableAudio">Habilitar sonido</button
+            ><button id="photo">Fotografía</button>
+            <button id="fullscreen">Pantalla completa</button
+            ><button id="hide">Ocultar controles</button>
+            <button id="alarm" class="danger">Alarma manual</button>
+          </div>
+        </details>
+        <p id="health" role="status"></p>
+        <p id="error" role="alert"></p>
       </section>
-      <section class="controls">
-        <h2>Evidencias</h2>
-        <div id="clips"></div>
-        <h2>Cronología</h2>
-        <select id="filter">
-          <option value="">Todos</option>
-          <option>movimiento</option>
-          <option>persona</option>
-          <option>grabación</option>
-          <option>alarma</option>
-          <option>cámara</option>
-          <option>audio</option>
-          <option>pérdida</option>
-          <option>modo</option></select
-        ><button id="clearLog">Borrar historial</button>
-        <ol id="events"></ol>
-      </section>
+      <details class="controls settings">
+        <summary>Ajustes de vigilancia</summary>
+        <section class="panels">
+          <article>
+            <h2>Vigilancia</h2>
+            <label
+              >Cámara
+              <select id="device">
+                <option value="">Trasera automática</option>
+              </select></label
+            ><button id="restart">Reiniciar cámara</button
+            ><label
+              ><input id="motion" type="checkbox" checked /> Detectar
+              movimiento</label
+            ><label
+              >Sensibilidad
+              <input
+                id="sensitivity"
+                type="range"
+                min="1"
+                max="100"
+                value="60" /></label
+            ><label
+              ><input id="person" type="checkbox" /> Detectar personas (cargar
+              IA local)</label
+            ><label
+              >Confianza persona
+              <input
+                id="confidence"
+                type="range"
+                min="30"
+                max="95"
+                value="60" /></label
+            ><label
+              >Intervalo IA (segundos)<input
+                id="aiInterval"
+                type="number"
+                min="1"
+                max="30"
+                value="3" /></label
+            ><button id="zone">Dibujar zona restringida</button
+            ><button id="mask">Dibujar máscara privada</button
+            ><button id="clearZones">Borrar zonas</button>
+            <p>
+              Arrastra sobre el vídeo. La zona verde limita ambos detectores; la
+              máscara negra también oculta esa región en fotos y grabaciones
+              procesadas.
+            </p>
+          </article>
+          <article>
+            <h2>Grabación y almacenamiento</h2>
+            <label
+              >Modo
+              <select id="recordMode">
+                <option value="manual">Solo manual</option>
+                <option value="motion">Movimiento</option>
+                <option value="person">Personas</option>
+                <option value="continuous">Continua en clips</option>
+              </select></label
+            ><label
+              >Duración
+              <select id="clip">
+                <option>10</option>
+                <option selected>20</option>
+                <option>30</option>
+                <option>60</option>
+              </select>
+              segundos</label
+            ><label
+              ><input id="autoDelete" type="checkbox" /> Borrar clips antiguos
+              no importantes al superar el 80% de cuota</label
+            >
+            <p id="storage">Comprobando almacenamiento…</p>
+            <p>
+              Safari puede eliminar datos locales. Descarga las evidencias
+              importantes. Si no puede guardar un clip, se ofrecerá su descarga
+              y se detendrá la grabación automática.
+            </p>
+          </article>
+          <article>
+            <h2>Audio y alarma</h2>
+            <button id="enableAudio">Habilitar sonido</button
+            ><label
+              >Volumen general<input
+                id="volume"
+                type="range"
+                min="0"
+                max="100"
+                value="70" /></label
+            ><label
+              ><input id="autoVoice" type="checkbox" /> Avisos automáticos (modo
+              disuasorio)</label
+            ><label
+              ><input id="autoNotice" type="checkbox" /> Incluir aviso de zona
+              videovigilada</label
+            ><label
+              ><input id="autoWarning" type="checkbox" checked /> Incluir
+              advertencia de propiedad</label
+            >
+            <div id="sounds"></div>
+            <label
+              ><input id="autoAlarm" type="checkbox" /> Permitir alarma
+              automática por persona confirmada dentro de la zona
+              restringida</label
+            ><label
+              >Confirmación (segundos)<input
+                id="confirmation"
+                type="number"
+                min="1"
+                max="60"
+                value="3" /></label
+            ><label
+              >Intervalo mínimo (segundos)<input
+                id="cooldown"
+                type="number"
+                min="10"
+                max="3600"
+                value="60" /></label
+            ><label
+              >Duración sirena<select id="alarmDuration">
+                <option>5</option>
+                <option selected>10</option>
+                <option>15</option>
+                <option>30</option>
+              </select></label
+            >
+            <p>
+              La alarma automática requiere modo ALARMA, permiso explícito, IA
+              activa y zona dibujada. Movimiento por sí solo nunca activa la
+              sirena.
+            </p>
+          </article>
+          <article>
+            <h2>Imagen y dispositivo</h2>
+            <label
+              >Brillo<input
+                id="brightness"
+                type="range"
+                min="50"
+                max="200"
+                value="100" /></label
+            ><label
+              >Contraste<input
+                id="contrast"
+                type="range"
+                min="50"
+                max="200"
+                value="100" /></label
+            ><label
+              >Gamma (fotos y clips procesados)<input
+                id="gamma"
+                type="range"
+                min="50"
+                max="200"
+                value="100" /></label
+            ><label
+              >Sensibilidad nocturna<input
+                id="nightSensitivity"
+                type="range"
+                min="1"
+                max="100"
+                value="75" /></label
+            ><label
+              >Zoom digital<input
+                id="zoom"
+                type="range"
+                min="100"
+                max="250"
+                value="100" /></label
+            ><label
+              ><input id="lowPower" type="checkbox" checked /> Bajo consumo
+              (análisis reducido)</label
+            ><label
+              ><input id="eventLight" type="checkbox" disabled /> Iluminar al
+              detectar (DISUASORIO, si hay linterna)</label
+            ><label
+              ><input id="torch" type="checkbox" disabled /> Linterna
+              continua</label
+            ><label
+              ><input id="alarmFlash" type="checkbox" disabled /> Luz lenta
+              durante alarma (cada 2 segundos)</label
+            ><label
+              >Límite linterna (segundos)<input
+                id="torchLimit"
+                type="number"
+                min="5"
+                max="120"
+                value="30"
+            /></label>
+            <p id="torchInfo">
+              Se comprobará la capacidad real al iniciar la cámara.
+            </p>
+            <button id="diagnose">Diagnóstico y prueba integral</button>
+            <pre id="diagnostics"></pre>
+            <button id="pin">Establecer PIN local</button>
+            <p>
+              El PIN solo bloquea estos controles; no cifra evidencias ni
+              protege frente a alguien con acceso al navegador.
+            </p>
+          </article>
+        </section>
+      </details>
+      <details class="controls evidence">
+        <summary>Grabaciones y eventos</summary>
+        <section>
+          <h2>Evidencias</h2>
+          <div id="clips"></div>
+          <h2>Cronología</h2>
+          <select id="filter">
+            <option value="">Todos</option>
+            <option>movimiento</option>
+            <option>persona</option>
+            <option>grabación</option>
+            <option>alarma</option>
+            <option>cámara</option>
+            <option>audio</option>
+            <option>pérdida</option>
+            <option>modo</option></select
+          ><button id="clearLog">Borrar historial</button>
+          <ol id="events"></ol>
+        </section>
+      </details>
       <footer>
         Uso local. Mantén Safari visible y la pantalla desbloqueada. La cámara
         puede detenerse en segundo plano. Alimentación continua, sol y grabación

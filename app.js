@@ -35,6 +35,7 @@ let db, recorder, recTimer, alarmTimer, flashTimer, torchTimer, audioContext, si
 let events = [], clipURLs = [], soundURLs = {}, soundBlobs = {}, soundGeneration = 0;
 const settingIds = [
   "mode",
+  "nightMode",
   "motion",
   "sensitivity",
   "person",
@@ -229,11 +230,24 @@ function crop() {
   return [(video.videoWidth - w) / 2, (video.videoHeight - h) / 2, w, h];
 }
 let colorKey = "", colorTable;
-function processed() {
+function nightEnabled() {
+  return $("nightMode").value === "on" || $("nightMode").value === "auto" && state.night;
+}
+function updatePreview() {
+  const enabled = nightEnabled();
+  video.style.filter = "brightness(".concat(+$("brightness").value * (enabled ? 1.6 : 1), "%) contrast(").concat(+$("contrast").value * (enabled ? 1.12 : 1), "%)");
+  video.style.transform = "scale(".concat(+$("zoom").value / 100, ")");
+  const label = { off: "OFF", on: "ON", auto: "AUTO" }[$("nightMode").value];
+  $("nightToggle").textContent = "Noche: " + label;
+  $("nightToggle").setAttribute("aria-pressed", String(enabled));
+  $("nightHint").textContent = enabled ? "Mejora nocturna activa \xB7 necesita luz visible" : $("nightMode").value === "auto" ? "Noche autom\xE1tica seg\xFAn la luz de la c\xE1mara" : "";
+}
+function processed(target = frame, context = fx) {
   if (!video.videoWidth) return;
   const [x, y, w, h] = crop();
-  fx.drawImage(video, x, y, w, h, 0, 0, frame.width, frame.height);
-  const brightness = +$("brightness").value / 100, contrast = +$("contrast").value / 100, gamma = +$("gamma").value / 100;
+  context.drawImage(video, x, y, w, h, 0, 0, target.width, target.height);
+  const boost = nightEnabled();
+  const brightness = +$("brightness").value / 100 * (boost ? 1.6 : 1), contrast = +$("contrast").value / 100 * (boost ? 1.12 : 1), gamma = +$("gamma").value / 100 * (boost ? 1.25 : 1);
   state.rawLight = null;
   if (brightness !== 1 || contrast !== 1 || gamma !== 1) {
     const key = [brightness, contrast, gamma].join(",");
@@ -248,7 +262,7 @@ function processed() {
         colorTable[i] = 255 * Math.pow(v / 255, 1 / gamma);
       }
     }
-    const image = fx.getImageData(0, 0, frame.width, frame.height), d = image.data;
+    const image = context.getImageData(0, 0, target.width, target.height), d = image.data;
     let light = 0, n = 0;
     for (let i = 0; i < d.length; i += 4) {
       if (i % 256 === 0) {
@@ -260,16 +274,16 @@ function processed() {
       d[i + 2] = colorTable[d[i + 2]];
     }
     state.rawLight = light / Math.max(1, n);
-    fx.putImageData(image, 0, 0);
+    context.putImageData(image, 0, 0);
   }
   if (state.mask) {
     const m = state.mask;
-    fx.fillStyle = "#000";
-    fx.fillRect(
-      m.x * frame.width,
-      m.y * frame.height,
-      m.w * frame.width,
-      m.h * frame.height
+    context.fillStyle = "#000";
+    context.fillRect(
+      m.x * target.width,
+      m.y * target.height,
+      m.w * target.width,
+      m.h * target.height
     );
   }
 }
@@ -291,7 +305,17 @@ function draw() {
   }
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   const v = viewRect();
-  if (video.videoWidth) ctx.drawImage(frame, v.x, v.y, v.w, v.h);
+  const viewport = $("videoViewport");
+  viewport.style.left = v.x + "px";
+  viewport.style.top = v.y + "px";
+  viewport.style.width = v.w + "px";
+  viewport.style.height = v.h + "px";
+  viewport.style.opacity = state.stream && video.videoWidth ? "1" : "0";
+  if (state.mask) {
+    const m = state.mask;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(v.x + m.x * v.w, v.y + m.y * v.h, m.w * v.w, m.h * v.h);
+  }
   function rect(b, color, label) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
@@ -357,8 +381,8 @@ async function startCamera() {
       audio: false,
       video: {
         ...$("device").value ? { deviceId: { exact: $("device").value } } : { facingMode: { ideal: "environment" } },
-        width: { ideal: 640 },
-        height: { ideal: 480 },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
         frameRate: { ideal: 15, max: 20 }
       }
     });
@@ -377,6 +401,7 @@ async function startCamera() {
     frame.height = Math.round(
       frame.width * video.videoHeight / video.videoWidth
     );
+    draw();
     const track = state.stream.getVideoTracks()[0];
     track.onended = () => {
       error("La c\xE1mara se ha desconectado. Rein\xEDciala manualmente.");
@@ -388,7 +413,10 @@ async function startCamera() {
       state.confirmed = 0;
       $("live").textContent = "PAUSA";
       $("live").className = "";
-      log("c\xE1mara", "La c\xE1mara no est\xE1 entregando im\xE1genes; vigilancia pausada");
+      log(
+        "c\xE1mara",
+        "La c\xE1mara no est\xE1 entregando im\xE1genes; vigilancia pausada"
+      );
       stopSounds();
       stopRecording();
     };
@@ -399,7 +427,8 @@ async function startCamera() {
       $("live").textContent = "LIVE";
       $("live").className = "active";
       log("c\xE1mara", "Captura de c\xE1mara recuperada");
-      if (!document.hidden && state.armed && $("recordMode").value === "continuous") startRecording("continua");
+      if (!document.hidden && state.armed && $("recordMode").value === "continuous")
+        startRecording("continua");
     };
     const caps = ((_b = track.getCapabilities) == null ? void 0 : _b.call(track)) || {};
     $("torch").disabled = !caps.torch;
@@ -449,6 +478,7 @@ async function stopCamera(invalidate = true) {
   (_a = state.stream) == null ? void 0 : _a.getTracks().forEach((t) => t.stop());
   state.stream = null;
   video.srcObject = null;
+  $("videoViewport").style.opacity = "0";
   state.persons = [];
   state.previous = null;
   state.confirmed = 0;
@@ -478,6 +508,22 @@ function mime() {
     "video/webm;codecs=vp8",
     "video/webm"
   ].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+let recordingRenderTimer;
+function renderRecording() {
+  clearTimeout(recordingRenderTimer);
+  if (!state.stream || !recorder || recorder.state === "inactive") return;
+  try {
+    processed();
+  } catch (e) {
+    error("Fallo de imagen grabada: " + e.message, "p\xE9rdida");
+    stopRecording();
+    return;
+  }
+  recordingRenderTimer = setTimeout(
+    renderRecording,
+    $("lowPower").checked ? 200 : 100
+  );
 }
 async function startRecording(reason) {
   if (document.hidden || state.recording || state.recordStarting || !state.stream || state.storageFailed)
@@ -570,6 +616,7 @@ async function startRecording(reason) {
       }
     };
     current.start(1e3);
+    if (frame.captureStream) renderRecording();
     recTimer = setTimeout(
       () => stopRecording(true),
       Math.min(60, Math.max(10, +$("clip").value)) * 1e3
@@ -581,6 +628,7 @@ async function startRecording(reason) {
   }
 }
 async function stopRecording(rotate = false) {
+  clearTimeout(recordingRenderTimer);
   clearTimeout(recTimer);
   const r = recorder;
   if (r) r.noRestart = !rotate;
@@ -805,10 +853,9 @@ async function tick() {
   }
   const started = performance.now();
   try {
-    processed();
     analysis.width = state.slow || $("lowPower").checked ? 128 : 192;
     analysis.height = Math.round(analysis.width * frame.height / frame.width);
-    ax.drawImage(frame, 0, 0, analysis.width, analysis.height);
+    processed(analysis, ax);
     const d = ax.getImageData(0, 0, analysis.width, analysis.height).data;
     const grey = new Uint8Array(d.length / 4);
     let sum = 0, count = 0, diff = 0, meanDiff = 0;
@@ -828,7 +875,8 @@ async function tick() {
     }
     meanDiff /= Math.max(1, count);
     state.light = state.rawLight === null ? sum / Math.max(1, count) : state.rawLight;
-    state.night = state.light < 45;
+    state.night = state.night ? state.light < 65 : state.light < 40;
+    updatePreview();
     const sensitivity = +(state.night ? $("nightSensitivity") : $("sensitivity")).value;
     if (state.previous) {
       for (let i = 0; i < grey.length; i++) {
@@ -854,7 +902,7 @@ async function tick() {
       state.busy = true;
       try {
         aiFrame.height = Math.round(320 * frame.height / frame.width);
-        aiCtx.drawImage(frame, 0, 0, aiFrame.width, aiFrame.height);
+        processed(aiFrame, aiCtx);
         const result = await state.model.detect(aiFrame, {
           object: { minConfidence: +$("confidence").value / 100 }
         });
@@ -1006,6 +1054,10 @@ settingIds.forEach(
     save();
     state.previous = null;
     if (id === "mode") setMode();
+    if (["brightness", "contrast", "gamma", "zoom", "nightMode"].includes(id)) {
+      updatePreview();
+      draw();
+    }
     if (["person", "autoAlarm", "confirmation"].includes(id))
       state.confirmed = 0;
     if (id === "person") loadModel();
@@ -1252,3 +1304,17 @@ if (!window.PointerEvent) {
   hint.textContent = "Este Safari no admite Pointer Events para dibujar zonas t\xE1ctiles. Actualiza iOS para usar zona restringida y m\xE1scaras.";
   $("clearZones").after(hint);
 }
+$("nightToggle").onclick = () => {
+  const modes = ["auto", "on", "off"];
+  $("nightMode").value = modes[(modes.indexOf($("nightMode").value) + 1) % 3];
+  state.previous = null;
+  updatePreview();
+  save();
+};
+for (const id of ["brightness", "contrast", "zoom"])
+  $(id).addEventListener("input", () => {
+    updatePreview();
+    draw();
+  });
+window.addEventListener("resize", draw);
+updatePreview();
