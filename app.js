@@ -32,7 +32,7 @@ const state = {
   busy: false,
   storageFailed: false
 };
-let db, recorder, recTimer, alarmTimer, flashTimer, torchTimer, audioContext, siren, gain, activeAudio = null, drawMode = null, drag = null, lastAI = 0, loopTimer, wakeLock;
+let db, recorder, recTimer, alarmTimer, flashTimer, torchTimer, siren, activeAudio = null, drawMode = null, drag = null, lastAI = 0, loopTimer, wakeLock;
 let events = [], clipURLs = [], soundURLs = {}, soundBlobs = {}, soundGeneration = 0;
 const settingIds = [
   "mode",
@@ -640,29 +640,60 @@ async function stopRecording(rotate = false) {
   }
   recorder = null;
 }
-async function enableAudio() {
+const mediaAudio = document.createElement("audio");
+mediaAudio.id = "securityAudio";
+mediaAudio.preload = "auto";
+mediaAudio.setAttribute("playsinline", "");
+document.body.append(mediaAudio);
+let audioReady = false;
+function playbackSession() {
   try {
-    audioContext || (audioContext = new (window.AudioContext || window.webkitAudioContext)());
-    await audioContext.resume();
-    const o = audioContext.createOscillator(), g = audioContext.createGain();
-    g.gain.value = 0;
-    o.connect(g);
-    g.connect(audioContext.destination);
-    o.start();
-    o.stop(audioContext.currentTime + 0.02);
-    $("enableAudio").textContent = "Sonido habilitado";
+    if (navigator.audioSession) navigator.audioSession.type = "playback";
+  } catch (e) {
+    log("audio", "La sesi\xF3n playback no est\xE1 disponible: " + e.message);
+  }
+}
+async function enableAudio() {
+  playbackSession();
+  try {
+    if (!activeAudio && !siren) {
+      mediaAudio.onended = null;
+      mediaAudio.loop = false;
+      mediaAudio.muted = false;
+      mediaAudio.src = "assets/comprobar-sonido.wav";
+      mediaAudio.volume = Math.max(0.25, +$("volume").value / 100);
+      const attempt = mediaAudio.play();
+      await attempt;
+    }
+    audioReady = true;
+    $("enableAudio").textContent = "Reproducci\xF3n multimedia habilitada";
     return true;
   } catch (e) {
-    error("No se puede habilitar audio: " + e.message, "audio");
+    audioReady = false;
+    error(
+      "El navegador bloque\xF3 el audio: " + e.message + ". Toca Probar sonido.",
+      "audio"
+    );
     return false;
   }
 }
+mediaAudio.addEventListener("pause", () => {
+  if (mediaAudio.paused && !mediaAudio.ended && (activeAudio || siren)) {
+    audioReady = false;
+    stopSounds();
+    error(
+      "La reproducci\xF3n se ha interrumpido. Toca Reactivar sonido.",
+      "audio"
+    );
+  }
+});
 function stopSounds() {
   state.warningPending = false;
   $("sequenceStatus").textContent = "";
   soundGeneration++;
-  activeAudio == null ? void 0 : activeAudio.pause();
+  mediaAudio.onended = null;
   activeAudio = null;
+  mediaAudio.pause();
   if (siren) {
     try {
       siren.stop();
@@ -679,70 +710,45 @@ function stopSounds() {
   torch(false);
 }
 async function sound(id) {
-  if (!audioContext || audioContext.state !== "running") {
-    error("Pulsa Habilitar sonido antes de reproducir.", "audio");
-    return;
+  if (!audioReady) {
+    error(
+      "Toca Probar sonido para autorizar reproducci\xF3n multimedia.",
+      "audio"
+    );
+    return false;
   }
   const generation = ++soundGeneration;
   try {
-    activeAudio == null ? void 0 : activeAudio.pause();
+    playbackSession();
+    mediaAudio.onended = null;
     activeAudio = null;
-    if (soundBlobs[id]) {
-      const bytes = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result);
-        r.onerror = () => reject(r.error);
-        r.readAsArrayBuffer(soundBlobs[id]);
-      });
-      const buffer = await new Promise(
-        (resolve, reject) => audioContext.decodeAudioData(bytes, resolve, reject)
-      );
-      if (generation !== soundGeneration) return;
-      const source = audioContext.createBufferSource(), volume = audioContext.createGain();
-      source.buffer = buffer;
-      source.connect(volume);
-      volume.connect(audioContext.destination);
-      volume.gain.value = +$("volume").value / 100;
-      const playback = {
-        onended: null,
-        pause() {
-          source.onended = null;
-          try {
-            source.stop();
-          } catch {
-          }
-          source.disconnect();
-          volume.disconnect();
-        },
-        set volume(v) {
-          volume.gain.value = v;
+    siren = null;
+    mediaAudio.pause();
+    mediaAudio.muted = false;
+    mediaAudio.loop = id === "siren";
+    mediaAudio.volume = +$("volume").value / 100;
+    mediaAudio.src = id === "siren" ? "assets/sirena.mp3" : "assets/aviso-seguridad.mp3";
+    await mediaAudio.play();
+    if (generation !== soundGeneration) return false;
+    if (mediaAudio.paused || mediaAudio.readyState < 2)
+      throw Error("El audio no ha comenzado a reproducirse");
+    activeAudio = mediaAudio;
+    if (id === "siren") {
+      siren = {
+        stop() {
+          mediaAudio.pause();
         }
       };
-      source.onended = () => {
-        source.disconnect();
-        volume.disconnect();
-        if (playback.onended) playback.onended();
-      };
-      activeAudio = playback;
-      source.start();
-      log("audio", "Reproduciendo MP3: " + id);
-    } else if (id === "siren") {
-      siren = audioContext.createOscillator();
-      gain = audioContext.createGain();
-      gain.gain.value = +$("volume").value / 100 * 0.35;
-      siren.connect(gain);
-      gain.connect(audioContext.destination);
-      siren.type = "sawtooth";
-      const now = audioContext.currentTime;
-      for (let i = 0; i < 31; i++) {
-        siren.frequency.setValueAtTime(600, now + i);
-        siren.frequency.linearRampToValueAtTime(1e3, now + i + 0.5);
-      }
-      siren.start();
-      log("audio", "Sirena sintetizada iniciada");
-    } else error("Importa un MP3 para este aviso.", "audio");
+      log("audio", "Sirena multimedia iniciada");
+    } else log("audio", "Reproduciendo MP3: " + id);
+    return true;
   } catch (e) {
-    error("Fallo de reproducci\xF3n: " + e.message, "audio");
+    if (generation !== soundGeneration) return false;
+    audioReady = false;
+    activeAudio = null;
+    siren = null;
+    error("Fallo real de reproducci\xF3n: " + e.name + " \xB7 " + e.message, "audio");
+    return false;
   }
 }
 async function alarm(reason, manual = false) {
@@ -807,6 +813,7 @@ async function warnThenAlarm() {
       state.warningPending = false;
       return;
     }
+    state.warningStarted = Date.now();
     activeAudio.onended = () => {
       if (!state.warningPending) return;
       state.warningPending = false;
@@ -1049,7 +1056,9 @@ $("arm").onclick = () => {
   setMode();
 };
 $("record").onclick = () => state.recording ? stopRecording() : startRecording("manual");
-$("alarm").onclick = () => alarm("Activaci\xF3n manual", true);
+$("alarm").onclick = async () => {
+  if (await enableAudio()) await alarm("Activaci\xF3n manual", true);
+};
 $("silence").onclick = stopSounds;
 $("enableAudio").onclick = enableAudio;
 $("photo").onclick = () => {
@@ -1211,7 +1220,6 @@ settingIds.forEach(
 );
 $("volume").oninput = () => {
   if (activeAudio) activeAudio.volume = +$("volume").value / 100;
-  if (gain) gain.gain.value = +$("volume").value / 100 * 0.35;
 };
 $("torch").onchange = () => torch($("torch").checked);
 $("zone").onclick = () => {
@@ -1311,7 +1319,7 @@ for (const [id, label] of [
   $("sounds").append(button);
 }
 $("diagnose").onclick = async () => {
-  var _a2, _b, _c, _d;
+  var _a2, _b, _c, _d, _e, _f;
   const results = {
     HTTPS: isSecureContext,
     c\u00E1maraAPI: !!((_a2 = navigator.mediaDevices) == null ? void 0 : _a2.getUserMedia),
@@ -1320,7 +1328,13 @@ $("diagnose").onclick = async () => {
     formato: mime(),
     v\u00EDdeoProcesado: !!frame.captureStream,
     linterna: !!((_d = (_c = (_b = state.stream) == null ? void 0 : _b.getVideoTracks()[0]) == null ? void 0 : _c.getCapabilities) == null ? void 0 : _d.call(_c).torch),
-    audio: (audioContext == null ? void 0 : audioContext.state) || "sin habilitar",
+    audio: {
+      multimedia: audioReady,
+      paused: mediaAudio.paused,
+      readyState: mediaAudio.readyState,
+      error: ((_e = mediaAudio.error) == null ? void 0 : _e.code) || null,
+      session: ((_f = navigator.audioSession) == null ? void 0 : _f.type) || "no disponible"
+    },
     IA: !!state.model,
     pantallaActivaAPI: !!navigator.wakeLock,
     IndexedDB: !!db
@@ -1470,15 +1484,15 @@ function renderProtection() {
     hint.textContent = state.stream ? "Comprobando sonido y detector\u2026" : "Esperando permiso de c\xE1mara\u2026";
   } else if (state.alarm) {
     title.textContent = siren || activeAudio ? "Alarma activada" : "Alarma sin sonido";
-    hint.textContent = siren || activeAudio ? "Sirena en curso. Puedes silenciarla inmediatamente." : "El navegador no ha iniciado el audio. Revisa el error de sonido.";
+    hint.textContent = siren || activeAudio ? "El navegador reproduce la sirena. Si no la oyes, toca Probar sonido." : "El navegador no ha iniciado el audio. Revisa el error de sonido.";
   } else if (state.warningPending) {
-    title.textContent = "Aviso de seguridad";
+    title.textContent = activeAudio ? "Aviso de seguridad" : "Preparando aviso";
     const left = Math.max(
       0,
       Math.ceil(22.13 - (Date.now() - state.warningStarted) / 1e3)
     );
     hint.textContent = "Aviso de voz \xB7 " + left + " s. Despu\xE9s, sirena si contin\xFAa la detecci\xF3n.";
-  } else if (state.armed && (audioContext == null ? void 0 : audioContext.state) !== "running") {
+  } else if (state.armed && !audioReady) {
     title.textContent = "Sonido interrumpido";
     hint.textContent = "Toca Reactivar sonido. Safari ha suspendido el audio.";
   } else if (state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone) {
@@ -1493,12 +1507,11 @@ function renderProtection() {
   }
   $("protect").disabled = protecting;
   $("protect").textContent = protecting ? "PREPARANDO\u2026" : state.armed ? "DESACTIVAR PROTECCI\xD3N" : "PROTEGER ESTA IMAGEN";
-  if (state.armed && (audioContext == null ? void 0 : audioContext.state) !== "running")
-    $("protect").textContent = "REACTIVAR SONIDO";
+  if (state.armed && !audioReady) $("protect").textContent = "REACTIVAR SONIDO";
 }
 $("protect").onclick = async () => {
   if (protecting) return;
-  if (state.armed && (audioContext == null ? void 0 : audioContext.state) !== "running") {
+  if (state.armed && !audioReady) {
     if (await enableAudio()) {
       state.lastAlarm = 0;
       state.threatSince = 0;
@@ -1535,7 +1548,7 @@ $("protect").onclick = async () => {
       $("motion").checked = true;
       $("person").checked = false;
     }
-    if (audioContext.state !== "running")
+    if (!audioReady)
       throw Error(
         "Safari ha suspendido el sonido. Vuelve a tocar Proteger esta imagen."
       );
@@ -1574,3 +1587,24 @@ for (const [id, selector] of [
     panel.open = true;
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+$("testSpeaker").onclick = async () => {
+  stopSounds();
+  state.lastAlarm = Date.now();
+  $("speakerStatus").textContent = "Preparando prueba\u2026";
+  if (await enableAudio()) {
+    const played = await sound("warning");
+    $("speakerStatus").textContent = played ? "El aviso est\xE1 reproduci\xE9ndose. \xBFLo escuchas por el altavoz? Si no, desactiva Silencio y revisa la salida Bluetooth/AirPlay." : "No ha comenzado. Revisa el error de audio.";
+  } else
+    $("speakerStatus").textContent = "Safari ha bloqueado la prueba. Toca otra vez para autorizarla.";
+};
+mediaAudio.addEventListener("error", () => {
+  var _a2;
+  if (activeAudio || siren) {
+    audioReady = false;
+    stopSounds();
+    error(
+      "Error multimedia " + (((_a2 = mediaAudio.error) == null ? void 0 : _a2.code) || "desconocido") + ". Toca Probar sonido.",
+      "audio"
+    );
+  }
+});

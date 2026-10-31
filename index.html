@@ -52,7 +52,13 @@
           Al activar autorizas aviso y sirena sobre tu zona guardada o, si aún
           no existe, toda esta imagen. Encuadra solo tu propiedad.
         </p>
-        <button id="silence" class="silence-action">Silenciar sonidos</button>
+        <div class="audio-actions">
+          <button id="testSpeaker">Probar sonido</button
+          ><button id="silence" class="silence-action">
+            Silenciar sonidos
+          </button>
+        </div>
+        <p id="speakerStatus" role="status"></p>
         <p id="sequenceStatus" role="status"></p>
       </section>
       <div class="section-heading">

@@ -604,3 +604,23 @@ footer {
     margin: 10px 0;
   }
 }
+
+.audio-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+}
+.audio-actions #testSpeaker {
+  font-size: 12px;
+  min-height: 38px;
+  padding: 8px 13px;
+  background: #edf4f1;
+  border-color: #dae9e2;
+  color: #185f4a;
+}
+#speakerStatus {
+  font-size: 11px;
+  color: #6b7f88;
+  line-height: 1.6;
+}

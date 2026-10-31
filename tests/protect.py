@@ -8,7 +8,7 @@ with sync_playwright() as p:
  assert not page.locator('#brightness').is_visible()
  page.screenshot(path='/workspace/security-setup/home-v3.png',full_page=True)
  page.select_option('#alarmSource','motion');page.click('#protect');page.wait_for_function('state.armed && !protecting',timeout=30000)
- assert page.evaluate("!!state.zone && document.getElementById('autoAlarm').checked && audioContext.state==='running'")
+ assert page.evaluate("!!state.zone && document.getElementById('autoAlarm').checked && audioReady")
  assert page.evaluate("document.getElementById('mode').value==='alarm'")
  # Send a controlled sequence through the real camera analysis, no detector-state overrides.
  page.evaluate("""async()=>{window.scene=document.createElement('canvas');scene.width=640;scene.height=480;const ctx=scene.getContext('2d');let n=0;window.movement=setInterval(()=>{ctx.fillStyle='#777';ctx.fillRect(0,0,640,480);ctx.fillStyle='white';ctx.fillRect((n++%2)*300,100,220,260)},400);video.srcObject=scene.captureStream(15);await video.play()}""")
