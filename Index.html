@@ -8,14 +8,58 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <header>
-      <strong
-        >SECURITY CAM<span class="brand-subtitle">HOME SECURITY</span></strong
-      ><span id="status">DESARMADO</span
-      ><span id="alarmStatus" hidden>ALARMA ACTIVA</span><time id="clock"></time
-      ><button id="unlock">Bloquear controles</button>
+    <header class="app-header">
+      <div class="brand-mark">S</div>
+      <strong>SECURITY CAM<span class="brand-subtitle">MI HOGAR</span></strong
+      ><button id="unlock">PIN</button>
     </header>
     <main>
+      <section class="home-card">
+        <div class="home-top">
+          <span>MI SISTEMA</span><span id="status">DESARMADO</span
+          ><span id="alarmStatus" hidden>ALARMA ACTIVA</span>
+        </div>
+        <div class="shield-mark">
+          <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <path
+              d="M24 5 40 11v12c0 10-8 17-16 21C16 40 8 33 8 23V11Z"
+              stroke="currentColor"
+              stroke-width="2.5"
+            />
+            <path
+              d="m16 24 6 6 11-13"
+              stroke="currentColor"
+              stroke-width="2.5"
+            />
+          </svg>
+        </div>
+        <h1 id="protectionTitle">Tu hogar, bajo control</h1>
+        <p id="protectionHint">
+          Activa la protección cuando quieras vigilar tu entrada.
+        </p>
+        <div class="protection-choice controls">
+          <label
+            >Qué quieres detectar<select id="alarmSource">
+              <option value="person">Personas</option>
+              <option value="motion">Movimiento</option>
+            </select></label
+          >
+        </div>
+        <button id="protect" class="protect-button controls">
+          PROTEGER ESTA IMAGEN
+        </button>
+        <p class="consent-note">
+          Al activar autorizas aviso y sirena sobre tu zona guardada o, si aún
+          no existe, toda esta imagen. Encuadra solo tu propiedad.
+        </p>
+        <button id="silence" class="silence-action">Silenciar sonidos</button>
+        <p id="sequenceStatus" role="status"></p>
+      </section>
+      <div class="section-heading">
+        <h2>Tu entrada</h2>
+        <time id="clock"></time>
+      </div>
+
       <section class="monitor">
         <div id="stage">
           <div id="videoViewport">
@@ -26,37 +70,16 @@
             <span id="live">SIN CÁMARA</span><span id="rec" hidden>REC</span>
           </div>
           <div id="cameraMessage">
-            Inicia la cámara para comenzar. No se solicita micrófono.
+            La cámara se inicia al proteger esta imagen. Sin micrófono.
           </div>
-        </div>
-        <div class="toolbar controls primary">
-          <button id="camera">Iniciar cámara</button
-          ><button id="arm">ACTIVAR VIGILANCIA</button>
-          <button id="record">Grabar manual</button
-          ><button id="nightToggle" aria-pressed="false">Noche: AUTO</button>
         </div>
         <input id="nightMode" type="hidden" value="auto" />
         <p id="nightHint"></p>
-        <div class="quick-setup controls">
-          <div class="setup-heading">
-            <span>PROTECCIÓN AUTOMÁTICA</span
-            ><span class="local-badge">Solo en tu dispositivo</span>
-          </div>
-          <label
-            >Detectar<select id="alarmSource">
-              <option value="person">Solo personas</option>
-              <option value="motion">Movimiento</option>
-            </select></label
-          >
-          <label class="switch-row"
-            >Aviso de voz y después sirena<input id="autoAlarm" type="checkbox"
-          /></label>
-          <button id="fullZone">Usar toda la imagen de mi propiedad</button>
-          <p>
-            La sirena se cancela si la detección desaparece durante el aviso.
-          </p>
+        <div hidden>
+          <input id="autoAlarm" type="checkbox" /><button id="fullZone">
+            Usar imagen completa
+          </button>
         </div>
-        <p id="sequenceStatus" role="status"></p>
         <div class="quick-mode controls">
           <label
             >Modo
@@ -68,9 +91,15 @@
             </select></label
           >
         </div>
-        <button id="silence" class="quiet-stop">SILENCIAR TODO</button>
+
         <details class="controls extra-tools">
-          <summary>Más controles</summary>
+          <summary>Controles de cámara</summary>
+          <div class="toolbar controls primary">
+            <button id="camera">Iniciar cámara</button
+            ><button id="arm">ACTIVAR VIGILANCIA</button>
+            <button id="record">Grabar manual</button
+            ><button id="nightToggle" aria-pressed="false">Noche: AUTO</button>
+          </div>
           <div id="extraToolsModeAnchor"></div>
           <div class="toolbar">
             <button id="enableAudio">Habilitar sonido</button
@@ -221,36 +250,48 @@
             </p>
           </article>
           <article>
-            <h2>Imagen y dispositivo</h2>
+            <h2>Dispositivo y privacidad</h2>
+            <div hidden>
+              <label
+                >Brillo<input
+                  id="brightness"
+                  type="range"
+                  min="50"
+                  max="200"
+                  value="100"
+              /></label>
+            </div>
+            <div hidden>
+              <label
+                >Contraste<input
+                  id="contrast"
+                  type="range"
+                  min="50"
+                  max="200"
+                  value="100"
+              /></label>
+            </div>
+            <div hidden>
+              <label
+                >Gamma (fotos y clips procesados)<input
+                  id="gamma"
+                  type="range"
+                  min="50"
+                  max="200"
+                  value="100"
+              /></label>
+            </div>
+            <div hidden>
+              <label
+                >Sensibilidad nocturna<input
+                  id="nightSensitivity"
+                  type="range"
+                  min="1"
+                  max="100"
+                  value="75"
+              /></label>
+            </div>
             <label
-              >Brillo<input
-                id="brightness"
-                type="range"
-                min="50"
-                max="200"
-                value="100" /></label
-            ><label
-              >Contraste<input
-                id="contrast"
-                type="range"
-                min="50"
-                max="200"
-                value="100" /></label
-            ><label
-              >Gamma (fotos y clips procesados)<input
-                id="gamma"
-                type="range"
-                min="50"
-                max="200"
-                value="100" /></label
-            ><label
-              >Sensibilidad nocturna<input
-                id="nightSensitivity"
-                type="range"
-                min="1"
-                max="100"
-                value="75" /></label
-            ><label
               >Zoom digital<input
                 id="zoom"
                 type="range"
@@ -310,14 +351,22 @@
           <ol id="events"></ol>
         </section>
       </details>
-      <footer>
-        Uso local. Mantén Safari visible y la pantalla desbloqueada. La cámara
-        puede detenerse en segundo plano. Alimentación continua, sol y grabación
-        prolongada pueden calentar el iPhone: ventílalo y revisa su batería. No
-        hay sensor de temperatura disponible. Orienta la cámara solo a tu
-        propiedad; enmascara zonas ajenas. El ajuste digital no añade visión
-        infrarroja. No hay transmisión remota.
-      </footer>
+      <nav class="app-navigation controls" aria-label="Navegación">
+        <button id="navHome">Inicio</button
+        ><button id="navClips">Grabaciones</button
+        ><button id="navSettings">Ajustes</button>
+      </nav>
+      <details class="privacy-note">
+        <summary>Privacidad y uso seguro</summary>
+        <footer>
+          Uso local. Mantén Safari visible y la pantalla desbloqueada. La cámara
+          puede detenerse en segundo plano. Alimentación continua, sol y
+          grabación prolongada pueden calentar el iPhone: ventílalo y revisa su
+          batería. No hay sensor de temperatura disponible. Orienta la cámara
+          solo a tu propiedad; enmascara zonas ajenas. El ajuste digital no
+          añade visión infrarroja. No hay transmisión remota.
+        </footer>
+      </details>
     </main>
     <script src="app.js"></script>
   </body>

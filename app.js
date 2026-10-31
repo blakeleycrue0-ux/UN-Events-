@@ -769,7 +769,7 @@ async function alarm(reason, manual = false) {
 function threatActive() {
   if (!state.stream || document.hidden || state.cameraMuted) return false;
   if ($("alarmSource").value === "motion")
-    return $("motion").checked && state.motionFrames >= 2;
+    return $("motion").checked && Date.now() - (state.lastMotionAt || 0) < 2500;
   return $("person").checked && state.persons.length > 0 && Date.now() - (state.personResultAt || 0) < Math.max(1, +$("aiInterval").value) * 2e3;
 }
 function considerThreat() {
@@ -793,6 +793,7 @@ function considerThreat() {
 async function warnThenAlarm() {
   stopSounds();
   state.warningPending = true;
+  state.warningStarted = Date.now();
   state.lastAlarm = Date.now();
   const generation = soundGeneration;
   $("sequenceStatus").textContent = "Reproduciendo aviso \xB7 sirena solo si contin\xFAa la detecci\xF3n";
@@ -955,8 +956,10 @@ async function tick() {
       }
       const moving = diff / Math.max(1, count) > 0.015 + (100 - sensitivity) * 1e-3;
       state.motionFrames = moving ? (state.motionFrames || 0) + 1 : 0;
-      if ($("motion").checked && state.motionFrames >= 2)
+      if ($("motion").checked && state.motionFrames >= 2) {
+        state.lastMotionAt = Date.now();
         detected("movimiento");
+      }
     }
     state.previous = grey;
     if ($("person").checked && state.model && !state.busy && Date.now() - lastAI >= Math.max(1, +$("aiInterval").value) * 1e3) {
@@ -1441,7 +1444,7 @@ $("fullZone").onclick = () => {
 function prepareDetection() {
   state.threatSince = 0;
   if (state.warningPending) stopSounds();
-  if ($("autoAlarm").checked) {
+  if ($("autoAlarm").checked && state.armed) {
     enableAudio();
     $("mode").value = "alarm";
     setMode();
@@ -1458,3 +1461,116 @@ $("autoAlarm").addEventListener("change", prepareDetection);
 $("alarmSource").addEventListener("change", prepareDetection);
 loadSounds().catch((e) => error(e.message, "audio"));
 (_a = $("extraToolsModeAnchor")) == null ? void 0 : _a.append($("mode").closest("label"));
+let protecting = false;
+function renderProtection() {
+  const title = $("protectionTitle"), hint = $("protectionHint");
+  document.body.dataset.protection = state.alarm ? "alarm" : state.warningPending ? "warning" : state.armed ? "armed" : "idle";
+  if (protecting) {
+    title.textContent = "Preparando protecci\xF3n";
+    hint.textContent = state.stream ? "Comprobando sonido y detector\u2026" : "Esperando permiso de c\xE1mara\u2026";
+  } else if (state.alarm) {
+    title.textContent = siren || activeAudio ? "Alarma activada" : "Alarma sin sonido";
+    hint.textContent = siren || activeAudio ? "Sirena en curso. Puedes silenciarla inmediatamente." : "El navegador no ha iniciado el audio. Revisa el error de sonido.";
+  } else if (state.warningPending) {
+    title.textContent = "Aviso de seguridad";
+    const left = Math.max(
+      0,
+      Math.ceil(22.13 - (Date.now() - state.warningStarted) / 1e3)
+    );
+    hint.textContent = "Aviso de voz \xB7 " + left + " s. Despu\xE9s, sirena si contin\xFAa la detecci\xF3n.";
+  } else if (state.armed && (audioContext == null ? void 0 : audioContext.state) !== "running") {
+    title.textContent = "Sonido interrumpido";
+    hint.textContent = "Toca Reactivar sonido. Safari ha suspendido el audio.";
+  } else if (state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone) {
+    title.textContent = "Tu entrada est\xE1 protegida";
+    hint.textContent = $("alarmSource").value === "person" ? "Personas \u2192 aviso de voz \u2192 sirena si permanecen." : "Movimiento \u2192 aviso de voz \u2192 sirena si contin\xFAa.";
+  } else if (state.armed) {
+    title.textContent = "Vigilancia sin alarma";
+    hint.textContent = "Este modo detecta, pero no activa la sirena. Usa Proteger esta imagen para habilitarla.";
+  } else {
+    title.textContent = "Protecci\xF3n desactivada";
+    hint.textContent = state.persons.length ? "Se ve una persona, pero la alarma est\xE1 desactivada." : "La c\xE1mara puede estar encendida sin tener la alarma activada.";
+  }
+  $("protect").disabled = protecting;
+  $("protect").textContent = protecting ? "PREPARANDO\u2026" : state.armed ? "DESACTIVAR PROTECCI\xD3N" : "PROTEGER ESTA IMAGEN";
+  if (state.armed && (audioContext == null ? void 0 : audioContext.state) !== "running")
+    $("protect").textContent = "REACTIVAR SONIDO";
+}
+$("protect").onclick = async () => {
+  if (protecting) return;
+  if (state.armed && (audioContext == null ? void 0 : audioContext.state) !== "running") {
+    if (await enableAudio()) {
+      state.lastAlarm = 0;
+      state.threatSince = 0;
+    }
+    renderProtection();
+    return;
+  }
+  if (state.armed) {
+    $("mode").value = "disarmed";
+    setMode();
+    renderProtection();
+    return;
+  }
+  protecting = true;
+  renderProtection();
+  try {
+    if (!await enableAudio())
+      throw Error("El sonido est\xE1 bloqueado. Toca de nuevo para habilitarlo.");
+    await loadSounds();
+    if (!state.stream) {
+      $("person").checked = false;
+      await startCamera();
+    }
+    if (!state.stream)
+      throw Error("No se ha podido iniciar la c\xE1mara. Revisa el permiso.");
+    if ($("alarmSource").value === "person") {
+      $("person").checked = true;
+      await loadModel();
+      if (!state.model)
+        throw Error(
+          "Personas no est\xE1 disponible en este dispositivo. Selecciona Movimiento."
+        );
+    } else {
+      $("motion").checked = true;
+      $("person").checked = false;
+    }
+    if (audioContext.state !== "running")
+      throw Error(
+        "Safari ha suspendido el sonido. Vuelve a tocar Proteger esta imagen."
+      );
+    if (+$("volume").value === 0) $("volume").value = "70";
+    state.zone || (state.zone = { x: 0, y: 0, w: 1, h: 1 });
+    $("autoAlarm").checked = true;
+    $("mode").value = "alarm";
+    $("nightMode").value = "auto";
+    $("brightness").value = "100";
+    $("contrast").value = "100";
+    $("gamma").value = "100";
+    $("confirmation").value = "1";
+    state.threatSince = 0;
+    state.lastAlarm = 0;
+    setMode();
+    updatePreview();
+    draw();
+    save();
+    $("error").textContent = "";
+  } catch (e) {
+    error(e.message, "alarma");
+  } finally {
+    protecting = false;
+    renderProtection();
+  }
+};
+setInterval(renderProtection, 500);
+renderProtection();
+$("navHome").onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
+for (const [id, selector] of [
+  ["navClips", ".evidence"],
+  ["navSettings", ".settings"]
+])
+  $(id).onclick = () => {
+    const panel = document.querySelector(selector);
+    panel.open = true;
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
