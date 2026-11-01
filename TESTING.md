@@ -158,3 +158,8 @@ Tras el error real `42501: must be owner of table messages`, las dos migraciones
 ## Control remoto desde el visor — 2026-11-01
 
 El visor vinculado recibe el estado de la cámara cada 2 s y puede enviar tres órdenes por el canal privado del directo: armar/cambiar modo, desarmar y silenciar. Armar/desarmar exigen el PIN local del visor; la cámara ejecuta la misma rutina que su botón Armar (exige modelo de personas y cámara activa) y responde con el resultado. `tests/pairing_ui.py` lo comprueba con dos navegadores, SDK real y servicio controlado. No se ha probado con Supabase real ni en iPhones físicos.
+
+
+## Jarvis en la portada y cámara en /camara — 2026-11-01
+
+La app de vigilancia pasa a `camara.html` (`/camara` en Netlify) sin cambios de funcionamiento; las pruebas usan esa ruta y siguen pasando. Los enlaces de invitación antiguos a la portada se redirigen a `/camara`. `tests/jarvis.py`: los modelos reales de caras cargan y analizan la cámara sintética sin pedir micrófono; órdenes de hora, día, temporizador (aviso real a 1 s), chistes y dispositivos aún no conectados; registro de cara, saludo una vez por llegada y ninguno a desconocidos con un detector controlado; persistencia y borrado; redirección de invitaciones. No hay foto real de una cara en las pruebas: la precisión del reconocimiento facial y el reconocimiento de voz de Safari solo se validan en el iPhone.

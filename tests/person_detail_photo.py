@@ -9,7 +9,7 @@ from pin_helpers import unlock_app
 photo='data:image/jpeg;base64,'+base64.b64encode(Path(sys.argv[1]).read_bytes()).decode()
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
- page=b.new_page();page.goto('http://127.0.0.1:8001/#camera');unlock_app(page);page.evaluate('loadModel()');page.wait_for_function('!!state.model',timeout=90000)
+ page=b.new_page();page.goto('http://127.0.0.1:8001/camara.html#camera');unlock_app(page);page.evaluate('loadModel()');page.wait_for_function('!!state.model',timeout=90000)
  result=page.evaluate('''async photo=>{
  const img=new Image();img.src=photo;await img.decode();
  const source=document.createElement('canvas');source.width=1920;source.height=1080;

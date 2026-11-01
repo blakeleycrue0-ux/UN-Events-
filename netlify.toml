@@ -2,6 +2,12 @@
   command = "npm run build"
   publish = "."
 
+# The camera app lives at a quiet address; the home page is the room assistant.
+[[redirects]]
+  from = "/camara"
+  to = "/camara.html"
+  status = 200
+
 [[redirects]]
   from = "/Index.html"
   to = "/index.html"
@@ -10,8 +16,24 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
     X-Frame-Options = "DENY"
     Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss: ws://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+
+# The surveillance camera never gets the microphone.
+[[headers]]
+  for = "/camara*"
+  [headers.values]
+    Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
+
+# The room assistant listens only when you press the button.
+[[headers]]
+  for = "/"
+  [headers.values]
+    Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"

@@ -1,4 +1,9 @@
-# SECURITY CAM
+# Jarvis + SECURITY CAM
+
+**Portada (`/`): Jarvis**, asistente del cuarto que funciona en el navegador: reloj, reconocimiento local de tu cara con saludo por voz, órdenes por voz o texto (hora, día, temporizadores, chistes) y huecos preparados para luces, aire, ventilador, tele y PS5 cuando haya hardware. Las caras se guardan solo en ese móvil. Modelos blazeface/facemesh/faceres de Human 3.3.6 (`models/PROVENANCE.json`).
+
+**Cámara de vigilancia: `/camara`** (lo que sigue).
+
 
 Aplicación local de vigilancia exclusivamente por personas, orientada a Safari en un iPhone 14 fijo. Cámara nativa en directo, interfaz carbón con tarjetas translúcidas, acceso por PIN local, sin micrófono y sin grabación continua. Se ha retirado el login con cuenta. Los clips y el historial permanecen en este navegador. No se necesita una base de datos remota para vigilar o guardar clips.
 
@@ -68,7 +73,7 @@ npm run build
 npm start
 ```
 
-Servidor estático en puerto 8001. `src/app.js` contiene el motor; `src/security.js`, autorización local; `src/shell.js`, navegación y perfil. Compilados en la raíz para Netlify; `index.html` e `Index.html` deben coincidir. `netlify.toml` publica `.` con HTTPS de Netlify, CSP y micrófono deshabilitado; `.netlifyignore` excluye servidores, fuentes, pruebas y secretos. La web de eventos original sigue en `archive/eventos.html`.
+Servidor estático en puerto 8001. `src/app.js` contiene el motor; `src/security.js`, autorización local; `src/shell.js`, navegación y perfil. Compilados en la raíz para Netlify. La app de cámara vive en `camara.html` (servida en `/camara`); la portada `index.html` es Jarvis (`src/jarvis.js`, `jarvis.css`). `netlify.toml` publica `.` con HTTPS de Netlify, CSP y micrófono deshabilitado; `.netlifyignore` excluye servidores, fuentes, pruebas y secretos. La web de eventos original sigue en `archive/eventos.html`.
 
 El perfil se edita y guarda solo en este dispositivo. La interfaz ya no incluye login, formularios de email/contraseña, accesos a vincular cuentas ni monitor remoto dependiente de esa cuenta. Las rutas antiguas `#account` y `#remote` vuelven a Inicio. La vigilancia local no contacta con Supabase. La conexión opcional entre móviles se abre en Añadir cámara → Usar otro móvil y usa una identidad de dispositivo con Supabase Anonymous Auth, sin formularios de login. El enlace privado es de un uso y caduca a los diez minutos. La sesión del dispositivo se conserva en este navegador; borrar los datos del sitio pierde sus vínculos. Los clips permanecen en el iPhone cámara. Con el directo abierto, el visor puede armar (eligiendo modo), desarmar y silenciar el iPhone cámara confirmando su propio PIN. El servicio necesita instalar SQL, habilitar Anonymous Auth y desplegar la función de TURN: consulta [instalación paso a paso](supabase/PAIRING_SETUP.md). No se ha desplegado ni probado este servicio en el proyecto real desde esta sesión.
 

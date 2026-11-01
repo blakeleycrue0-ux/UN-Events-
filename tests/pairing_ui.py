@@ -71,7 +71,7 @@ def setup(page,uid):
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  viewer=b.new_context(viewport={'width':390,'height':844},permissions=['clipboard-write','clipboard-read']);v=viewer.new_page();ve=setup(v,VIEWER)
- v.goto('http://127.0.0.1:8001/#home');unlock_app(v)
+ v.goto('http://127.0.0.1:8001/camara.html#home');unlock_app(v)
  assert v.evaluate('!window.createSecuritySupabase && cameraRequests===0')
  v.click('#openAdd');v.click('#useOtherPhone');v.wait_for_function("document.getElementById('pairStatus').textContent.includes('Falta instalar')")
  flags['schema']=True;v.click('#refreshPairs');v.wait_for_function('!document.getElementById("createInvite").disabled')
@@ -82,7 +82,7 @@ with sync_playwright() as p:
  v.click('#copyInvite');assert v.evaluate('navigator.clipboard.readText()')==invitation
  camera=b.new_context(viewport={'width':390,'height':844},permissions=['camera']);h=camera.new_page();he=setup(h,HOST)
  # Real-world case: the app is already open (and locked) in Safari when the link arrives.
- h.goto('http://127.0.0.1:8001/#home');unlock_app(h);h.click('#unlock');h.wait_for_selector('#pinEntry:visible')
+ h.goto('http://127.0.0.1:8001/camara.html#home');unlock_app(h);h.click('#unlock');h.wait_for_selector('#pinEntry:visible')
  h.evaluate('t=>{location.hash="invite="+t}',raw);h.wait_for_function("!location.hash.includes('invite')")
  assert raw not in h.url;unlock_app(h);h.wait_for_selector('#acceptInvitePanel:visible')
  assert h.evaluate('cameraRequests===0 && !state.stream')

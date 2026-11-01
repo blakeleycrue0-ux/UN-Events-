@@ -4,7 +4,7 @@ from pin_helpers import empty_people_model,unlock_app,confirm_action
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});page=c.new_page();errors=[];requests=[];page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:requests.append(r.url))
- page.goto('http://127.0.0.1:8001');unlock_app(page)
+ page.goto('http://127.0.0.1:8001/camara.html');unlock_app(page)
  page.wait_for_selector('#welcomePage:visible');page.screenshot(path='/workspace/security-setup/app-welcome.png',full_page=True)
  page.click('#welcomeLocal');page.wait_for_selector('#landingPage:visible');assert not page.evaluate('!!state.stream')
  page.click('#navSettings');page.wait_for_selector('#profilePage:visible');page.click('#editProfile');page.fill('#profileNameInput','Alex');page.fill('#profileHomeInput','Casa Mallorca');page.fill('#profileCameraInput','Puerta principal');page.get_by_role('button',name='Guardar perfil',exact=True).click()

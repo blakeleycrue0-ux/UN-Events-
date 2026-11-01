@@ -11,7 +11,7 @@ with sync_playwright() as p:
     errors=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     page.on('console',lambda m:print('BROWSER',m.type,m.text[:300]) if m.type=='error' else None)
-    page.goto('http://127.0.0.1:8001/#camera');unlock_app(page)
+    page.goto('http://127.0.0.1:8001/camara.html#camera');unlock_app(page)
     page.wait_for_function('!!db')
     page.click('#camera')
     page.wait_for_function('!!state.stream && video.videoWidth>0')

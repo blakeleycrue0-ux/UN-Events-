@@ -4,7 +4,7 @@ from pin_helpers import unlock_app,confirm_action
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera']);page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('http://127.0.0.1:8001/#camera');unlock_app(page);page.uncheck('#autoDetail')
+ page.goto('http://127.0.0.1:8001/camara.html#camera');unlock_app(page);page.uncheck('#autoDetail')
  page.evaluate('()=>{window.personHere=true;state.model={detect:async()=>({object:personHere?[{label:"person",score:.9,boxRaw:[.3,.2,.2,.6]}]:[]})}}')
  page.select_option('#surveillanceMode','alarm');page.get_by_text('Audio y respuesta',exact=True).click();page.check('#autoAlarm');page.fill('#confirmation','1')
  page.click('#protect');confirm_action(page);page.wait_for_function('state.persons.length>0 && state.episode');page.evaluate('personHere=false')

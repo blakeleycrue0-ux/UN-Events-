@@ -2,428 +2,61 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width,initial-scale=1,viewport-fit=cover"
-    />
-    <meta name="theme-color" content="#1b1c20" />
-    <title>Security Cam</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#05070c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Jarvis</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="jarvis.css" />
   </head>
-  <body class="auth-pending">
-    <header class="app-header">
-      <button id="backHome" class="icon-button" aria-label="Volver">←</button>
-      <div class="wordmark">
-        <svg class="aperture-logo" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="1.5"/><path d="m20 3 9 16M35 12H17M35 29 26 13M20 37l-9-16M5 28h18M5 11l9 16" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg><span>SECURITY CAM</span>
-      </div>
-      <button id="profileOpen" class="icon-button profile-shortcut" aria-label="Abrir perfil"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></button>
-      <button id="unlock" class="icon-button" aria-label="Bloquear aplicación">
-        Bloquear
-      </button>
-    </header>
-    <div id="globalAlert" role="alert" hidden="">
-      <span id="globalAlertText"></span
-      ><button id="globalSilence">Silenciar</button>
-    </div>
-    <section id="welcomePage" class="page welcome-page" hidden="">
-      <div class="welcome-emblem">
-        <svg viewBox="0 0 48 48" fill="none">
-          <rect
-            x="6"
-            y="12"
-            width="27"
-            height="24"
-            rx="8"
-            stroke="currentColor"
-            stroke-width="2"
-          ></rect>
-          <path
-            d="m33 21 9-5v16l-9-5"
-            stroke="currentColor"
-            stroke-width="2"
-          ></path>
-          <circle
-            cx="19"
-            cy="24"
-            r="5"
-            stroke="currentColor"
-            stroke-width="2"
-          ></circle>
-        </svg>
-      </div>
-      <p class="kicker">TU ESPACIO, PROTEGIDO</p>
-      <h1>Todo bajo<br />tu mirada.</h1>
-      <p class="welcome-copy">
-        Tus cámaras, tus grabaciones y tu hogar. En una sola aplicación.
-      </p>
-      <div class="welcome-actions">
-        <button id="welcomeLocal" class="primary">
-          Empezar
-        </button>
-      </div>
-      <p class="fine-print">
-        Accede con tu PIN. La cámara y las grabaciones funcionan en este dispositivo, sin cuenta.
-      </p>
-    </section>
-    <section id="landingPage" class="page" hidden="">
-      <div class="dashboard-search">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
-        <input id="globalSearch" type="search" autocomplete="off" placeholder="Buscar cámara, eventos o clips…" aria-label="Buscar cámara, eventos o grabaciones"/>
-      </div>
-      <div id="searchResults" class="glass-panel search-results" hidden aria-live="polite"></div>
-      <div class="dashboard-heading"><p id="greeting" class="kicker">TU ESPACIO</p><h1 id="homeTitle">Mi hogar</h1><p>Tu cámara. Un solo centro de control.</p></div>
-      <section class="live-card" aria-label="Cámara principal"><div id="homeLiveHost"></div></section>
-      <div class="section-title"><h2>Tu cámara</h2><span id="homeCameraCount" class="small-state">0 activas</span><button id="seeDevices" class="text-button">Gestionar <span aria-hidden="true">›</span></button></div>
-      <div class="device-ribbon"><button id="openCamera" class="device-card"><div class="device-art"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="5" y="12" width="26" height="24" rx="7"/><path d="m31 20 12-6v20l-12-6"/></svg><span id="deviceBadge" class="device-badge">Este teléfono</span></div><div class="device-card-copy"><strong id="deviceCardName">Entrada</strong><p id="deviceCardState">Preparar cámara</p><span class="device-play" aria-hidden="true">›</span></div></button><div class="device-note"><p class="kicker">EN ESTE DISPOSITIVO</p><strong>Privacidad bajo tu control.</strong><p>Vídeo sin micrófono. Clips guardados localmente.</p><button id="openAdd" class="text-button">Configurar cámara <span aria-hidden="true">›</span></button></div></div>
-      <section class="glass-panel events-panel"><div class="section-title"><h2>Eventos recientes</h2><button id="viewEvents" class="text-button">Ver todos <span aria-hidden="true">›</span></button></div><div id="recentActivity"></div></section>
-      <section class="glass-panel system-panel"><div class="section-title"><div><h2>Estado del sistema</h2><p>El estado real de tu vigilancia.</p></div><span id="homeSystemPill" class="small-state">Sin cámara</span></div><div class="system-grid">
-        <div class="system-cell protection-cell"><button id="systemOpen" class="system-status-link"><span id="homeStatusDot" class="status-dot"></span><span><strong id="homeLocalState">Sistema desarmado</strong><small id="homeLocalDetail">Activa la vigilancia desde aquí.</small></span></button><button id="homeProtect" class="small-button">Armar</button></div>
-        <button id="quickCamera" class="system-cell"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="4"/><path d="m16 10 5-3v10l-5-3"/></svg><span><strong id="homeCameraStatus">Cámara apagada</strong><small>Este teléfono</small></span><span aria-hidden="true">›</span></button>
-        <button id="homeStorage" class="system-cell storage-cell"><span><strong>Almacenamiento</strong><small id="homeStorageDetail">Comprobando clips locales…</small><progress id="homeStorageProgress" max="1" value="0" hidden aria-label="Uso de cuota local estimada"></progress></span><span aria-hidden="true">›</span></button>
-        <button id="homeClips" class="system-cell"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="4"/><path d="m10 9 6 4-6 4Z"/></svg><span><strong id="clipCount">0 clips</strong><small>Grabaciones locales</small></span><span aria-hidden="true">›</span></button>
-      </div></section>
-    </section>
-    <section id="camerasPage" class="page" hidden="">
-      <div class="page-heading">
+  <body>
+    <main class="room">
+      <header class="top">
         <div>
-          <p class="kicker">TUS DISPOSITIVOS</p>
-          <h1>Cámaras</h1>
+          <time id="clock" class="clock">--:--</time>
+          <p id="date" class="date"></p>
         </div>
-        <button
-          id="addFromCameras"
-          class="add-button"
-          aria-label="Añadir cámara"
-        >
-          +
-        </button>
-      </div>
-      <div id="cameraList" class="list-card"></div>
-      <div id="remoteCameraList" class="paired-list"></div>
-      <button id="managePairing" class="sheet-option"><strong>Conectar otro móvil</strong><span>Invitación privada para usar otro iPhone como cámara</span></button>
-      <p class="fine-print">La cámara y las grabaciones se gestionan en este dispositivo, con tu PIN local.</p>
+        <button id="openSettings" class="icon-button" aria-label="Ajustes">⚙︎</button>
+      </header>
 
-
-    </section>
-    <section id="pairingPage" class="page" hidden>
-      <div class="page-heading"><div><p class="kicker">CONEXIÓN PRIVADA</p><h1>Dos móviles. Un espacio.</h1></div></div>
-      <section id="createInvitePanel" class="glass-panel pairing-panel">
-        <h2>Usar otro móvil como cámara</h2>
-        <p>Crea una invitación aquí y ábrela en Safari en el iPhone que dejarás vigilando. No necesitas iniciar sesión con email.</p>
-        <label>Nombre de la cámara<input id="pairName" maxlength="60" value="Entrada" autocomplete="off" /></label>
-        <button id="createInvite" class="primary">Crear invitación</button><div class="paste-invite"><label>¿Este es el iPhone cámara y te han enviado un enlace? Pégalo aquí<input id="pasteInvite" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://unevents.netlify.app/#invite=…" /></label><button id="usePastedInvite" class="small-button">Usar enlace</button></div>
-        <div id="inviteResult" hidden><label>Enlace privado · un uso · 10 minutos<input id="inviteLink" readonly aria-label="Enlace de invitación" /></label><div class="pair-actions"><button id="copyInvite" class="small-button">Copiar enlace</button><button id="shareInvite" class="small-button">Compartir</button><button id="cancelInvite" class="text-button">Cancelar invitación</button></div><p id="inviteExpiry" class="fine-print"></p></div>
+      <section class="core">
+        <div id="orb" class="orb" data-state="off" aria-hidden="true"><span></span></div>
+        <p id="say" class="say" aria-live="polite">Hola. Pulsa Empezar.</p>
+        <p id="heard" class="heard"></p>
       </section>
-      <section id="acceptInvitePanel" class="glass-panel pairing-panel" hidden><p class="kicker">INVITACIÓN RECIBIDA</p><h2>Este iPhone será la cámara</h2><p>Al aceptar, el móvil que creó el enlace podrá ver el vídeo cuando tú actives Compartir. Se comparte solo imagen, sin micrófono. Tu PIN sigue siendo local.</p><button id="acceptInvite" class="primary">Aceptar y vincular este iPhone</button><button id="rejectInvite" class="text-button">Descartar invitación</button></section>
-      <section class="glass-panel pairing-panel"><h2>Tus conexiones</h2><div id="pairedDevices"></div><button id="refreshPairs" class="text-button">Actualizar conexiones</button><p id="pairStatus" role="status" aria-live="polite">Crea una invitación o abre la que te hayan enviado.</p></section>
-      <section id="pairedVideoPanel" class="glass-panel pairing-panel" hidden><div class="section-title"><h2 id="pairedVideoTitle">Cámara remota</h2><span id="pairedLive" class="small-state">CONECTANDO</span></div><video id="pairedVideo" autoplay muted playsinline controls></video><div id="remoteControls" class="remote-controls" hidden><div class="section-title"><h3>Control remoto</h3><span id="remoteState" class="small-state">Esperando estado de la cámara…</span></div><label>Modo<select id="remoteMode"><option value="silent">Vigilancia silenciosa</option><option value="deter">Vigilancia disuasoria</option><option value="alarm">Alarma</option></select></label><div class="pair-actions"><button id="remoteArm" class="small-button" disabled>Armar</button><button id="remoteDisarm" class="small-button" disabled>Desarmar</button><button id="remoteSilence" class="small-button" disabled>Silenciar</button></div></div><button id="stopPair" class="small-button">Desconectar directo</button><p class="fine-print">Los clips y la detección se ejecutan en el teléfono cámara. Desde aquí puedes armar, desarmar y silenciar confirmando tu PIN; los clips se quedan en el iPhone cámara.</p></section>
-      <section class="pairing-panel"><h2>Antes de dejar la cámara</h2><p>La pantalla debe permanecer encendida y Safari visible. El iPhone bloqueado no mantiene la cámara de forma fiable. Una carcasa cerrada puede provocar calor.</p><p class="fine-print">La conexión entre redes necesita el servicio remoto configurado. Si falta, se mostrará el error; no se indicará que el vídeo está conectado hasta que lleguen fotogramas. Vuelve a conectar al regresar a Safari o, como máximo, tras 55 minutos para renovar la autorización.</p></section>
-    </section>
-    <main id="cameraPage" class="page camera-page" hidden="">
-      <div class="page-heading compact">
-        <div>
-          <p class="kicker">ESTE DISPOSITIVO</p>
-          <h1 id="cameraTitle">Entrada</h1>
-        </div>
-        <span id="cameraStateBadge" class="pill">Sin conexión</span>
-      </div>
-      <div id="cameraLiveHost"><div id="cameraLiveModule">      <div id="stage">
-        <div id="videoViewport">
-          <video id="video" autoplay="" muted="" playsinline=""></video>
-        </div>
-        <canvas id="overlay"></canvas>
-        <div class="badges"><span id="heroCameraName">Entrada</span>
-          <span id="live">SIN CÁMARA</span><span id="rec" hidden="">REC</span>
-        </div>
-        <div id="cameraMessage"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="5" y="12" width="26" height="24" rx="7"/><path d="m31 20 12-6v20l-12-6"/></svg><strong>Tu entrada, en directo.</strong><p id="cameraMessageDetail">La cámara está apagada.</p><button id="homeStartCamera" class="primary">Iniciar cámara</button></div><button id="exitExpanded" class="small-button" hidden>Volver</button>
-        <time id="clock"></time>
-      </div>
-      <div id="zoneEditorHeading" hidden><h2 id="zoneEditorTitle">Zona de vigilancia</h2><p>Dibuja, mueve o ajusta las esquinas. Detección en pausa hasta salir.</p></div>
-      <div id="zoneEditorTools" hidden><button id="zoneNew">Nueva zona</button><button id="zoneCancel">Cancelar</button><button id="zoneApply" disabled>Guardar zona</button></div>
-      <div class="camera-toolbar"><button id="cameraPower" aria-label="Iniciar o detener cámara" title="Iniciar o detener cámara">Cámara</button>
-        <button id="fullscreen">Ampliar</button><button id="photo">Foto</button
-        ><button id="record">Grabar manual</button>
-      </div>
-<div class="people-strip"><div><strong id="peopleStatus" class="people-state" role="status">DETECCIÓN DE PERSONAS</strong><p id="peopleStatusDetail">Enciende la cámara para ver los recuadros.</p></div><button id="retryPeople" class="small-button" hidden>Reintentar</button><button id="peopleZone" class="small-button">Zona</button></div></div></div>
-      <div class="camera-status">
-        <span class="status-dot"></span>
-        <div>
-          <h2 id="protectionTitle"></h2>
-          <p id="protectionHint"></p>
-        </div>
-      </div>
-      <div class="camera-control-card">
-        <label>Modo al armar<select id="surveillanceMode"><option value="silent">Vigilancia silenciosa</option><option value="deter">Vigilancia disuasoria</option><option value="alarm">Alarma</option></select></label><button id="protect" class="protect-button controls">
-          PROTEGER ESTA IMAGEN
-        </button>
-        <p class="fine-print">
-          Al encender la cámara se buscan personas. Armar autoriza clips y alertas solo por personas en tu zona. Los sonidos solo se activan si los habilitas. Encuadra solo tu propiedad.
-        </p>
-      </div>
-      <p id="sequenceStatus" role="status"></p>
-      <p id="error" role="alert"></p>
-      <div class="inline-actions">
-        <button id="camera">Iniciar cámara</button
-        >
-      </div>
-<div class="system-indicators" aria-label="Estado del sistema"><span id="modeBadge">MODE · DESARMADO</span><span id="motionBadge" hidden>MOVEMENT</span><span id="personBadge" hidden>PERSONA</span><span id="audioBadge">AUDIO · sin autorizar</span><span id="storageBadge">STORAGE · local</span><span id="powerBadge">LOW POWER</span><span id="darkBadge" hidden>Escena oscura</span></div><p id="eventState" role="status">Esperando evento</p><details class="surveillance-panel" open><summary>Detección y zona</summary><div class="panel-grid"><label class="checkbox-row"><input id="person" type="checkbox" checked />Detección de personas y recuadros</label><label>Confianza mínima de persona (%)<input
-        id="confidence"
-        type="range"
-        min="30"
-        max="95"
-        value="45"
-      /></label><label>Respuesta de personas<select id="responseMode"><option value="fast" selected>Rápida · mayor consumo</option><option value="balanced">Equilibrada</option></select></label><label>Intervalo IA equilibrado (segundos; mínimo 5 en ahorro)<input
-        id="aiInterval"
-        type="number"
-        step="0.25"
-        min="0.25"
-        max="30"
-        value="2"
-      /></label><label class="checkbox-row"><input id="autoDetail" type="checkbox" checked>Detalle automático para personas pequeñas</label><p id="detectionReadout" role="status"></p><p class="fine-print">Alterna vista general y recortes a partir de la cámara original, sin cambiar el vídeo ni la zona. HD y detalle automático aumentan el consumo; activa ahorro si necesitas reducirlo. La rapidez depende del dispositivo: se muestra el tiempo medido, no se garantiza 1 ms. No mide metros ni garantiza detectar a 10 m. Prueba caminando a la distancia real, con luz suficiente.</p><p class="fine-print">Solo una persona reconocida puede iniciar un clip o una alerta. El movimiento no es un disparador. Los recuadros aparecen al encender la cámara; armar autoriza grabaciones y alertas. La zona debe incluir el centro o los pies de la persona. Si falla la IA se muestra el error y se pausan nuevos eventos automáticos.</p><div class="button-grid"><button id="zone">Dibujar zona restringida</button
-              ><button id="fullZone">
-        Usar imagen completa
-      </button><button id="mask">Dibujar máscara privada</button
-              ><button id="clearZones">Borrar zonas</button></div><p class="fine-print">Abre el editor ampliado, dibuja o ajusta las esquinas y pulsa Guardar zona. Cancelar conserva la anterior. La máscara oculta zonas ajenas también en las grabaciones procesadas.</p></div></details><details class="surveillance-panel" open><summary>Grabación por eventos</summary><div class="panel-grid"><label>Grabación<select id="recordMode">
-                <option value="event" selected>Automática por eventos</option><option value="manual">Solo manual</option>
-              </select></label><label>Duración del clip (segundos)<select id="clip">
-                <option>10</option>
-                <option selected="">20</option>
-                <option>30</option>
-                <option>60</option>
-              </select></label><label>Cooldown después de cada clip<select id="recordCooldown"><option>10</option><option>20</option><option selected>30</option><option>60</option></select></label><label class="checkbox-row"><input id="repeatEvents" type="checkbox">Permitir repetir clips de un evento persistente después del cooldown</label><label class="checkbox-row"><input id="autoDelete" type="checkbox" />Liberar clips antiguos no importantes al superar el 80% de cuota</label><label>Resolución de grabación procesada<select id="recordQuality"><option value="640" selected>640 px · menor calor</option><option value="1280">1280 px · más consumo</option></select></label><p class="fine-print">Límite local: 100 clips o 480 MB antes de iniciar otro. Sin grabación continua ni micrófono. Un clip por episodio de persona; se rearma al dejar de observar personas. La duración elegida se completa salvo desarmado, fallo o interrupción de Safari. Si otro episodio empieza durante el cooldown, queda registrado sin clip. Safari puede eliminar IndexedDB por falta de espacio, navegación privada o limpieza del navegador. Descarga las pruebas importantes; marcarlas no impide que iOS borre datos. La calidad de grabación no supera la captura de la cámara. En Safari sin captura de canvas se graba la pista nativa y se informa de los límites.</p><button id="openRecordings">Ver grabaciones e historial</button></div></details><details class="surveillance-panel"><summary>Audio y respuesta</summary><div class="panel-grid"><label class="checkbox-row"><input id="autoVoice" type="checkbox" />Aviso de voz automático (disuasorio y alarma)</label><label class="checkbox-row"><input id="autoAlarm" type="checkbox" />Sirena automática (solo modo alarma)</label><label>Confirmación adicional de alarma (segundos)<input id="confirmation" type="number" min="1" max="60" value="3" /></label><label>Intervalo mínimo entre alarmas (segundos)<input
-        id="cooldown"
-        type="number"
-        min="10"
-        max="3600"
-        value="60"
-      /></label><label>Duración de sirena (segundos)<select id="alarmDuration">
-        <option>5</option>
-        <option selected="">10</option>
-        <option>15</option>
-        <option>30</option></select
-      ></label><label>Volumen<input
-                id="volume"
-                type="range"
-                min="0"
-                max="100"
-                value="70" /></label><button id="testSpeaker">Probar sonido</button><p id="speakerStatus" role="status"></p><div id="sounds"></div><button id="alarm" class="danger">Alarma manual</button><button id="silence" class="silence-action">Silenciar sonidos</button
-      ><label class="checkbox-row"><input id="torch" type="checkbox" disabled="" />Linterna continua</label><label class="checkbox-row"><input id="alarmFlash" type="checkbox" disabled="" />Parpadeo lento durante sirena</label><label>Límite de linterna (segundos)<input
-        id="torchLimit"
-        type="number"
-        min="5"
-        max="120"
-        value="30"
-      /></label><p id="torchInfo">
-              Se comprobará la capacidad real al iniciar la cámara.
-            </p><p class="fine-print">El aviso ElevenLabs conservado es el único MP3 de voz disponible. Los avisos específicos de propiedad y abandono no tienen grabaciones independientes.</p><button disabled>Advertencia de propiedad · falta audio específico</button><button disabled>Abandono de zona · falta audio específico</button><p class="fine-print">No se llama a la policía. Si Safari bloquea el sonido se muestra el error; la grabación continúa. Tras el aviso solo suena la sirena si la detección continúa.</p></div></details><details class="surveillance-panel"><summary>Imagen y bajo consumo</summary><label>Cámara<select id="device">
-                <option value="">Trasera automática</option>
-              </select></label><div class="panel-grid"><label>Mejora nocturna<select id="nightMode"><option value="auto">Automático</option><option value="on">Activado</option><option value="off">Desactivado</option></select></label><p id="nightHint"></p><label>Brillo digital<input
-        id="brightness"
-        type="range"
-        min="50"
-        max="200"
-        value="100"
-      /></label><label>Contraste<input
-        id="contrast"
-        type="range"
-        min="50"
-        max="200"
-        value="100"
-      /></label><label>Gamma (análisis, fotos y clips procesados)<input id="gamma" type="range" min="50" max="200" value="100" /></label><label>Zoom digital<input id="zoom" type="range" min="100" max="250" value="100" /></label><label class="checkbox-row"><input
-        id="lowPower"
-        type="checkbox"
-      />Bajo consumo · limita análisis y grabación procesada a 5 fps</label><label>Resolución de análisis<select id="analysisSize"><option value="96">96 px</option><option value="128">128 px</option><option value="192">192 px</option><option value="256" selected>256 px</option></select></label><label>Intervalo de análisis<select id="analysisInterval"><option value="250">250 ms</option><option value="500" selected>500 ms</option><option value="1000">1 s</option></select></label><label>Calidad de captura / vista previa<select id="previewQuality"><option value="640">640 px · ahorro</option><option value="1280" selected>1280 px</option><option value="1920">1920 px</option></select></label><p id="health" role="status"></p><button id="restart">Reiniciar cámara</button
-      ><button id="diagnose">Diagnóstico y prueba integral</button><pre id="diagnostics"></pre><p class="fine-print">La mejora digital necesita luz visible: no es visión nocturna infrarroja. Gamma se aplica al análisis y al vídeo procesado; la vista previa nativa conserva fluidez. No hay lectura de temperatura disponible. LOW POWER indica un ajuste, no una medición térmica.</p></div></details><aside class="safety-note"><strong>Uso fijo en exterior</strong><p>La pantalla debe permanecer encendida. La cámara web no puede funcionar de forma fiable con el iPhone bloqueado. Al recargar debes desbloquear y volver a armar. Una carcasa cerrada puede provocar calor: mantén sombra y ventilación apropiada y revisa el dispositivo físicamente. Reduce calidad o detén la cámara si observas avisos térmicos de iOS.</p></aside>    </main>
-    <section id="activityPage" class="page" hidden="">
-      <div class="page-heading">
-        <div>
-          <p class="kicker">TU HISTORIAL</p>
-          <h1 id="activityTitle">Grabaciones</h1>
-        </div>
-      </div>
-      <div class="segmented">
-        <button id="showClips" class="selected">Grabaciones</button
-        ><button id="showEvents">Eventos</button>
-      </div>
-      <details class="evidence" open="">
-        <summary>Grabaciones</summary>
-        <p id="storage">Comprobando almacenamiento…</p>
-        <div id="clips"></div>
-      </details>
-      <section id="eventsGroup" hidden="">
-        <div class="activity-tools">
-          <select id="filter">
-            <option value="">Todos</option>
-            <option value="movimiento">Movimiento (histórico)</option>
-            <option>persona</option>
-            <option>grabación</option>
-            <option>alarma</option>
-            <option>cámara</option>
-            <option>audio</option>
-            <option>pérdida</option>
-            <option>modo</option></select
-          ><button id="clearLog">Borrar historial</button>
-        </div>
-        <ol id="events"></ol>
-      </section>
-    </section>
-    <section id="profilePage" class="page" hidden="">
-      <div class="page-heading">
-        <div>
-          <p class="kicker">TU ESPACIO</p>
-          <h1>Ajustes</h1>
-        </div>
-      </div>
-      <div class="identity-card">
-        <div id="profileAvatar" class="avatar">S</div>
-        <div>
-          <h2 id="profileDisplayName">Mi perfil</h2>
-          <p id="profileAccountLabel">En este dispositivo</p>
-        </div>
-        <button id="editProfile" class="text-button">Editar</button>
+
+      <div id="preview" class="preview" hidden>
+        <video id="video" autoplay muted playsinline></video>
+        <span id="faceState" class="face-state">Buscando caras…</span>
       </div>
 
-      <section class="settings">
-        <h2 class="settings-title">Preferencias</h2><button id="configureCamera" class="settings-row">Detección, zona y grabaciones <span aria-hidden="true">›</span></button>
+      <footer class="bottom">
+        <button id="start" class="primary">Empezar</button>
+        <button id="talk" class="talk" hidden aria-label="Hablar"><span>🎙️</span>Hablar</button>
+        <form id="typeForm" class="type-form" hidden>
+          <input id="typeInput" autocomplete="off" placeholder="Escribe una orden…" aria-label="Escribe una orden" />
+          <button class="small">Enviar</button>
+        </form>
+      </footer>
+    </main>
 
-
-
-        <details class="preference-group">
-          <summary>Seguridad</summary>
-          <div class="preference-content">
-            <button id="pin">Cambiar PIN</button>
-            <p class="fine-print">
-              Tu PIN protege los controles locales. No cifra los clips. Descarga las grabaciones importantes.
-            </p>
-          </div>
-        </details>
-      </section>
-      <button id="profileLock" class="text-button wide">
-        Bloquear aplicación
-      </button>
-      <p class="version-label">SECURITY CAM · ALMACENAMIENTO LOCAL</p>
-    </section>
-
-
-    <nav class="app-navigation" aria-label="Navegación principal">
-      <button id="navHome" data-tab="home">
-        <svg viewBox="0 0 24 24">
-          <path d="m3 10 9-7 9 7v10H3Z"></path>
-          <path d="M9 20v-7h6v7"></path></svg
-        ><span>Inicio</span></button
-      ><button id="navCameras" data-tab="cameras">
-        <svg viewBox="0 0 24 24">
-          <rect x="3" y="6" width="13" height="12" rx="4"></rect>
-          <path d="m16 10 5-3v10l-5-3"></path></svg
-        ><span>Cámaras</span></button
-      ><button id="navEvents" data-tab="events"><svg viewBox="0 0 24 24"><path d="M5 17h14l-2-4V9a5 5 0 0 0-10 0v4Zm5 3h4"/></svg><span>Eventos</span></button><button id="navClips" data-tab="activity">
-        <svg viewBox="0 0 24 24">
-          <rect x="4" y="4" width="16" height="17" rx="4"></rect>
-          <path d="M8 2v4m8-4v4M8 11h8m-8 5h5"></path></svg
-        ><span>Clips</span></button
-      ><button id="navSettings" data-tab="profile">
-        <svg viewBox="0 0 24 24">
-          <circle cx="12" cy="8" r="4"></circle>
-          <path d="M4 21v-3a8 8 0 0 1 16 0v3"></path></svg
-        ><span>Ajustes</span>
-      </button>
-    </nav>
-    <div id="addSheet" class="sheet-backdrop" hidden="">
-      <section
-        class="sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Añadir cámara"
-      >
-        <div class="sheet-handle"></div>
-        <button id="closeAdd" class="sheet-close" aria-label="Cerrar">×</button>
-        <p class="kicker">AÑADIR DISPOSITIVO</p>
-        <h2>Una nueva mirada.</h2>
-        <button id="useOtherPhone" class="sheet-option"><strong>Usar otro móvil</strong><span>Crear un enlace de invitación privado</span></button>
-        <button id="useThisPhone" class="sheet-option">
-          <strong>Usar este teléfono</strong
-          ><span>Convertir este dispositivo en cámara</span></button
-        >
-      </section>
+    <div id="settings" class="sheet" hidden>
+      <div class="sheet-card">
+        <div class="sheet-head"><h2>Ajustes</h2><button id="closeSettings" class="icon-button" aria-label="Cerrar">✕</button></div>
+        <label>Tu nombre<input id="name" maxlength="30" autocomplete="off" /></label>
+        <h3>Tu cara</h3>
+        <p id="faceInfo" class="muted">Todavía no has registrado tu cara.</p>
+        <div class="row">
+          <button id="enroll" class="small">Registrar mi cara</button>
+          <button id="forget" class="small ghost">Borrar mi cara</button>
+        </div>
+        <p class="muted">Ponte delante de la cámara, solo, con buena luz. Tu cara se guarda solo en este móvil.</p>
+        <label>Cámara<select id="facing"><option value="user">Delantera</option><option value="environment">Trasera</option></select></label>
+        <label class="check"><input id="greetOn" type="checkbox" checked /> Saludarme al verme</label>
+        <a class="quiet-link" href="/camara">Cámara del jardín</a>
+      </div>
     </div>
-    <div id="profileSheet" class="sheet-backdrop" hidden="">
-      <form id="profileForm" class="sheet">
-        <div class="sheet-handle"></div>
-        <button
-          id="closeProfile"
-          type="button"
-          class="sheet-close"
-          aria-label="Cerrar"
-        >
-          ×
-        </button>
-        <p class="kicker">PERSONALIZA TU ESPACIO</p>
-        <h2>Hazlo tuyo.</h2>
-        <label
-          >Tu nombre<input
-            id="profileNameInput"
-            maxlength="40"
-            autocomplete="given-name" /></label
-        ><label
-          >Nombre del hogar<input
-            id="profileHomeInput"
-            maxlength="40"
-            placeholder="Mi hogar" /></label
-        ><label
-          >Nombre de esta cámara<input
-            id="profileCameraInput"
-            maxlength="40"
-            placeholder="Entrada" /></label
-        ><button class="primary" type="submit">Guardar perfil</button>
-        <p class="fine-print">Estos nombres se guardan en este dispositivo.</p>
-      </form>
-    </div>
-    <div id="captureDock" aria-hidden="true"></div>
-    <div id="engineSettings" hidden=""><input id="motion" type="checkbox" /><input
-        id="sensitivity"
-        type="range"
-        min="1"
-        max="100"
-        value="60"
-      /><select id="motionConfirm"><option value="0.5" selected>0,5 s</option><option value="1">1 s</option><option value="2">2 s</option></select><select id="alarmSource"><option value="person" selected>Personas</option></select>
-<span id="status">DESARMADO</span
-      ><span id="alarmStatus" hidden="">ALARMA ACTIVA</span
-      >
 
-
-      <div id="extraToolsModeAnchor"></div>
-
-
-      <button id="enableAudio">Habilitar sonido</button
-      ><input
-        id="autoNotice"
-        type="checkbox"
-      /><input id="autoWarning" type="checkbox" checked="" />
-
-      <input
-        id="nightSensitivity"
-        type="range"
-        min="1"
-        max="100"
-        value="75"
-      /><input id="eventLight" type="checkbox" disabled="" />
-
-      <button id="arm">ACTIVAR VIGILANCIA</button
-      ><button id="nightToggle" aria-pressed="false">Noche: AUTO</button
-      ><button id="hide">Ocultar controles</button
-      ><select id="mode">
-        <option value="disarmed">DESARMADO</option>
-        <option value="silent">SILENCIOSO</option>
-        <option value="deter">DISUASORIO</option>
-        <option value="alarm">ALARMA</option>
-      </select>
-    </div>
-    <div id="appToast" hidden="" role="status"></div>
-    <script src="detection.js"></script>
-    <script src="app.js"></script>
-    <script src="security.js"></script>
-    <script src="supabase-config.js"></script>
-    <script src="pairing.js"></script>
-    <script src="shell.js"></script>
+    <script src="jarvis.js"></script>
   </body>
 </html>

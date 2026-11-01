@@ -4,7 +4,7 @@ from pin_helpers import empty_people_model,enter_pin,unlock_app,confirm_action
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('http://127.0.0.1:8001/#home')
+ page.goto('http://127.0.0.1:8001/camara.html#home')
  page.wait_for_selector('#pinEntry:visible');assert not page.locator('#openCamera').is_visible()
  assert page.get_by_role('button',name='Cancelar',exact=True).is_disabled()
  page.screenshot(path='/workspace/security-setup/pin-entry-glass.png',full_page=True)

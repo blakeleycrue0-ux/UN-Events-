@@ -5,7 +5,7 @@ with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],accept_downloads=True,viewport={'width':390,'height':844})
  page=c.new_page();page.add_init_script("document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('details').forEach(d=>d.open=true))");errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('http://127.0.0.1:8001/#camera');unlock_app(page);page.wait_for_function('!!db');page.click('#camera');page.wait_for_function('!!state.stream')
+ page.goto('http://127.0.0.1:8001/camara.html#camera');unlock_app(page);page.wait_for_function('!!db');page.click('#camera');page.wait_for_function('!!state.stream')
  page.click('#testSpeaker');page.wait_for_function('audioReady && !!activeAudio');page.locator('#mode').evaluate("e=>{e.value='alarm';e.dispatchEvent(new Event('change'))}")
  page.evaluate("""()=>{state.model={detect:async()=>({object:[{label:'person',score:.99,boxRaw:[.4,.4,.2,.2]}]})};document.getElementById('person').checked=true;document.getElementById('aiInterval').value='1';document.getElementById('confirmation').value='1';state.lastAlarm=0;state.zone={x:.1,y:.1,w:.8,h:.8};}""")
  page.wait_for_timeout(3500);assert not page.evaluate('state.alarm')

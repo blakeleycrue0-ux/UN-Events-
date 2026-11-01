@@ -4,7 +4,7 @@ from pin_helpers import empty_people_model,unlock_app,confirm_action
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844},has_touch=True,is_mobile=True);page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('http://127.0.0.1:8001/#camera');unlock_app(page);empty_people_model(page);page.uncheck('#person');assert not page.evaluate('state.stream')
+ page.goto('http://127.0.0.1:8001/camara.html#camera');unlock_app(page);empty_people_model(page);page.uncheck('#person');assert not page.evaluate('state.stream')
  page.click('#zone');page.wait_for_selector('#zoneApply:visible');page.wait_for_function('!!state.stream && drawMode==="zone"')
  assert page.evaluate('!state.armed && !state.recording'), 'Editing never arms or records'
  session=c.new_cdp_session(page)

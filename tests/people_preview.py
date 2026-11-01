@@ -4,7 +4,7 @@ from pin_helpers import unlock_app,confirm_action
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});c.add_init_script('localStorage.setItem("security-settings",JSON.stringify({motion:true,person:false,alarmSource:"motion",recordMode:"manual"}))');page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('http://127.0.0.1:8001/#camera');unlock_app(page)
+ page.goto('http://127.0.0.1:8001/camara.html#camera');unlock_app(page)
  assert not page.evaluate('document.getElementById("motion").checked');assert page.locator('#person').is_checked();assert page.locator('#motion').is_hidden();assert page.locator('#sensitivity').is_hidden()
  page.evaluate('()=>{window.showPerson=true;state.model={detect:async()=>({object:showPerson?[{label:"person",score:.96,boxRaw:[.2,.2,.25,.5]}]:[]})}}')
  page.click('#camera');page.wait_for_function('state.persons.length>0 && state.personResultAt>0',timeout=10000)
