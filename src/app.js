@@ -207,7 +207,13 @@ function download(blob, name) {
     a = document.createElement("a");
   a.href = url;
   a.download = name;
-  a.textContent = "Descargar clip pendiente: " + name;
+  a.className = blob.type.startsWith("image/")
+    ? "download-link"
+    : "download-link pending-evidence";
+  a.textContent =
+    (blob.type.startsWith("image/")
+      ? "Descargar fotografía: "
+      : "Clip pendiente · descargar: ") + name;
   $("clips").prepend(a);
   a.click();
   // Keep emergency-download URLs alive until this page is closed. Safari may block automatic download.
@@ -215,7 +221,8 @@ function download(blob, name) {
 async function renderClips() {
   clipURLs.forEach(URL.revokeObjectURL);
   clipURLs = [];
-  $("clips").replaceChildren();
+  const pending = [...$("clips").children].filter((el) => el.tagName === "A");
+  $("clips").replaceChildren(...pending);
   const clips = await store("clips", "getAll");
   clips
     .sort((a, b) => b.id - a.id)
@@ -245,13 +252,12 @@ async function renderClips() {
       };
       const del = document.createElement("button");
       del.textContent = "Eliminar";
-      del.onclick = async () => {
-        if (confirm("¿Eliminar este clip?")) {
+      del.onclick = () =>
+        authorizeLocalAction("Eliminar grabación", async () => {
           await store("clips", "delete", c.id);
-          renderClips();
-          storage();
-        }
-      };
+          await renderClips();
+          await storage();
+        });
       card.append(p, v, a, star, del);
       $("clips").append(card);
     });
@@ -413,6 +419,7 @@ async function torch(on) {
   } catch (e) {
     $("torch").checked = false;
     $("torch").disabled = true;
+    $("torchInfo").textContent = "Linterna no disponible: " + e.message;
     error("Linterna no controlable: " + e.message);
   }
 }
@@ -666,7 +673,9 @@ async function startRecording(reason) {
       } catch (e) {
         state.storageFailed = true;
         error(
-          "No se ha guardado el clip: " + e.message + ". Descárgalo ahora.",
+          "No se ha guardado el clip: " +
+            e.message +
+            ". Tienes la descarga pendiente en Actividad.",
           "pérdida",
         );
         if (blob.size)
@@ -1321,7 +1330,12 @@ function requestPin(title, options = {}) {
     input.oninput = () =>
       (input.value = input.value.replace(/\D/g, "").slice(0, 12));
     card.append(heading, hint, input, keys, accept);
-    if (state.armed) {
+    if (
+      state.armed ||
+      state.alarm ||
+      state.warningPending ||
+      (activeAudio && !mediaAudio.paused)
+    ) {
       const silence = document.createElement("button");
       silence.type = "button";
       silence.id = "pinSilence";
@@ -1471,13 +1485,12 @@ overlay.onpointerup = async () => {
   }
 };
 $("filter").onchange = renderEvents;
-$("clearLog").onclick = () => {
-  if (confirm("¿Borrar historial de eventos?")) {
+$("clearLog").onclick = () =>
+  authorizeLocalAction("Borrar historial", () => {
     events = [];
     localStorage.removeItem("security-events");
     renderEvents();
-  }
-};
+  });
 let builtInSound;
 async function loadSounds() {
   if (!builtInSound)
@@ -1734,7 +1747,7 @@ function renderProtection() {
     $("autoAlarm").checked &&
     state.zone
   ) {
-    title.textContent = "Tu entrada está protegida";
+    title.textContent = "Vigilancia activa";
     hint.textContent =
       $("alarmSource").value === "person"
         ? "Personas → aviso de voz → sirena si permanecen."
@@ -1744,18 +1757,18 @@ function renderProtection() {
     hint.textContent =
       "Este modo detecta, pero no activa la sirena. Usa Proteger esta imagen para habilitarla.";
   } else {
-    title.textContent = "Protección desactivada";
+    title.textContent = "Sistema desarmado";
     hint.textContent = state.persons.length
       ? "Se ve una persona, pero la alarma está desactivada."
-      : "La cámara puede estar encendida sin tener la alarma activada.";
+      : "Arma el sistema para activar la detección y la respuesta.";
   }
   $("protect").disabled = protecting;
   $("protect").textContent = protecting
-    ? "PREPARANDO…"
+    ? "Preparando…"
     : state.armed
-      ? "DESACTIVAR PROTECCIÓN"
-      : "PROTEGER ESTA IMAGEN";
-  if (state.armed && !audioReady) $("protect").textContent = "REACTIVAR SONIDO";
+      ? "Desarmar"
+      : "Armar sistema";
+  if (state.armed && !audioReady) $("protect").textContent = "Activar sonido";
 }
 $("protect").onclick = async () => {
   if (protecting) return;
@@ -1853,7 +1866,7 @@ $("testSpeaker").onclick = async () => {
     const played = await sound("warning");
     $("speakerStatus").textContent = played
       ? "El aviso está reproduciéndose. ¿Lo escuchas por el altavoz? Si no, desactiva Silencio y revisa la salida Bluetooth/AirPlay."
-      : "No ha comenzado. Revisa el error de audio.";
+      : "No ha comenzado: " + $("error").textContent;
   } else
     $("speakerStatus").textContent =
       "Safari ha bloqueado la prueba. Toca otra vez para autorizarla.";

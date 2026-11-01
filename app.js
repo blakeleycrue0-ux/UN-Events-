@@ -179,14 +179,16 @@ function download(blob, name) {
   const url = URL.createObjectURL(blob), a = document.createElement("a");
   a.href = url;
   a.download = name;
-  a.textContent = "Descargar clip pendiente: " + name;
+  a.className = blob.type.startsWith("image/") ? "download-link" : "download-link pending-evidence";
+  a.textContent = (blob.type.startsWith("image/") ? "Descargar fotograf\xEDa: " : "Clip pendiente \xB7 descargar: ") + name;
   $("clips").prepend(a);
   a.click();
 }
 async function renderClips() {
   clipURLs.forEach(URL.revokeObjectURL);
   clipURLs = [];
-  $("clips").replaceChildren();
+  const pending = [...$("clips").children].filter((el) => el.tagName === "A");
+  $("clips").replaceChildren(...pending);
   const clips = await store("clips", "getAll");
   clips.sort((a, b) => b.id - a.id).forEach((c) => {
     const card = document.createElement("div");
@@ -213,13 +215,11 @@ async function renderClips() {
     };
     const del = document.createElement("button");
     del.textContent = "Eliminar";
-    del.onclick = async () => {
-      if (confirm("\xBFEliminar este clip?")) {
-        await store("clips", "delete", c.id);
-        renderClips();
-        storage();
-      }
-    };
+    del.onclick = () => authorizeLocalAction("Eliminar grabaci\xF3n", async () => {
+      await store("clips", "delete", c.id);
+      await renderClips();
+      await storage();
+    });
     card.append(p, v, a, star, del);
     $("clips").append(card);
   });
@@ -365,6 +365,7 @@ async function torch(on) {
   } catch (e) {
     $("torch").checked = false;
     $("torch").disabled = true;
+    $("torchInfo").textContent = "Linterna no disponible: " + e.message;
     error("Linterna no controlable: " + e.message);
   }
 }
@@ -604,7 +605,7 @@ async function startRecording(reason) {
       } catch (e) {
         state.storageFailed = true;
         error(
-          "No se ha guardado el clip: " + e.message + ". Desc\xE1rgalo ahora.",
+          "No se ha guardado el clip: " + e.message + ". Tienes la descarga pendiente en Actividad.",
           "p\xE9rdida"
         );
         if (blob.size)
@@ -1174,7 +1175,7 @@ function requestPin(title, options = {}) {
     };
     input.oninput = () => input.value = input.value.replace(/\D/g, "").slice(0, 12);
     card.append(heading, hint, input, keys, accept);
-    if (state.armed) {
+    if (state.armed || state.alarm || state.warningPending || activeAudio && !mediaAudio.paused) {
       const silence = document.createElement("button");
       silence.type = "button";
       silence.id = "pinSilence";
@@ -1316,13 +1317,11 @@ overlay.onpointerup = async () => {
   }
 };
 $("filter").onchange = renderEvents;
-$("clearLog").onclick = () => {
-  if (confirm("\xBFBorrar historial de eventos?")) {
-    events = [];
-    localStorage.removeItem("security-events");
-    renderEvents();
-  }
-};
+$("clearLog").onclick = () => authorizeLocalAction("Borrar historial", () => {
+  events = [];
+  localStorage.removeItem("security-events");
+  renderEvents();
+});
 let builtInSound;
 async function loadSounds() {
   if (!builtInSound)
@@ -1530,18 +1529,18 @@ function renderProtection() {
     title.textContent = "Sonido interrumpido";
     hint.textContent = "Toca Reactivar sonido. Safari ha suspendido el audio.";
   } else if (state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone) {
-    title.textContent = "Tu entrada est\xE1 protegida";
+    title.textContent = "Vigilancia activa";
     hint.textContent = $("alarmSource").value === "person" ? "Personas \u2192 aviso de voz \u2192 sirena si permanecen." : "Movimiento \u2192 aviso de voz \u2192 sirena si contin\xFAa.";
   } else if (state.armed) {
     title.textContent = "Vigilancia sin alarma";
     hint.textContent = "Este modo detecta, pero no activa la sirena. Usa Proteger esta imagen para habilitarla.";
   } else {
-    title.textContent = "Protecci\xF3n desactivada";
-    hint.textContent = state.persons.length ? "Se ve una persona, pero la alarma est\xE1 desactivada." : "La c\xE1mara puede estar encendida sin tener la alarma activada.";
+    title.textContent = "Sistema desarmado";
+    hint.textContent = state.persons.length ? "Se ve una persona, pero la alarma est\xE1 desactivada." : "Arma el sistema para activar la detecci\xF3n y la respuesta.";
   }
   $("protect").disabled = protecting;
-  $("protect").textContent = protecting ? "PREPARANDO\u2026" : state.armed ? "DESACTIVAR PROTECCI\xD3N" : "PROTEGER ESTA IMAGEN";
-  if (state.armed && !audioReady) $("protect").textContent = "REACTIVAR SONIDO";
+  $("protect").textContent = protecting ? "Preparando\u2026" : state.armed ? "Desarmar" : "Armar sistema";
+  if (state.armed && !audioReady) $("protect").textContent = "Activar sonido";
 }
 $("protect").onclick = async () => {
   if (protecting) return;
@@ -1633,7 +1632,7 @@ $("testSpeaker").onclick = async () => {
   $("speakerStatus").textContent = "Preparando prueba\u2026";
   if (await enableAudio()) {
     const played = await sound("warning");
-    $("speakerStatus").textContent = played ? "El aviso est\xE1 reproduci\xE9ndose. \xBFLo escuchas por el altavoz? Si no, desactiva Silencio y revisa la salida Bluetooth/AirPlay." : "No ha comenzado. Revisa el error de audio.";
+    $("speakerStatus").textContent = played ? "El aviso est\xE1 reproduci\xE9ndose. \xBFLo escuchas por el altavoz? Si no, desactiva Silencio y revisa la salida Bluetooth/AirPlay." : "No ha comenzado: " + $("error").textContent;
   } else
     $("speakerStatus").textContent = "Safari ha bloqueado la prueba. Toca otra vez para autorizarla.";
 };

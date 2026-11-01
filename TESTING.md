@@ -52,3 +52,9 @@ Las capturas se inspeccionaron en un viewport móvil de 390 px. No hay bypass de
 Se añaden tests locales de PostgreSQL/RLS con PGlite, de la función Edge con Auth/RLS simulados y del cliente real Supabase con HTTP de fixture. Comprueban aislamiento de cuentas, denegación a anónimos/cuentas deshabilitadas, secreto TURN fuera del cliente, credenciales efímeras, rechazo de claves privadas en UI, sesión en memoria y error explícito si falta TURN. No se ha aplicado SQL ni desplegado ninguna función en un Supabase real; el vídeo exterior y las políticas de Realtime del servicio siguen sin verificar.
 
 Resultado de esta fase Supabase: pasaron 3 pruebas Node (políticas PostgreSQL y 2 casos de función Edge), la prueba del SDK con respuestas HTTP controladas y las regresiones de PIN, protección con audio/sirena, reproducción multimedia e Inicio. No se han ejecutado migraciones ni funciones en un proyecto remoto.
+
+## Sustitución completa por interfaz de aplicación
+
+La suite actual se ejecuta con `npm test`: app_interface (bienvenida, perfil local, cámaras, formularios y grabación real), security (PIN), protect (detección real con vídeo controlado → audio completo → sirena), media_audio (multimedia y errores), people (carga/inferencia real de modelo local) y app_storage (fallo de IndexedDB inyectado con clip codificado y descarga pendiente que sobrevive al refresco de evidencias).
+
+Se mantuvo el motor y se reemplazaron pantallas, estilos y navegación. El perfil editable se guarda localmente; el acceso Supabase real se prueba con el SDK y HTTP de fixture. No se realiza sincronización de nombres de perfil. El vídeo exterior sigue sin validar por las limitaciones registradas anteriormente. El iPhone real continúa siendo una comprobación pendiente.

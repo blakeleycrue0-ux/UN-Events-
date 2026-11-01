@@ -3,6 +3,7 @@ let cloudClient = null, cloudUser = null, cloudSDKPromise = null;
 let cloudVisibleUser = null;
 function cloudStatus(text) {
   $("supabaseStatus").textContent = text;
+  document.dispatchEvent(new Event("security:cloud"));
 }
 function updateSupabaseUI() {
   const current = (cloudUser == null ? void 0 : cloudUser.id) || null;
@@ -15,8 +16,9 @@ function updateSupabaseUI() {
   $("supabaseUrl").disabled = !!cloudUser;
   $("supabasePublicKey").disabled = !!cloudUser;
   const cloud = $("remoteProvider").value === "supabase", host = $("remoteRole").value === "camera";
-  $("supabasePanel").hidden = !cloud;
-  $("signalUrl").closest("label").hidden = cloud;
+  $("supabasePanel").hidden = false;
+  if ($("signalUrl").closest("label"))
+    $("signalUrl").closest("label").hidden = cloud;
   $("hostCredentials").hidden = cloud || !host;
   $("viewerCredentials").hidden = cloud || host;
   $("supabaseLoginFields").hidden = !!cloudUser;
@@ -26,6 +28,10 @@ function updateSupabaseUI() {
   $("supabaseAccountStatus").textContent = cloudUser ? "Sesi\xF3n iniciada con tu cuenta." : "";
 }
 function publicSupabaseConfig() {
+  if (!$("supabaseUrl").value.trim())
+    throw Error(
+      "El servicio de cuentas a\xFAn no est\xE1 conectado. Config\xFAralo en Conexi\xF3n del servicio."
+    );
   const url = new URL($("supabaseUrl").value.trim());
   if (url.protocol !== "https:" || !/^[-a-z0-9]+\.supabase\.co$/i.test(url.hostname) || url.username || url.password || url.search || url.hash || url.pathname !== "/")
     throw Error("Usa la URL HTTPS p\xFAblica del proyecto Supabase.");
@@ -69,7 +75,6 @@ $("remoteProvider").onchange = () => {
   disconnectRemote();
   updateRemoteRole();
 };
-$("supabasePanel").before($("remoteRole").closest("label"));
 try {
   const config = JSON.parse(
     localStorage.getItem("supabase-public-config") || "null"
@@ -102,13 +107,21 @@ $("supabaseLogin").onclick = async () => {
       email: $("supabaseEmail").value.trim(),
       password
     });
-    if (err || !data.user)
-      throw Error((err == null ? void 0 : err.message) || "No se pudo iniciar sesi\xF3n");
+    if (err || !data.user) {
+      const messages = {
+        invalid_credentials: "Email o contrase\xF1a incorrectos.",
+        email_not_confirmed: "Confirma tu email antes de entrar.",
+        over_request_rate_limit: "Demasiados intentos. Espera un momento y vuelve a probar."
+      };
+      throw Error(
+        messages[err == null ? void 0 : err.code] || "No se pudo iniciar sesi\xF3n. Revisa tu conexi\xF3n y la configuraci\xF3n del servicio."
+      );
+    }
     const membership = await cloudClient.from("remote_memberships").select("enabled").eq("user_id", data.user.id).single();
     if (membership.error || !((_a = membership.data) == null ? void 0 : _a.enabled)) {
       await cloudClient.auth.signOut({ scope: "local" });
       throw Error(
-        "La cuenta a\xFAn no tiene acceso remoto habilitado. Aplica el SQL y autoriza tu usuario en Supabase."
+        "La cuenta a\xFAn no tiene acceso a c\xE1maras. Revisa su autorizaci\xF3n en el servicio."
       );
     }
     cloudUser = data.user;
