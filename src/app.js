@@ -97,8 +97,8 @@ function error(message, type = "cámara") {
   $("error").textContent = message;
   log(type, message);
 }
-function log(type, message) {
-  const e = { type, message, time: Date.now() };
+function log(type, message, context = {}) {
+  const e = { ...context, type, message, time: Date.now() };
   events.unshift(e);
   events = events.slice(0, 500);
   try {
@@ -107,13 +107,14 @@ function log(type, message) {
   renderEvents();
   document.dispatchEvent(new CustomEvent("security:event", { detail: e }));
 }
-function renderEvents() {
+function renderEvents(limit = 150) {
   $("events").replaceChildren();
   events
     .filter((e) => !$("filter").value || e.type === $("filter").value)
-    .slice(0, 150)
+    .slice(0, typeof limit === "number" ? limit : 150)
     .forEach((e) => {
       const li = document.createElement("li");
+      li.dataset.eventTime=String(e.time);
       li.textContent =
         new Date(e.time).toLocaleString() + " · " + e.type + " · " + e.message;
       $("events").append(li);
@@ -197,6 +198,7 @@ async function storage() {
   try {
     if (navigator.storage?.estimate) {
       const e = await navigator.storage.estimate();
+      state.storageEstimate=e;
       $("storage").textContent =
         `Uso del origen: ${(e.usage / 1048576).toFixed(1)} MB / ${(e.quota / 1048576).toFixed(0)} MB (cuota estimada, no garantía)`;
       $("storageBadge").textContent = `STORAGE · ${(e.usage / 1048576).toFixed(1)} MB` ;
@@ -259,11 +261,13 @@ async function renderClips() {
   const pending = [...$("clips").children].filter((el) => el.tagName === "A");
   $("clips").replaceChildren(...pending);
   const clips = await store("clips", "getAll");
+  state.clipSummary=clips.map(c=>({id:c.id,reason:c.reason,thumbnail:c.thumbnail,important:c.important,size:c.blob.size,eventId:c.eventId}));
   clips
     .sort((a, b) => b.id - a.id)
     .forEach((c) => {
       const card = document.createElement("div");
       card.className = "clip";
+      card.dataset.clipId=String(c.id);
       const p = document.createElement("p");
       p.textContent = new Date(c.id).toLocaleString() + " · " + c.reason;
       const v = document.createElement("video");
@@ -296,6 +300,7 @@ async function renderClips() {
       card.append(p, v, a, star, del);
       $("clips").append(card);
     });
+  document.dispatchEvent(new Event("security:clips"));
   storage();
 }
 function crop() {
@@ -388,7 +393,7 @@ function viewRect() {
 }
 function draw() {
   if (document.body.classList.contains("auth-pending")) return;
-  if (document.getElementById("cameraPage")?.hidden) return;
+  if ($("cameraPage").hidden && $("landingPage").hidden) return;
   const r = overlay.getBoundingClientRect();
   if (
     overlay.width !== Math.round(r.width) ||
@@ -543,7 +548,7 @@ async function startCamera() {
     state.started = Date.now();
     state.previous = null;
     state.storageFailed = false;
-    $("cameraMessage").textContent = "Cámara local · sin micrófono";
+    $("cameraMessageDetail").textContent = "Cámara local · sin micrófono";
     $("live").textContent = "LIVE";
     $("live").className = "active";
     $("camera").textContent = "Detener cámara";
@@ -592,7 +597,7 @@ async function stopCamera(invalidate = true) {
   $("live").textContent = "SIN CÁMARA";
   $("live").className = "";
   $("camera").textContent = "Iniciar cámara";
-  $("cameraMessage").textContent = "Cámara detenida · sin captura";
+  $("cameraMessageDetail").textContent = "Cámara detenida · sin captura";
   $("health").textContent = "";
   $("eventLight").disabled = true;
   $("alarmFlash").disabled = true;
@@ -699,7 +704,7 @@ async function startRecording(reason, episode = null) {
       $("record").textContent = "Detener grabación";
       renderSurveillanceStatus();
       if (episode) state.recordStartMS = Date.now()-episode.started;
-      log("grabación", "Iniciada: " + reason);
+      log("grabación", "Iniciada: " + reason,{clipId:id});
     };
     current.onstop = async () => {
       state.recordFinalizing = true;
@@ -715,10 +720,11 @@ async function startRecording(reason, episode = null) {
           id,
           blob,
           reason: episode?.kind || reason,
+          eventId: episode?.started || null,
           thumbnail,
           important: false,
         });
-        log("grabación", "Finalizada y guardada: " + reason);
+        log("grabación", "Finalizada y guardada: " + (episode?.kind || reason),{clipId:id});
         await renderClips();
       } catch (e) {
         state.storageFailed = true;
@@ -1047,7 +1053,7 @@ function detected(type) {
     const episode = state.episode;
     if (episode.kind !== "persona detectada") {
       episode.kind = "persona detectada";
-      log("persona", "Persona confirmada en el evento de movimiento");
+      log("persona", "Persona confirmada en el evento de movimiento",{eventId:episode.started});
       if (episode.clipID && !state.recording) {
         store("clips", "get", episode.clipID).then(async clip => {
           if (clip) { clip.reason = episode.kind; await store("clips", "put", clip); await renderClips(); }
@@ -1061,7 +1067,7 @@ function detected(type) {
   if (state.episode) return;
   const episode = state.episode = { started: Date.now(), kind:
     type === "persona" || personFresh() ? "persona detectada" : "movimiento detectado" };
-  log(episode.kind.startsWith("persona") ? "persona" : "movimiento", episode.kind + " en zona de vigilancia");
+  log(episode.kind.startsWith("persona") ? "persona" : "movimiento", episode.kind + " en zona de vigilancia",{eventId:episode.started});
   if (Date.now() < (state.recordCooldownUntil || 0)) {
     episode.recordAttempted = true;
     log("grabación", "Evento registrado sin clip: cooldown activo");
@@ -1333,17 +1339,24 @@ $("photo").onclick = () => {
     0.9,
   );
 };
+function exitExpandedVideo() {
+  document.body.classList.remove("video-expanded");
+  $("exitExpanded").hidden=true;
+  if(document.fullscreenElement) document.exitFullscreen?.();
+  requestAnimationFrame(draw);
+}
 $("fullscreen").onclick = async () => {
+  if(!state.stream) return error("Inicia la cámara para ampliar la imagen.");
+  if(document.fullscreenElement || document.body.classList.contains("video-expanded")) return exitExpandedVideo();
   try {
-    if ($("stage").requestFullscreen) await $("stage").requestFullscreen();
-    else
-      error(
-        "Pantalla completa no disponible en este Safari. Usa Ocultar controles.",
-      );
-  } catch (e) {
-    error(e.message);
-  }
+    if($("stage").requestFullscreen) await $("stage").requestFullscreen();
+    else document.body.classList.add("video-expanded");
+  } catch { document.body.classList.add("video-expanded"); }
+  $("exitExpanded").hidden=false;
+  requestAnimationFrame(draw);
 };
+$("exitExpanded").onclick=exitExpandedVideo;
+document.addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement) exitExpandedVideo();});
 $("hide").onclick = () => {
   document.body.classList.add("hidden-controls");
   $("unlock").textContent = "Mostrar controles";
@@ -1439,7 +1452,11 @@ function requestPin(title, options = {}) {
     };
     input.oninput = () =>
       (input.value = input.value.replace(/\D/g, "").slice(0, 12));
-    card.append(heading, hint, input, keys, accept);
+    const pinBrand=document.createElement("div");pinBrand.className="pin-brand";
+    pinBrand.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m12 2 5 10M21 7H10m11 10-5-10m-4 15L7 12M3 17h11M3 7l5 10"/></svg><span>SECURITY CAM</span>';
+    const pinEmblem=document.createElement("div");pinEmblem.className="pin-emblem";
+    pinEmblem.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 2 8 3v6c0 5-4 8-8 11-4-3-8-6-8-11V5Zm-4 9 3 3 5-6"/></svg>';
+    card.append(pinBrand,pinEmblem,heading, hint, input, keys, accept);
     if (
       state.armed ||
       state.alarm ||

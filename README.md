@@ -1,11 +1,11 @@
 # SECURITY CAM
 
-Aplicación local de vigilancia por eventos, orientada a Safari en un iPhone 14 fijo. Cámara nativa en directo, interfaz azul suave, acceso por PIN local, sin micrófono y sin grabación continua. Se ha retirado el login con cuenta. Los clips y el historial permanecen en este navegador. No se necesita una base de datos remota para vigilar o guardar clips.
+Aplicación local de vigilancia por eventos, orientada a Safari en un iPhone 14 fijo. Cámara nativa en directo, interfaz carbón con tarjetas translúcidas, acceso por PIN local, sin micrófono y sin grabación continua. Se ha retirado el login con cuenta. Los clips y el historial permanecen en este navegador. No se necesita una base de datos remota para vigilar o guardar clips.
 
 ## Uso
 
-1. Crea y confirma tu PIN local, o desbloquea con él. El PIN protege controles; no cifra las grabaciones. Al recargar se conserva la configuración, pero debes iniciar y armar de nuevo: nunca se reactiva vigilancia a espaldas de la pantalla de acceso. La cuenta opcional es independiente.
-2. Abre Cámaras → este dispositivo. Inicia la cámara para encuadrar sin detectar ni grabar automáticamente.
+1. Crea y confirma tu PIN local, o desbloquea con él. El PIN protege controles; no cifra las grabaciones. Al recargar se conserva la configuración, pero debes iniciar y armar de nuevo: nunca se reactiva vigilancia a espaldas de la pantalla de acceso.
+2. Inicio muestra el centro de control: vídeo real, tu cámara, eventos recientes y estado local. Pulsa Iniciar cámara para encuadrar sin detectar ni grabar automáticamente. El mismo flujo nativo se reutiliza en Inicio y Cámaras, sin pedir otro permiso ni crear una segunda captura.
 3. Abre Dibujar zona: inicia la cámara si estaba apagada y muestra un editor ampliado. Dibuja con el dedo, mueve el rectángulo o ajusta las esquinas y pulsa Guardar zona. Cancelar conserva la anterior. Puedes volver a imagen completa. La detección se pausa mientras editas; al salir conserva el estado armado anterior. Una máscara privada oculta parte de la imagen, incluidos clips procesados y fotos.
 4. Elige un modo y pulsa **Armar sistema**, confirmando el PIN:
    - **Silenciosa**: detecta y guarda clips sin avisos ni sirena.
@@ -13,7 +13,15 @@ Aplicación local de vigilancia por eventos, orientada a Safari en un iPhone 14 
    - **Alarma**: lo mismo, con sirena y/o voz automáticas expresamente habilitadas; linterna solo si existe soporte.
    - **Desarmado**: pulsa Desarmar y confirma PIN. Conserva la cámara, detiene análisis y grabación automática. Desarmar interrumpe un clip en curso y guarda lo capturado.
 5. Movimiento y personas pueden iniciar episodios de forma independiente, también cuando ambos están activados. Una persona confirmada mejora la clasificación de un episodio de movimiento existente sin duplicarlo. La IA es local y se carga al armar con ella habilitada.
-6. Actividad permite reproducir, descargar, marcar importante y eliminar clips, y consultar el historial. Los fallos de guardado conservan una descarga pendiente en memoria y bloquean grabaciones posteriores hasta reiniciar la cámara. Descarga antes de recargar o cerrar.
+6. Eventos y Clips tienen accesos separados en la navegación inferior. Permiten consultar el historial y reproducir, descargar, marcar importante y eliminar grabaciones. La búsqueda de Inicio encuentra cámara, eventos y clips locales, con o sin tildes. Las miniaturas de eventos se enlazan por ID al clip real; los eventos antiguos sin vínculo no reciben una imagen inventada. Los fallos de guardado conservan una descarga pendiente en memoria y bloquean grabaciones posteriores hasta reiniciar la cámara. Descarga antes de recargar o cerrar.
+
+## Centro de control y diseño
+
+La referencia visual proporcionada se aplica con fondo carbón, superficies translúcidas, bordes discretos, controles compactos, navegación inferior de cinco secciones y un PIN con teclado a juego. No hay reloj/batería de iOS simulados, cámaras de demostración ni fotos de viviendas presentadas como señal real. La cámara apagada muestra una llamada explícita a iniciarla; no se enciende al entrar.
+
+Desde Inicio se puede armar/desarmar con el mismo PIN, tomar una fotografía, grabar un clip manual, detener cámara y ampliar la imagen. Safari sin Fullscreen API usa una vista ampliada CSS con botón Volver. La cuota de almacenamiento solo se muestra como estimación real del navegador; si falta la API, se muestran bytes conocidos de clips y cuota no disponible. No se declara que todo el sistema esté operativo cuando cámara o almacenamiento tienen problemas.
+
+Ajustes conserva perfil local y seguridad y enlaza a configuración de cámara, zona y detección. Al bloquear la aplicación, el visor se oculta detrás del PIN; el funcionamiento en primer plano conserva los límites de Safari descritos abajo.
 
 ## Ciclo de evento
 
