@@ -163,3 +163,8 @@ El visor vinculado recibe el estado de la cámara cada 2 s y puede enviar tres �
 ## Jarvis en la portada y cámara en /camara — 2026-11-01
 
 La app de vigilancia pasa a `camara.html` (`/camara` en Netlify) sin cambios de funcionamiento; las pruebas usan esa ruta y siguen pasando. Los enlaces de invitación antiguos a la portada se redirigen a `/camara`. `tests/jarvis.py`: los modelos reales de caras cargan y analizan la cámara sintética sin pedir micrófono; órdenes de hora, día, temporizador (aviso real a 1 s), chistes y dispositivos aún no conectados; registro de cara, saludo una vez por llegada y ninguno a desconocidos con un detector controlado; persistencia y borrado; redirección de invitaciones. No hay foto real de una cara en las pruebas: la precisión del reconocimiento facial y el reconocimiento de voz de Safari solo se validan en el iPhone.
+
+
+## Jarvis: diseño de cristal, voz ElevenLabs y escucha robusta — 2026-11-01
+
+Portada rediseñada (negro, cuadrícula, burbuja de cristal que flota, escucha y habla; se toca para hablar). Voz con ElevenLabs mediante la función `jarvis-voice`, que guarda la clave del proveedor en Supabase y exige una clave privada de Jarvis. `tests/jarvis_voice.test.mjs` cubre origen, clave, longitud de texto, errores del proveedor y que la clave nunca vuelve al navegador. `tests/jarvis.py` simula ElevenLabs y un reconocedor que se cuelga: respuesta normal, reconocedor sin evento final, silencio, micrófono denegado y cancelación; en todos la burbuja vuelve a reposo. El modelo de caras se pausa mientras escucha o habla. Sin probar todavía con la cuenta real de ElevenLabs ni en Safari del iPhone.

@@ -1,6 +1,7 @@
 "use strict";
-// Jarvis: a room assistant that runs entirely in this browser. Face templates
-// stay in localStorage on this device; nothing is uploaded.
+// Jarvis: a room assistant that runs in this browser. Face templates stay in
+// localStorage on this device. Replies are spoken with ElevenLabs through a
+// Supabase function that keeps the provider key on the server.
 (() => {
   // Old pairing links pointed at the home page; the camera app now lives at /camara.
   const toCamera = () => {
@@ -10,6 +11,7 @@
   };
   window.addEventListener("hashchange", toCamera);
   if (toCamera()) return;
+
   const $ = (id) => document.getElementById(id);
   const store = {
     get(key, fallback) {
@@ -20,15 +22,18 @@
       try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
     },
   };
-  const settings = Object.assign({ name: "Crew", facing: "user", greet: true }, store.get("jarvis-settings", {}));
+  const settings = Object.assign({ name: "Crew", facing: "user", greet: true, typing: false, key: "" }, store.get("jarvis-settings", {}));
+  const save = () => store.set("jarvis-settings", settings);
   const jarvis = window.jarvis = {
     started: false, stream: null, detector: null, faces: store.get("jarvis-faces", []),
-    threshold: 0.55, absenceMS: 5 * 60000, lastSeen: 0, present: false, busy: false,
-    enrolling: null, loop: null, wakeLock: null, timers: [],
+    threshold: 0.55, absenceMS: 5 * 60000, lastSeen: 0, busy: false, enrolling: null,
+    loop: null, wakeLock: null, timers: [], speaking: false, listening: false, voiceError: "",
   };
 
   // ---------- Pantalla ----------
-  function setOrb(state) { $("orb").dataset.state = state; }
+  let mood = "off";
+  function setState(state) { mood = state; document.body.dataset.state = state; }
+  const rest = () => setState(jarvis.started ? "idle" : "off");
   function show(text) { $("say").textContent = text; }
   function tickClock() {
     const now = new Date();
@@ -38,28 +43,77 @@
   }
   tickClock(); setInterval(tickClock, 1000);
 
-  // ---------- Voz ----------
-  let voice = null;
-  function pickVoice() {
-    if (!("speechSynthesis" in window)) return;
-    const voices = speechSynthesis.getVoices();
-    voice = voices.find((v) => /^es[-_]ES/i.test(v.lang)) || voices.find((v) => /^es/i.test(v.lang)) || null;
+  // ---------- Voz (ElevenLabs) ----------
+  const audio = new Audio();
+  audio.preload = "auto";
+  let speechId = 0, endSpeech = null;
+  // A tiny silent WAV played inside the first tap unlocks audio on iPhone.
+  function silentUrl() {
+    const b = new ArrayBuffer(46), v = new DataView(b), w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); v.setUint32(4, 38, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, 2, true);
+    return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
   }
-  if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-  function speak(text) {
-    show(text);
-    if (!("speechSynthesis" in window)) return Promise.resolve();
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = () => { if (done) return; done = true; setOrb(jarvis.started ? "idle" : "off"); resolve(); };
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "es-ES"; if (voice) u.voice = voice; u.rate = 1.02;
-      u.onend = finish; u.onerror = finish;
-      setOrb("speaking");
-      speechSynthesis.speak(u);
-      setTimeout(finish, 4000 + text.length * 90); // Safari sometimes never fires onend.
+  function unlockAudio() { audio.src = silentUrl(); audio.play().catch(() => {}); }
+  const voiceEndpoint = () => {
+    const c = window.SECURITY_SUPABASE_PUBLIC;
+    return c?.url ? c.url + "/functions/v1/jarvis-voice" : "";
+  };
+  async function voiceBlob(text) {
+    const cacheable = !/\d/.test(text) && "caches" in window;
+    const keyUrl = location.origin + "/__jarvis-voice?" + encodeURIComponent(text);
+    let cache;
+    if (cacheable) {
+      try { cache = await caches.open("jarvis-voice-v1"); const hit = await cache.match(keyUrl); if (hit) return await hit.blob(); } catch {}
+    }
+    if (!settings.key) throw Error("Falta la clave de Jarvis en Ajustes.");
+    const c = window.SECURITY_SUPABASE_PUBLIC;
+    const response = await fetch(voiceEndpoint(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-jarvis-key": settings.key, apikey: c.key },
+      body: JSON.stringify({ text }),
     });
+    if (!response.ok) {
+      let error = ""; try { error = (await response.json()).error || ""; } catch {}
+      throw Error({
+        401: "La clave de Jarvis no coincide con la de Supabase.",
+        428: "Falta configurar la voz en Supabase.",
+      }[response.status] || (/quota/.test(error) ? "Se han acabado los créditos de ElevenLabs este mes." : "La voz no está disponible ahora."));
+    }
+    const blob = await response.blob();
+    if (cache) { try { await cache.put(keyUrl, new Response(blob, { headers: { "Content-Type": "audio/mpeg" } })); } catch {} }
+    return blob;
+  }
+  function stopSpeaking() {
+    speechId++; audio.pause(); endSpeech?.(); jarvis.speaking = false;
+    if (mood === "speaking" || mood === "thinking") rest();
+  }
+  async function speak(text) {
+    const id = ++speechId;
+    audio.pause();
+    show(text);
+    setState("thinking");
+    let url;
+    try {
+      url = URL.createObjectURL(await voiceBlob(text));
+      jarvis.voiceError = "";
+    } catch (e) {
+      jarvis.voiceError = e.message; $("voiceInfo").textContent = e.message;
+      if (id === speechId) rest();
+      return;
+    }
+    if (id !== speechId) { URL.revokeObjectURL(url); return; }
+    jarvis.speaking = true; setState("speaking");
+    await new Promise((resolve) => {
+      const done = () => { clearTimeout(guard); audio.onended = audio.onerror = null; endSpeech = null; resolve(); };
+      const guard = setTimeout(done, 30000);
+      audio.onended = audio.onerror = endSpeech = done;
+      audio.src = url;
+      audio.play().catch(done);
+    });
+    URL.revokeObjectURL(url);
+    if (id === speechId) { jarvis.speaking = false; rest(); }
   }
   jarvis.speak = speak;
 
@@ -106,14 +160,14 @@
       const unit = timer[2].startsWith("seg") ? 1000 : timer[2].startsWith("hora") ? 3600000 : 60000;
       const ms = timer[1] === "media" && unit === 3600000 ? 1800000 : n * unit;
       if (!ms || ms > 6 * 3600000) return "No he entendido el tiempo del temporizador.";
-      jarvis.timers.push(setTimeout(() => speak(`¡${settings.name}, se acabó el tiempo!`), ms));
+      jarvis.timers.push(setTimeout(() => speak(`${settings.name}, se acabó el tiempo.`), ms));
       return `Vale, te aviso en ${timer[1] === "media" ? "media hora" : n + " " + timer[2]}.`;
     }
     const device = devices.find((d) => d.names.some((n) => has(text, n.split(" ")[0]) && text.includes(n)));
     if (device) {
       const off = has(text, "apaga", "apagar", "desconecta", "quita");
       if (device.connected && device[off ? "off" : "on"]) { device[off ? "off" : "on"](); return `Hecho, ${off ? "apago" : "enciendo"} ${device.label}.`; }
-      return `Todavía no puedo controlar ${device.label}. Cuando tengamos el mando universal wifi, lo conecto.`;
+      return `Todavía no puedo controlar ${device.label}. Cuando tengamos el mando universal, lo conecto.`;
     }
     if (/me voy|salgo de casa|modo fuera/.test(text))
       return `Hasta luego, ${settings.name}. Cuando instalemos el láser de la puerta, vigilaré mientras no estás.`;
@@ -124,7 +178,7 @@
     if (/como te llamas|quien eres/.test(text)) return "Soy Jarvis, el asistente de tu cuarto.";
     if (/como estas|que tal/.test(text)) return "Funcionando al cien por cien. ¿Y tú?";
     if (/que (puedes|sabes) hacer|ayuda|comandos/.test(text))
-      return "Puedo decirte la hora y el día, poner temporizadores, contarte un chiste y saludarte al verte. Pronto controlaré tus luces, el aire, el ventilador y la Play.";
+      return "Te digo la hora y el día, pongo temporizadores, cuento chistes y te saludo al verte. Pronto controlaré tus luces, el aire, el ventilador y la Play.";
     return "No te he entendido. Prueba a decir: qué puedes hacer.";
   }
   jarvis.handle = handle;
@@ -134,34 +188,45 @@
   }
 
   // ---------- Escuchar ----------
+  // Safari's recognizer can stall without ever firing "end": every path below
+  // has its own timer, so the bubble always comes back.
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognition = null, listening = false;
+  let recognition = null, finishListening = null;
+  jarvis.listenLimits = { silenceMS: 1300, noSpeechMS: 7000, maxMS: 12000 };
   function listen() {
-    if (listening) { recognition?.stop(); return; }
-    if (!Recognition) { $("typeForm").hidden = false; $("typeInput").focus(); return; }
-    window.speechSynthesis?.cancel();
-    recognition = new Recognition();
-    recognition.lang = "es-ES"; recognition.interimResults = true; recognition.maxAlternatives = 1;
-    let finalText = "";
-    recognition.onresult = (e) => {
-      const text = Array.from(e.results).map((r) => r[0].transcript).join(" ");
-      $("heard").textContent = text;
-      if (e.results[e.results.length - 1].isFinal) finalText = text;
+    if (jarvis.listening) { finishListening?.(); return; }
+    if (!Recognition) { $("typeForm").hidden = false; $("typeInput").focus(); show("Este navegador no me deja escucharte. Escríbeme abajo."); return; }
+    stopSpeaking();
+    const started = Date.now();
+    let text = "", lastChange = started, failure = "", ended = false;
+    const rec = recognition = new Recognition();
+    rec.lang = "es-ES"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    const finish = finishListening = () => {
+      if (ended) return; ended = true;
+      clearInterval(watch); finishListening = null;
+      try { rec.abort(); } catch {}
+      jarvis.listening = false; rest();
+      if (text.trim()) void respond(text.trim());
+      else if (/not-allowed|service-not-allowed/.test(failure)) {
+        show("Necesito permiso para el micrófono. Revisa Safari y que Siri esté activado.");
+      } else show("No te he oído. Toca la burbuja y habla.");
     };
-    recognition.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        show("No tengo permiso para el micrófono. Puedes escribirme abajo.");
-        $("typeForm").hidden = false;
-      }
+    rec.onresult = (e) => {
+      const now = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
+      if (now !== text) { text = now; lastChange = Date.now(); $("heard").textContent = text; }
+      if (e.results[e.results.length - 1].isFinal) finish();
     };
-    recognition.onend = () => {
-      listening = false; $("talk").classList.remove("on"); setOrb("idle");
-      if (finalText || $("heard").textContent) void respond(finalText || $("heard").textContent);
-    };
-    listening = true; $("talk").classList.add("on"); setOrb("listening"); $("heard").textContent = "";
-    show("Te escucho…");
-    recognition.start();
+    rec.onerror = (e) => { failure = e.error || "error"; finish(); };
+    rec.onend = finish;
+    const limits = jarvis.listenLimits;
+    const watch = setInterval(() => {
+      const t = Date.now();
+      if ((text && t - lastChange > limits.silenceMS) || (!text && t - started > limits.noSpeechMS) || t - started > limits.maxMS) finish();
+    }, 200);
+    jarvis.listening = true; setState("listening"); $("heard").textContent = ""; show("Te escucho…");
+    try { rec.start(); } catch (e) { failure = e.message; finish(); }
   }
+  jarvis.listen = listen;
 
   // ---------- Cámara y caras ----------
   function loadScript(src) {
@@ -217,41 +282,36 @@
     });
     $("video").srcObject = jarvis.stream;
     $("preview").classList.toggle("back", settings.facing === "environment");
-    $("preview").hidden = false;
     await $("video").play().catch(() => {});
+    $("eye").hidden = false;
   }
   async function scan() {
     clearTimeout(jarvis.loop);
     if (!jarvis.started || document.hidden) return;
     const video = $("video");
-    if (!jarvis.busy && video.readyState >= 2) {
+    // Pause the face model while talking so the phone stays responsive.
+    const quiet = jarvis.listening || jarvis.speaking;
+    if (!jarvis.busy && !quiet && video.readyState >= 2) {
       jarvis.busy = true;
-      try {
-        const found = await jarvis.detector.detect(video);
-        onFaces(found);
-      } catch (e) { $("faceState").textContent = "Error: " + e.message; }
+      try { onFaces(await jarvis.detector.detect(video)); }
+      catch (e) { $("faceState").textContent = "Error: " + e.message; }
       finally { jarvis.busy = false; }
     }
-    jarvis.loop = setTimeout(scan, jarvis.enrolling ? 250 : 700);
+    jarvis.loop = setTimeout(scan, jarvis.enrolling ? 250 : 1000);
   }
   jarvis.scan = scan;
   function onFaces(found) {
     if (jarvis.enrolling) return enrollStep(found);
-    if (!found.length) {
-      $("faceState").textContent = jarvis.faces.length ? "Nadie a la vista" : "Registra tu cara en ⚙︎";
-      return;
-    }
-    if (!jarvis.faces.length) { $("faceState").textContent = "Veo una cara · regístrala en ⚙︎"; return; }
+    if (!found.length) { $("faceState").textContent = jarvis.faces.length ? "Nadie a la vista" : "Sin cara registrada"; return; }
+    if (!jarvis.faces.length) { $("faceState").textContent = "Veo una cara"; return; }
     const score = Math.max(...found.map((f) => bestMatch(f.embedding)));
     const now = Date.now();
     if (score >= jarvis.threshold) {
       $("faceState").textContent = `${settings.name} · ${Math.round(score * 100)}%`;
       const away = now - jarvis.lastSeen > jarvis.absenceMS;
       jarvis.lastSeen = now;
-      if (away && settings.greet && !listening) void speak(greeting());
-    } else {
-      $("faceState").textContent = "Persona desconocida";
-    }
+      if (away && settings.greet && !jarvis.listening) void speak(greeting());
+    } else $("faceState").textContent = "Persona desconocida";
   }
   // Enrolment keeps several samples of one clearly visible face.
   function enrollStep(found) {
@@ -263,15 +323,17 @@
     e.samples.push(found[0].embedding.map((x) => Math.round(x * 1e4) / 1e4));
     $("faceInfo").textContent = `Aprendiendo tu cara… ${e.samples.length}/5`;
     if (e.samples.length >= 5) {
-      jarvis.faces = e.samples; jarvis.enrolling = null;
+      jarvis.faces = e.samples; endEnroll();
       if (!store.set("jarvis-faces", jarvis.faces)) $("faceInfo").textContent = "No se pudo guardar en este navegador.";
       else { renderFaceInfo(); jarvis.lastSeen = Date.now(); void speak(`Encantado, ${settings.name}. Ya te reconozco.`); }
-      $("preview").classList.remove("big");
-      document.querySelector(".room").append($("preview"));
     }
   }
+  function endEnroll() {
+    jarvis.enrolling = null;
+    $("preview").classList.add("stash"); document.body.append($("preview"));
+  }
   function renderFaceInfo() {
-    $("faceInfo").textContent = jarvis.faces.length ? "Tu cara está registrada. Te saludaré al verte." : "Todavía no has registrado tu cara.";
+    $("faceInfo").textContent = jarvis.faces.length ? "Registrada. Te saludaré al verte." : "Sin registrar.";
     $("forget").hidden = !jarvis.faces.length;
     $("enroll").textContent = jarvis.faces.length ? "Volver a registrar" : "Registrar mi cara";
   }
@@ -280,54 +342,62 @@
   async function keepAwake() {
     try { if (navigator.wakeLock && !document.hidden) jarvis.wakeLock = await navigator.wakeLock.request("screen"); } catch {}
   }
+  let starting = false;
   async function start() {
-    $("start").disabled = true;
-    // Safari only lets a page speak after a tap: say hello inside this tap.
-    void speak("Iniciando Jarvis.");
-    setOrb("thinking");
+    if (starting) return;
+    starting = true;
+    unlockAudio(); // must happen inside the tap
+    setState("thinking"); show("Despertando…");
     try {
       await startCamera();
-      show("Cargando reconocimiento de caras…");
       jarvis.detector = jarvis.detector || await jarvis.createDetector();
       jarvis.started = true;
-      $("start").hidden = true; $("talk").hidden = false;
-      if (!Recognition) $("typeForm").hidden = false;
-      setOrb("idle");
+      rest();
       await keepAwake();
-      show(jarvis.faces.length ? "Listo. Te saludaré cuando te vea." : "Listo. Registra tu cara en ⚙︎ para que te reconozca.");
       void scan();
+      if (!settings.key) show("Listo. Pon la clave de voz en ⚙︎ para que te hable.");
+      else void speak(jarvis.faces.length ? `Hola, ${settings.name}. Estoy listo.` : `Hola. Registra tu cara en ajustes para que te reconozca.`);
     } catch (e) {
-      setOrb("off");
-      show(e.name === "NotAllowedError" ? "Necesito permiso para la cámara. Actívalo en Safari y vuelve a pulsar Empezar." : "No he podido arrancar: " + e.message);
-      $("start").disabled = false;
-    }
+      setState("off");
+      show(e.name === "NotAllowedError" ? "Necesito la cámara. Permítela en Safari y toca otra vez." : "No he podido arrancar: " + e.message);
+    } finally { starting = false; }
   }
   jarvis.start = start;
 
-  $("start").onclick = start;
-  $("talk").onclick = listen;
+  $("bubble").onclick = () => (jarvis.started ? listen() : start());
   $("typeForm").onsubmit = (e) => {
     e.preventDefault();
     const value = $("typeInput").value.trim(); $("typeInput").value = "";
     if (value) void respond(value);
   };
-  $("openSettings").onclick = () => { $("name").value = settings.name; $("facing").value = settings.facing; $("greetOn").checked = settings.greet; renderFaceInfo(); $("settings").hidden = false; };
-  $("closeSettings").onclick = () => {
-    $("settings").hidden = true;
-    if (jarvis.enrolling) { jarvis.enrolling = null; document.querySelector(".room").append($("preview")); $("preview").classList.remove("big"); }
+  $("typeForm").hidden = !settings.typing;
+  $("openSettings").onclick = () => {
+    $("name").value = settings.name; $("facing").value = settings.facing; $("greetOn").checked = settings.greet;
+    $("showType").checked = settings.typing; $("voiceKey").value = settings.key;
+    $("voiceInfo").textContent = jarvis.voiceError || (settings.key ? "" : "Sin clave: Jarvis solo escribirá.");
+    renderFaceInfo(); $("settings").hidden = false;
   };
+  $("closeSettings").onclick = () => { $("settings").hidden = true; if (jarvis.enrolling) endEnroll(); };
   $("settings").onclick = (e) => { if (e.target === $("settings")) $("closeSettings").onclick(); };
-  $("name").onchange = () => { settings.name = $("name").value.trim() || "Crew"; store.set("jarvis-settings", settings); };
-  $("greetOn").onchange = () => { settings.greet = $("greetOn").checked; store.set("jarvis-settings", settings); };
+  $("name").onchange = () => { settings.name = $("name").value.trim() || "Crew"; save(); };
+  $("greetOn").onchange = () => { settings.greet = $("greetOn").checked; save(); };
+  $("showType").onchange = () => { settings.typing = $("showType").checked; save(); $("typeForm").hidden = !settings.typing; };
+  $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); save(); };
+  $("testVoice").onclick = async () => {
+    settings.key = $("voiceKey").value.trim(); save();
+    unlockAudio();
+    $("voiceInfo").textContent = "Probando…";
+    await speak(`Hola, ${settings.name}. Así sueno ahora.`);
+    $("voiceInfo").textContent = jarvis.voiceError || "Voz funcionando.";
+  };
   $("facing").onchange = async () => {
-    settings.facing = $("facing").value; store.set("jarvis-settings", settings);
+    settings.facing = $("facing").value; save();
     if (jarvis.started) { try { await startCamera(); } catch (e) { show("No se pudo cambiar de cámara: " + e.message); } }
   };
-  $("enroll").onclick = async () => {
-    if (!jarvis.started) { $("faceInfo").textContent = "Primero pulsa Empezar en la pantalla principal."; return; }
+  $("enroll").onclick = () => {
+    if (!jarvis.started) { $("faceInfo").textContent = "Primero toca la burbuja para despertar a Jarvis."; return; }
     jarvis.enrolling = { samples: [] };
-    $("preview").classList.add("big");
-    $("faceInfo").after($("preview"));
+    $("enrollSlot").append($("preview")); $("preview").classList.remove("stash");
     $("faceInfo").textContent = "Mira a la cámara…";
     void scan();
   };
@@ -336,7 +406,9 @@
     show("He borrado tu cara de este móvil.");
   };
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && jarvis.started) { void keepAwake(); void scan(); }
+    if (document.hidden) { if (jarvis.listening) finishListening?.(); return; }
+    if (jarvis.started) { void keepAwake(); void scan(); }
   });
+  setState("off");
   renderFaceInfo();
 })();

@@ -3,60 +3,67 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <meta name="theme-color" content="#05070c" />
+    <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Jarvis</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="jarvis.css" />
   </head>
-  <body>
-    <main class="room">
-      <header class="top">
-        <div>
+  <body data-state="off">
+    <div class="grid" aria-hidden="true"></div>
+
+    <button id="openSettings" class="corner" aria-label="Ajustes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <span id="eye" class="eye" hidden aria-label="Cámara activa"></span>
+
+    <main class="stage">
+      <button id="bubble" class="bubble" aria-label="Toca para hablar">
+        <span class="lens" aria-hidden="true"></span>
+        <span class="rim" aria-hidden="true"></span>
+        <span class="content">
           <time id="clock" class="clock">--:--</time>
-          <p id="date" class="date"></p>
-        </div>
-        <button id="openSettings" class="icon-button" aria-label="Ajustes">⚙︎</button>
-      </header>
-
-      <section class="core">
-        <div id="orb" class="orb" data-state="off" aria-hidden="true"><span></span></div>
-        <p id="say" class="say" aria-live="polite">Hola. Pulsa Empezar.</p>
-        <p id="heard" class="heard"></p>
-      </section>
-
-      <div id="preview" class="preview" hidden>
-        <video id="video" autoplay muted playsinline></video>
-        <span id="faceState" class="face-state">Buscando caras…</span>
-      </div>
-
-      <footer class="bottom">
-        <button id="start" class="primary">Empezar</button>
-        <button id="talk" class="talk" hidden aria-label="Hablar"><span>🎙️</span>Hablar</button>
-        <form id="typeForm" class="type-form" hidden>
-          <input id="typeInput" autocomplete="off" placeholder="Escribe una orden…" aria-label="Escribe una orden" />
-          <button class="small">Enviar</button>
-        </form>
-      </footer>
+          <span id="date" class="date"></span>
+        </span>
+      </button>
+      <p id="say" class="say" aria-live="polite">Toca la burbuja para empezar</p>
+      <p id="heard" class="heard"></p>
     </main>
+
+    <form id="typeForm" class="type-form" hidden>
+      <input id="typeInput" autocomplete="off" placeholder="Escríbeme…" aria-label="Escribe una orden" />
+    </form>
 
     <div id="settings" class="sheet" hidden>
       <div class="sheet-card">
-        <div class="sheet-head"><h2>Ajustes</h2><button id="closeSettings" class="icon-button" aria-label="Cerrar">✕</button></div>
+        <div class="sheet-head"><h2>Ajustes</h2><button id="closeSettings" class="corner static" aria-label="Cerrar">✕</button></div>
         <label>Tu nombre<input id="name" maxlength="30" autocomplete="off" /></label>
+
         <h3>Tu cara</h3>
-        <p id="faceInfo" class="muted">Todavía no has registrado tu cara.</p>
+        <p id="faceInfo" class="muted"></p>
+        <div id="enrollSlot"></div>
         <div class="row">
-          <button id="enroll" class="small">Registrar mi cara</button>
-          <button id="forget" class="small ghost">Borrar mi cara</button>
+          <button id="enroll" class="pill">Registrar mi cara</button>
+          <button id="forget" class="pill ghost">Borrar</button>
         </div>
-        <p class="muted">Ponte delante de la cámara, solo, con buena luz. Tu cara se guarda solo en este móvil.</p>
-        <label>Cámara<select id="facing"><option value="user">Delantera</option><option value="environment">Trasera</option></select></label>
-        <label class="check"><input id="greetOn" type="checkbox" checked /> Saludarme al verme</label>
+
+        <h3>Voz</h3>
+        <label>Clave de Jarvis<input id="voiceKey" type="password" autocomplete="off" placeholder="La que pusiste en Supabase" /></label>
+        <div class="row"><button id="testVoice" class="pill">Probar voz</button></div>
+        <p id="voiceInfo" class="muted"></p>
+
+        <h3>Cámara</h3>
+        <label>Usar<select id="facing"><option value="user">Delantera</option><option value="environment">Trasera</option></select></label>
+        <label class="check"><input id="greetOn" type="checkbox" /> Saludarme al verme</label>
+        <label class="check"><input id="showType" type="checkbox" /> Mostrar teclado para escribir</label>
         <a class="quiet-link" href="/camara">Cámara del jardín</a>
       </div>
     </div>
 
+    <div id="preview" class="preview stash"><video id="video" autoplay muted playsinline></video><span id="faceState" class="face-state"></span></div>
+
+    <script src="supabase-config.js"></script>
     <script src="jarvis.js"></script>
   </body>
 </html>

@@ -2,3 +2,7 @@
 # The function validates every bearer token with this project's Auth API and RLS.
 # This supports projects using asymmetric JWT signing keys too.
 verify_jwt = false
+
+[functions.jarvis-voice]
+# The function checks the private JARVIS_KEY itself; no Supabase login is involved.
+verify_jwt = false
