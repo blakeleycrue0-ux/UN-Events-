@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width,initial-scale=1,viewport-fit=cover"
     />
-    <meta name="theme-color" content="#0d68e8" />
+    <meta name="theme-color" content="#0d1014" />
     <title>Security Cam</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="style.css" />
@@ -185,10 +185,12 @@
           <span id="live">SIN CÁMARA</span><span id="rec" hidden="">REC</span>
         </div>
         <div id="cameraMessage">
-          La cámara se inicia al proteger esta imagen. Sin micrófono.
+          Vista local · inicia la cámara o arma el sistema. Sin micrófono.
         </div>
         <time id="clock"></time>
       </div>
+      <div id="zoneEditorHeading" hidden><h2 id="zoneEditorTitle">Zona de vigilancia</h2><p>Dibuja, mueve o ajusta las esquinas. Detección en pausa hasta salir.</p></div>
+      <div id="zoneEditorTools" hidden><button id="zoneNew">Nueva zona</button><button id="zoneCancel">Cancelar</button><button id="zoneApply" disabled>Guardar zona</button></div>
       <div class="camera-toolbar">
         <button id="fullscreen">Ampliar</button><button id="photo">Foto</button
         ><button id="record">Grabar manual</button>
@@ -201,17 +203,11 @@
         </div>
       </div>
       <div class="camera-control-card">
-        <label
-          >Detectar<select id="alarmSource">
-            <option value="person">Personas</option>
-            <option value="motion">Movimiento</option>
-          </select></label
-        ><button id="protect" class="protect-button controls">
+        <label>Modo al armar<select id="surveillanceMode"><option value="silent">Vigilancia silenciosa</option><option value="deter">Vigilancia disuasoria</option><option value="alarm">Alarma</option></select></label><button id="protect" class="protect-button controls">
           PROTEGER ESTA IMAGEN
         </button>
         <p class="fine-print">
-          Al armar autorizas aviso y sirena en la zona guardada, o en toda esta
-          imagen. Encuadra solo tu propiedad.
+          Armar inicia la detección en tu zona guardada. Los sonidos solo se activan si los habilitas. Encuadra solo tu propiedad.
         </p>
       </div>
       <p id="sequenceStatus" role="status"></p>
@@ -220,7 +216,82 @@
         <button id="camera">Iniciar cámara</button
         ><button id="shareCamera">Conectar con otro móvil</button>
       </div>
-    </main>
+<div class="system-indicators" aria-label="Estado del sistema"><span id="modeBadge">MODE · DESARMADO</span><span id="motionBadge" hidden>MOVEMENT</span><span id="personBadge" hidden>PERSON</span><span id="audioBadge">AUDIO · sin autorizar</span><span id="storageBadge">STORAGE · local</span><span id="powerBadge">LOW POWER</span><span id="darkBadge" hidden>Escena oscura</span></div><p id="eventState" role="status">Esperando evento</p><details class="surveillance-panel" open><summary>Detección y zona</summary><div class="panel-grid"><label class="checkbox-row"><input id="motion" type="checkbox" checked="" />Movimiento · disparador principal</label><label>Sensibilidad de movimiento<input
+        id="sensitivity"
+        type="range"
+        min="1"
+        max="100"
+        value="60"
+      /></label><label>Confirmar movimiento durante<select id="motionConfirm"><option value="0.5" selected>0,5 s</option><option value="1">1 s</option><option value="2">2 s</option></select></label><label class="checkbox-row"><input id="person" type="checkbox" checked />Detectar personas · también sin movimiento</label><label>Confianza mínima de persona (%)<input
+        id="confidence"
+        type="range"
+        min="30"
+        max="95"
+        value="45"
+      /></label><label>Intervalo de IA (segundos; mínimo 5 en ahorro)<input
+        id="aiInterval"
+        type="number"
+        min="1"
+        max="30"
+        value="2"
+      /></label><label class="checkbox-row"><input id="autoDetail" type="checkbox" checked>Detalle automático para personas pequeñas</label><p id="detectionReadout" role="status"></p><p class="fine-print">Alterna vista general y recortes a partir de la cámara original, sin cambiar el vídeo ni la zona. HD y detalle automático aumentan el consumo; activa ahorro si necesitas reducirlo. No mide metros ni garantiza detectar a 10 m. Prueba caminando a la distancia real, con luz suficiente.</p><p class="fine-print">Movimiento o persona confirmada inician el evento; si coinciden, se guarda un solo clip. La zona debe incluir el centro o los pies de la persona. La IA se carga solo al habilitarla y armar. Sombras, lluvia o luces pueden causar falsos positivos.</p><div class="button-grid"><button id="zone">Dibujar zona restringida</button
+              ><button id="fullZone">
+        Usar imagen completa
+      </button><button id="mask">Dibujar máscara privada</button
+              ><button id="clearZones">Borrar zonas</button></div><p class="fine-print">Abre el editor ampliado, dibuja o ajusta las esquinas y pulsa Guardar zona. Cancelar conserva la anterior. La máscara oculta zonas ajenas también en las grabaciones procesadas.</p></div></details><details class="surveillance-panel" open><summary>Grabación por eventos</summary><div class="panel-grid"><label>Grabación<select id="recordMode">
+                <option value="event" selected>Automática por eventos</option><option value="manual">Solo manual</option>
+              </select></label><label>Duración del clip (segundos)<select id="clip">
+                <option>10</option>
+                <option selected="">20</option>
+                <option>30</option>
+                <option>60</option>
+              </select></label><label>Cooldown después de cada clip<select id="recordCooldown"><option>10</option><option>20</option><option selected>30</option><option>60</option></select></label><label class="checkbox-row"><input id="repeatEvents" type="checkbox">Permitir repetir clips de un evento persistente después del cooldown</label><label class="checkbox-row"><input id="autoDelete" type="checkbox" />Liberar clips antiguos no importantes al superar el 80% de cuota</label><label>Resolución de grabación procesada<select id="recordQuality"><option value="640" selected>640 px · menor calor</option><option value="1280">1280 px · más consumo</option></select></label><p class="fine-print">Límite local: 100 clips o 480 MB antes de iniciar otro. Sin grabación continua ni micrófono. Un clip por episodio; se rearma tras 4 s sin movimiento y sin persona confirmada. La duración elegida se completa salvo desarmado, fallo o interrupción de Safari. Si otro episodio empieza durante el cooldown, queda registrado sin clip. Safari puede eliminar IndexedDB por falta de espacio, navegación privada o limpieza del navegador. Descarga las pruebas importantes; marcarlas no impide que iOS borre datos. La calidad de grabación no supera la captura de la cámara. En Safari sin captura de canvas se graba la pista nativa y se informa de los límites.</p><button id="openRecordings">Ver grabaciones e historial</button></div></details><details class="surveillance-panel"><summary>Audio y respuesta</summary><div class="panel-grid"><label class="checkbox-row"><input id="autoVoice" type="checkbox" />Aviso de voz automático (disuasorio y alarma)</label><label class="checkbox-row"><input id="autoAlarm" type="checkbox" />Sirena automática (solo modo alarma)</label><label>Confirmación de alarma<select id="alarmSource">
+            <option value="person">Personas</option>
+            <option value="motion" selected>Movimiento</option>
+          </select></label><label>Confirmación adicional de alarma (segundos)<input id="confirmation" type="number" min="1" max="60" value="3" /></label><label>Intervalo mínimo entre alarmas (segundos)<input
+        id="cooldown"
+        type="number"
+        min="10"
+        max="3600"
+        value="60"
+      /></label><label>Duración de sirena (segundos)<select id="alarmDuration">
+        <option>5</option>
+        <option selected="">10</option>
+        <option>15</option>
+        <option>30</option></select
+      ></label><label>Volumen<input
+                id="volume"
+                type="range"
+                min="0"
+                max="100"
+                value="70" /></label><button id="testSpeaker">Probar sonido</button><p id="speakerStatus" role="status"></p><div id="sounds"></div><button id="alarm" class="danger">Alarma manual</button><button id="silence" class="silence-action">Silenciar sonidos</button
+      ><label class="checkbox-row"><input id="torch" type="checkbox" disabled="" />Linterna continua</label><label class="checkbox-row"><input id="alarmFlash" type="checkbox" disabled="" />Parpadeo lento durante sirena</label><label>Límite de linterna (segundos)<input
+        id="torchLimit"
+        type="number"
+        min="5"
+        max="120"
+        value="30"
+      /></label><p id="torchInfo">
+              Se comprobará la capacidad real al iniciar la cámara.
+            </p><p class="fine-print">El aviso ElevenLabs conservado es el único MP3 de voz disponible. Los avisos específicos de propiedad y abandono no tienen grabaciones independientes.</p><button disabled>Advertencia de propiedad · falta audio específico</button><button disabled>Abandono de zona · falta audio específico</button><p class="fine-print">No se llama a la policía. Si Safari bloquea el sonido se muestra el error; la grabación continúa. Tras el aviso solo suena la sirena si la detección continúa.</p></div></details><details class="surveillance-panel"><summary>Imagen y bajo consumo</summary><label>Cámara<select id="device">
+                <option value="">Trasera automática</option>
+              </select></label><div class="panel-grid"><label>Mejora nocturna<select id="nightMode"><option value="auto">Automático</option><option value="on">Activado</option><option value="off">Desactivado</option></select></label><p id="nightHint"></p><label>Brillo digital<input
+        id="brightness"
+        type="range"
+        min="50"
+        max="200"
+        value="100"
+      /></label><label>Contraste<input
+        id="contrast"
+        type="range"
+        min="50"
+        max="200"
+        value="100"
+      /></label><label>Gamma (análisis, fotos y clips procesados)<input id="gamma" type="range" min="50" max="200" value="100" /></label><label>Zoom digital<input id="zoom" type="range" min="100" max="250" value="100" /></label><label class="checkbox-row"><input
+        id="lowPower"
+        type="checkbox"
+      />Bajo consumo · limita análisis y grabación procesada a 5 fps</label><label>Resolución de análisis<select id="analysisSize"><option value="96">96 px</option><option value="128">128 px</option><option value="192">192 px</option><option value="256" selected>256 px</option></select></label><label>Intervalo de análisis<select id="analysisInterval"><option value="250">250 ms</option><option value="500" selected>500 ms</option><option value="1000">1 s</option></select></label><label>Calidad de captura / vista previa<select id="previewQuality"><option value="640">640 px · ahorro</option><option value="1280" selected>1280 px</option><option value="1920">1920 px</option></select></label><p id="health" role="status"></p><button id="restart">Reiniciar cámara</button
+      ><button id="diagnose">Diagnóstico y prueba integral</button><pre id="diagnostics"></pre><p class="fine-print">La mejora digital necesita luz visible: no es visión nocturna infrarroja. Gamma se aplica al análisis y al vídeo procesado; la vista previa nativa conserva fluidez. No hay lectura de temperatura disponible. LOW POWER indica un ajuste, no una medición térmica.</p></div></details><aside class="safety-note"><strong>Uso fijo en exterior</strong><p>La pantalla debe permanecer encendida. La cámara web no puede funcionar de forma fiable con el iPhone bloqueado. Al recargar debes desbloquear y volver a armar. Una carcasa cerrada puede provocar calor: mantén sombra y ventilación apropiada y revisa el dispositivo físicamente. Reduce calidad o detén la cámara si observas avisos térmicos de iOS.</p></aside>    </main>
     <section id="activityPage" class="page" hidden="">
       <div class="page-heading">
         <div>
@@ -279,76 +350,9 @@
       </button>
       <section class="settings">
         <h2 class="settings-title">Preferencias</h2>
-        <details class="preference-group">
-          <summary>Dispositivo y privacidad</summary>
-          <div class="preference-content">
-            <label
-              >Cámara
-              <select id="device">
-                <option value="">Trasera automática</option>
-              </select></label
-            >
-            <div class="button-grid">
-              <button id="zone">Dibujar zona restringida</button
-              ><button id="mask">Dibujar máscara privada</button
-              ><button id="clearZones">Borrar zonas</button>
-            </div>
-            <p class="fine-print">
-              Vigila solo tu propiedad. Imagen y detección se ajustan
-              automáticamente.
-            </p>
-          </div>
-        </details>
-        <details class="preference-group">
-          <summary>Grabaciones</summary>
-          <div class="preference-content">
-            <label
-              >Modo
-              <select id="recordMode">
-                <option value="manual">Solo manual</option>
-                <option value="motion">Movimiento</option>
-                <option value="person">Personas</option>
-                <option value="continuous">Continua en clips</option>
-              </select></label
-            ><label
-              >Duración
-              <select id="clip">
-                <option>10</option>
-                <option selected="">20</option>
-                <option>30</option>
-                <option>60</option>
-              </select>
-              segundos</label
-            ><label class="checkbox-row"
-              ><input id="autoDelete" type="checkbox" /> Borrar clips antiguos
-              no importantes al superar el 80% de cuota</label
-            >
-          </div>
-        </details>
-        <details class="preference-group">
-          <summary>Sonido e iluminación</summary>
-          <div class="preference-content">
-            <label
-              >Volumen general<input
-                id="volume"
-                type="range"
-                min="0"
-                max="100"
-                value="70" /></label
-            ><button id="testSpeaker">Probar sonido</button>
-            <p id="speakerStatus" role="status"></p>
-            <label class="checkbox-row"
-              ><input id="torch" type="checkbox" disabled="" /> Linterna
-              continua</label
-            ><label class="checkbox-row"
-              ><input id="alarmFlash" type="checkbox" disabled="" /> Luz lenta
-              durante alarma (cada 2 segundos)</label
-            >
-            <p id="torchInfo">
-              Se comprobará la capacidad real al iniciar la cámara.
-            </p>
-          </div>
-        </details>
+
+
+
         <details class="preference-group">
           <summary>Seguridad</summary>
           <div class="preference-content">
@@ -578,81 +582,26 @@
         Copiar clave</button
       ><span id="status">DESARMADO</span
       ><span id="alarmStatus" hidden="">ALARMA ACTIVA</span
-      ><button id="silence" class="silence-action">Silenciar sonidos</button
-      ><input id="nightMode" type="hidden" value="auto" />
-      <p id="nightHint"></p>
-      <input id="autoAlarm" type="checkbox" /><button id="fullZone">
-        Usar imagen completa
-      </button>
+      >
+
+
       <div id="extraToolsModeAnchor"></div>
-      <button id="alarm" class="danger">Alarma manual</button>
-      <p id="health" role="status"></p>
-      <button id="restart">Reiniciar cámara</button
-      ><input id="motion" type="checkbox" checked="" /><input
-        id="sensitivity"
-        type="range"
-        min="1"
-        max="100"
-        value="60"
-      /><input id="person" type="checkbox" /><input
-        id="confidence"
-        type="range"
-        min="30"
-        max="95"
-        value="60"
-      /><input
-        id="aiInterval"
-        type="number"
-        min="1"
-        max="30"
-        value="3"
-      /><button id="enableAudio">Habilitar sonido</button
-      ><input id="autoVoice" type="checkbox" /><input
+
+
+      <button id="enableAudio">Habilitar sonido</button
+      ><input
         id="autoNotice"
         type="checkbox"
       /><input id="autoWarning" type="checkbox" checked="" />
-      <div id="sounds"></div>
-      <input id="confirmation" type="number" min="1" max="60" value="3" /><input
-        id="cooldown"
-        type="number"
-        min="10"
-        max="3600"
-        value="60"
-      /><select id="alarmDuration">
-        <option>5</option>
-        <option selected="">10</option>
-        <option>15</option>
-        <option>30</option></select
-      ><input
-        id="brightness"
-        type="range"
-        min="50"
-        max="200"
-        value="100"
-      /><input
-        id="contrast"
-        type="range"
-        min="50"
-        max="200"
-        value="100"
-      /><input id="gamma" type="range" min="50" max="200" value="100" /><input
+
+      <input
         id="nightSensitivity"
         type="range"
         min="1"
         max="100"
         value="75"
-      /><input id="zoom" type="range" min="100" max="250" value="100" /><input
-        id="lowPower"
-        type="checkbox"
-        checked=""
-      /><input id="eventLight" type="checkbox" disabled="" /><input
-        id="torchLimit"
-        type="number"
-        min="5"
-        max="120"
-        value="30"
-      /><button id="diagnose">Diagnóstico y prueba integral</button>
-      <pre id="diagnostics"></pre>
+      /><input id="eventLight" type="checkbox" disabled="" />
+
       <button id="arm">ACTIVAR VIGILANCIA</button
       ><button id="nightToggle" aria-pressed="false">Noche: AUTO</button
       ><button id="hide">Ocultar controles</button
@@ -664,6 +613,8 @@
       </select>
     </div>
     <div id="appToast" hidden="" role="status"></div>
+    <script src="supabase-config.js"></script>
+    <script src="detection.js"></script>
     <script src="app.js"></script>
     <script src="remote.js"></script>
     <script src="supabase-remote.js"></script>

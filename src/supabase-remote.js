@@ -92,9 +92,10 @@ try {
   const config = JSON.parse(
     localStorage.getItem("supabase-public-config") || "null",
   );
-  if (config) {
-    $("supabaseUrl").value = config.url;
-    $("supabasePublicKey").value = config.key;
+  const selected = config || window.SECURITY_SUPABASE_PUBLIC;
+  if (selected) {
+    $("supabaseUrl").value = selected.url;
+    $("supabasePublicKey").value = selected.key;
     $("supabaseSetup").open = false;
   }
 } catch {}

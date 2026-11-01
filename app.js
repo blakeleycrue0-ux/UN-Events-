@@ -7,9 +7,11 @@ if (!Element.prototype.replaceChildren)
 const $ = (id) => document.getElementById(id), video = $("video"), overlay = $("overlay"), ctx = overlay.getContext("2d");
 const frame = document.createElement("canvas"), fx = frame.getContext("2d", { willReadFrequently: true });
 const aiFrame = document.createElement("canvas");
-aiFrame.width = 320;
+aiFrame.width = 512;
 aiFrame.height = 240;
 const aiCtx = aiFrame.getContext("2d");
+const motionDetector = new SecurityDetection.Motion();
+let aiPass = 0, zoneDraft = null, editorScroll = 0;
 const analysis = document.createElement("canvas"), ax = analysis.getContext("2d", { willReadFrequently: true });
 const state = {
   stream: null,
@@ -35,6 +37,15 @@ let db, recorder, recTimer, alarmTimer, flashTimer, torchTimer, siren, activeAud
 let events = [], clipURLs = [], soundURLs = {}, soundBlobs = {}, soundGeneration = 0;
 const settingIds = [
   "mode",
+  "autoDetail",
+  "surveillanceMode",
+  "motionConfirm",
+  "recordCooldown",
+  "repeatEvents",
+  "analysisSize",
+  "analysisInterval",
+  "recordQuality",
+  "previewQuality",
   "nightMode",
   "motion",
   "sensitivity",
@@ -92,6 +103,8 @@ function save() {
     settingIds.forEach(
       (id) => s[id] = $(id).type === "checkbox" ? $(id).checked : $(id).value
     );
+    s.eventSettingsVersion = 2;
+    s.detectionVersion = 3;
     s.zone = state.zone;
     s.mask = state.mask;
     localStorage.setItem("security-settings", JSON.stringify(s));
@@ -107,13 +120,26 @@ try {
       else $(id).value = s[id];
     }
   });
+  if (s.eventSettingsVersion !== 2) $("recordMode").value = "event";
+  if (s.detectionVersion !== 3) {
+    $("previewQuality").value = "1280";
+    $("analysisSize").value = "256";
+    $("person").checked = true;
+    $("confidence").value = "45";
+    $("aiInterval").value = "2";
+    $("lowPower").checked = false;
+    $("motionConfirm").value = "0.5";
+  }
   state.zone = s.zone || null;
   state.mask = s.mask || null;
   events = JSON.parse(localStorage.getItem("security-events") || "[]");
 } catch {
 }
+if ($("recordMode").value !== "manual") $("recordMode").value = "event";
+$("mode").value = "disarmed";
 renderEvents();
-let cameraGeneration = 0;
+let cameraGeneration = 0, analysisGeneration = 0;
+let configuredRecordQuality = $("recordQuality").value;
 function openDB() {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) return reject(Error("IndexedDB no disponible"));
@@ -135,7 +161,7 @@ function store(name, method, value) {
     if (!db) return reject(Error("Almacenamiento no disponible"));
     const t = db.transaction(
       name,
-      method === "getAll" ? "readonly" : "readwrite"
+      ["getAll", "get"].includes(method) ? "readonly" : "readwrite"
     );
     const r = t.objectStore(name)[method](value);
     let result;
@@ -151,6 +177,7 @@ async function storage() {
     if ((_a = navigator.storage) == null ? void 0 : _a.estimate) {
       const e = await navigator.storage.estimate();
       $("storage").textContent = "Uso del origen: ".concat((e.usage / 1048576).toFixed(1), " MB / ").concat((e.quota / 1048576).toFixed(0), " MB (cuota estimada, no garant\xEDa)");
+      $("storageBadge").textContent = "STORAGE \xB7 ".concat((e.usage / 1048576).toFixed(1), " MB");
       return e;
     }
     $("storage").textContent = "Cuota no disponible en este navegador";
@@ -160,6 +187,18 @@ async function storage() {
   return null;
 }
 async function capacity() {
+  const all = (await store("clips", "getAll")).sort((a, b) => a.id - b.id);
+  let bytes = all.reduce((n, c) => n + c.blob.size, 0), count = all.length;
+  if (bytes > 480 * 1024 * 1024 || count >= 100) {
+    if (!$("autoDelete").checked) throw Error("L\xEDmite local de 100 clips / 480 MB. Descarga o elimina grabaciones.");
+    for (const c of all.filter((c2) => !c2.important)) {
+      await store("clips", "delete", c.id);
+      bytes -= c.blob.size;
+      count--;
+      if (bytes <= 450 * 1024 * 1024 && count < 95) break;
+    }
+    if (bytes > 480 * 1024 * 1024 || count >= 100) throw Error("L\xEDmite ocupado por clips importantes. Desc\xE1rgalos antes de continuar.");
+  }
   const e = await storage();
   if (e && e.usage / e.quota > 0.8) {
     if (!$("autoDelete").checked)
@@ -243,10 +282,11 @@ function updatePreview() {
   $("nightToggle").setAttribute("aria-pressed", String(enabled));
   $("nightHint").textContent = enabled ? "Mejora nocturna activa \xB7 necesita luz visible" : $("nightMode").value === "auto" ? "Noche autom\xE1tica seg\xFAn la luz de la c\xE1mara" : "";
 }
-function processed(target = frame, context = fx) {
+function processed(target = frame, context = fx, region = null) {
   if (!video.videoWidth) return;
   const [x, y, w, h] = crop();
-  context.drawImage(video, x, y, w, h, 0, 0, target.width, target.height);
+  const r = region || { x: 0, y: 0, w: 1, h: 1 };
+  context.drawImage(video, x + w * r.x, y + h * r.y, w * r.w, h * r.h, 0, 0, target.width, target.height);
   const boost = nightEnabled();
   const brightness = +$("brightness").value / 100 * (boost ? 1.6 : 1), contrast = +$("contrast").value / 100 * (boost ? 1.12 : 1), gamma = +$("gamma").value / 100 * (boost ? 1.25 : 1);
   state.rawLight = null;
@@ -281,16 +321,16 @@ function processed(target = frame, context = fx) {
     const m = state.mask;
     context.fillStyle = "#000";
     context.fillRect(
-      m.x * target.width,
-      m.y * target.height,
-      m.w * target.width,
-      m.h * target.height
+      (m.x - r.x) / r.w * target.width,
+      (m.y - r.y) / r.h * target.height,
+      m.w / r.w * target.width,
+      m.h / r.h * target.height
     );
   }
 }
 function viewRect() {
   const r = overlay.getBoundingClientRect();
-  const ratio = frame.width / frame.height;
+  const ratio = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : frame.width / frame.height;
   let w = r.width, h = w / ratio;
   if (h > r.height) {
     h = r.height;
@@ -330,11 +370,16 @@ function draw() {
       ctx.fillText(label, v.x + b.x * v.w + 4, v.y + b.y * v.h + 18);
     }
   }
-  if (state.zone) rect(state.zone, "#70d39a", "Zona restringida");
+  if (state.zone && !drawMode) rect(state.zone, "#70d39a", "Zona de vigilancia");
   for (const p of state.persons)
-    rect(p, "#fff", "Persona " + Math.round(p.score * 100) + "%");
-  if (drag)
-    rect(drag.rect, drawMode === "mask" ? "#ff9c9c" : "#70d39a", "Selecci\xF3n");
+    rect(p, "#fff", "Persona " + Math.round(p.score * 100) + "%" + (p.seen && Date.now() - p.seen >= 2e3 ? " \xB7 hace " + Math.floor((Date.now() - p.seen) / 1e3) + " s" : ""));
+  if (drawMode && zoneDraft) {
+    rect(zoneDraft, "#9ce6bd", "Zona pendiente \xB7 ajusta los tiradores");
+    ctx.fillStyle = "#9ce6bd";
+    for (const x of [zoneDraft.x, zoneDraft.x + zoneDraft.w])
+      for (const y of [zoneDraft.y, zoneDraft.y + zoneDraft.h])
+        ctx.fillRect(v.x + x * v.w - 7, v.y + y * v.h - 7, 14, 14);
+  }
 }
 async function torch(on) {
   var _a, _b;
@@ -365,6 +410,9 @@ async function torch(on) {
   } catch (e) {
     $("torch").checked = false;
     $("torch").disabled = true;
+    $("alarmFlash").disabled = true;
+    $("eventLight").disabled = true;
+    clearInterval(flashTimer);
     $("torchInfo").textContent = "Linterna no disponible: " + e.message;
     error("Linterna no controlable: " + e.message);
   }
@@ -374,7 +422,7 @@ async function startCamera() {
   const generation = ++cameraGeneration;
   await stopCamera(false);
   if (generation !== cameraGeneration) return;
-  $("error").textContent = "";
+  if (!protecting) $("error").textContent = "";
   if (!window.isSecureContext || !((_a = navigator.mediaDevices) == null ? void 0 : _a.getUserMedia)) {
     error(
       "Se requiere HTTPS (o localhost) y un navegador con acceso a c\xE1mara."
@@ -386,8 +434,8 @@ async function startCamera() {
       audio: false,
       video: {
         ...$("device").value ? { deviceId: { exact: $("device").value } } : { facingMode: { ideal: "environment" } },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: +$("previewQuality").value },
+        height: { ideal: Math.round(+$("previewQuality").value * 9 / 16) },
         frameRate: { ideal: 15, max: 20 }
       }
     });
@@ -402,7 +450,7 @@ async function startCamera() {
       requestedStream.getTracks().forEach((t) => t.stop());
       return;
     }
-    frame.width = Math.min(video.videoWidth, 640);
+    frame.width = Math.min(video.videoWidth, +$("recordQuality").value);
     frame.height = Math.round(
       frame.width * video.videoHeight / video.videoWidth
     );
@@ -428,12 +476,15 @@ async function startCamera() {
     track.onunmute = () => {
       state.cameraMuted = false;
       state.previous = null;
+      state.movingSince = 0;
+      state.lastMotionAt = 0;
+      state.motionConfirmedAt = 0;
+      state.persons = [];
+      state.episode = null;
       state.confirmed = 0;
       $("live").textContent = "LIVE";
       $("live").className = "active";
       log("c\xE1mara", "Captura de c\xE1mara recuperada");
-      if (!document.hidden && state.armed && $("recordMode").value === "continuous")
-        startRecording("continua");
     };
     const caps = ((_b = track.getCapabilities) == null ? void 0 : _b.call(track)) || {};
     $("torch").disabled = !caps.torch;
@@ -460,9 +511,7 @@ async function startCamera() {
     } catch {
     }
     tick();
-    if ($("person").checked) loadModel();
-    if (state.armed && $("recordMode").value === "continuous")
-      startRecording("continua");
+    if (state.armed && $("person").checked) loadModel();
   } catch (e) {
     if (generation !== cameraGeneration) return;
     error("No se puede iniciar la c\xE1mara: " + e.name + " \xB7 " + e.message);
@@ -530,10 +579,12 @@ function renderRecording() {
     $("lowPower").checked ? 200 : 100
   );
 }
-async function startRecording(reason) {
-  if (document.hidden || state.recording || state.recordStarting || !state.stream || state.storageFailed)
+async function startRecording(reason, episode = null) {
+  if (document.hidden || drawMode || state.recording || state.recordStarting || state.recordFinalizing || !state.stream || state.storageFailed)
     return;
   state.recordStarting = true;
+  let captureStream = null;
+  const recordingCameraID = cameraGeneration;
   if (!window.MediaRecorder) {
     state.recordStarting = false;
     error(
@@ -544,12 +595,13 @@ async function startRecording(reason) {
   }
   try {
     await capacity();
-    if (!state.stream) return;
+    if (!state.stream || drawMode || recordingCameraID !== cameraGeneration || episode && (!state.armed || state.episode !== episode)) return;
     const type = mime();
     let stream;
     if (frame.captureStream) {
       processed();
       stream = frame.captureStream($("lowPower").checked ? 5 : 10);
+      captureStream = stream;
     } else {
       if (state.mask || +$("zoom").value !== 100) {
         throw Error(
@@ -566,6 +618,8 @@ async function startRecording(reason) {
     const id = Date.now(), thumbnail = frame.toDataURL("image/jpeg", 0.5);
     recorder = new MediaRecorder(stream, type ? { mimeType: type } : void 0);
     const current = recorder;
+    current.episode = episode;
+    if (episode) episode.clipID = id;
     let finish;
     current.finished = new Promise((r) => finish = r);
     current.ondataavailable = (e) => {
@@ -584,19 +638,23 @@ async function startRecording(reason) {
       state.recording = true;
       $("rec").hidden = false;
       $("record").textContent = "Detener grabaci\xF3n";
+      renderSurveillanceStatus();
       log("grabaci\xF3n", "Iniciada: " + reason);
     };
     current.onstop = async () => {
+      state.recordFinalizing = true;
       state.recording = false;
+      if (current.episode) state.recordCooldownUntil = Date.now() + +$("recordCooldown").value * 1e3;
       $("rec").hidden = true;
       $("record").textContent = "Grabar manual";
+      renderSurveillanceStatus();
       const blob = new Blob(chunks, { type: current.mimeType || type });
       try {
         if (!blob.size) throw Error("Clip vac\xEDo");
         await store("clips", "put", {
           id,
           blob,
-          reason,
+          reason: (episode == null ? void 0 : episode.kind) || reason,
           thumbnail,
           important: false
         });
@@ -615,33 +673,33 @@ async function startRecording(reason) {
           );
       } finally {
         if (frame.captureStream) stream.getTracks().forEach((t) => t.stop());
+        state.recordFinalizing = false;
         finish();
-        if (!document.hidden && !current.noRestart && state.stream && state.armed && $("recordMode").value === "continuous" && !state.storageFailed)
-          setTimeout(() => startRecording("continua"), 100);
       }
     };
     current.start(1e3);
     if (frame.captureStream) renderRecording();
     recTimer = setTimeout(
-      () => stopRecording(true),
+      () => stopRecording(),
       Math.min(60, Math.max(10, +$("clip").value)) * 1e3
     );
   } catch (e) {
-    error("Grabaci\xF3n no iniciada: " + e.message, "p\xE9rdida");
+    state.storageFailed = true;
+    captureStream == null ? void 0 : captureStream.getTracks().forEach((t) => t.stop());
+    error("Grabaci\xF3n no iniciada: " + e.message + ". Corrige la causa y reinicia la c\xE1mara.", "p\xE9rdida");
   } finally {
     state.recordStarting = false;
   }
 }
-async function stopRecording(rotate = false) {
+async function stopRecording() {
   clearTimeout(recordingRenderTimer);
   clearTimeout(recTimer);
   const r = recorder;
-  if (r) r.noRestart = !rotate;
   if (r && r.state !== "inactive") {
     r.stop();
     await r.finished;
   }
-  recorder = null;
+  if (recorder === r) recorder = null;
 }
 const mediaAudio = document.createElement("audio");
 mediaAudio.id = "securityAudio";
@@ -675,7 +733,7 @@ async function enableAudio() {
   } catch (e) {
     audioReady = false;
     error(
-      "El navegador bloque\xF3 el audio: " + e.message + ". Toca Probar sonido.",
+      "El navegador bloque\xF3 el audio: " + e.name + " \xB7 " + e.message + ". Toca Probar sonido.",
       "audio"
     );
     return false;
@@ -777,13 +835,13 @@ async function alarm(reason, manual = false) {
   );
 }
 function threatActive() {
-  if (!state.stream || document.hidden || state.cameraMuted) return false;
+  if (!state.stream || document.hidden || state.cameraMuted || !state.episode) return false;
   if ($("alarmSource").value === "motion")
-    return $("motion").checked && Date.now() - (state.lastMotionAt || 0) < 2500;
-  return $("person").checked && state.persons.length > 0 && Date.now() - (state.personResultAt || 0) < Math.max(1, +$("aiInterval").value) * 2e3;
+    return $("motion").checked && Date.now() - (state.motionConfirmedAt || 0) < 2500;
+  return $("person").checked && state.persons.length > 0 && Date.now() - (state.personResultAt || 0) < personInterval() * 2e3;
 }
 function considerThreat() {
-  const allowed = state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone;
+  const allowed = state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone && state.episode;
   if (!allowed || !threatActive()) {
     state.threatSince = 0;
     if (state.warningPending) {
@@ -797,8 +855,48 @@ function considerThreat() {
     return;
   }
   state.threatSince || (state.threatSince = Date.now());
-  if (Date.now() - state.threatSince >= Math.max(1, +$("confirmation").value) * 1e3 && !state.warningPending && !state.alarm && Date.now() - state.lastAlarm >= Math.max(10, +$("cooldown").value) * 1e3)
-    warnThenAlarm();
+  if (Date.now() - state.threatSince >= Math.max(1, +$("confirmation").value) * 1e3 && !state.warningPending && !state.alarm && !state.episode.alerted && Date.now() - state.lastAlarm >= Math.max(10, +$("cooldown").value) * 1e3) {
+    state.episode.alerted = true;
+    if ($("autoVoice").checked) warnThenAlarm();
+    else confirmedAutoAlarm("Evento confirmado en zona de vigilancia");
+  }
+}
+async function currentPersonVisible() {
+  const token = soundGeneration, cameraID = cameraGeneration;
+  const deadline = Date.now() + 5e3;
+  while (state.busy && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
+  if (state.busy || !state.model || !state.armed || !$("person").checked || drawMode || document.hidden || token !== soundGeneration || cameraID !== cameraGeneration) return false;
+  state.busy = true;
+  try {
+    const region = SecurityDetection.expand(state.persons[0] || state.zone || { x: 0, y: 0, w: 1, h: 1 }, 0.15);
+    const check = document.createElement("canvas"), ratio = video.videoWidth * region.w / (video.videoHeight * region.h);
+    check.width = Math.round(ratio >= 1 ? 512 : 512 * ratio);
+    check.height = Math.round(ratio >= 1 ? 512 / ratio : 512);
+    processed(check, check.getContext("2d"), region);
+    const result = await state.model.detect(check, { object: { minConfidence: +$("confidence").value / 100 } });
+    if (token !== soundGeneration || cameraID !== cameraGeneration || !state.armed || drawMode || document.hidden) return false;
+    const fresh = (result.object || []).filter((p) => p.label === "person" && p.score >= +$("confidence").value / 100 && p.boxRaw).map((p) => ({ ...SecurityDetection.mapBox(p.boxRaw, region), score: p.score, seen: Date.now() })).filter((p) => SecurityDetection.personInside(p, state.zone) && !(state.mask && SecurityDetection.personInside(p, state.mask)));
+    state.persons = fresh;
+    state.personResultAt = Date.now();
+    draw();
+    return fresh.length > 0;
+  } catch (e) {
+    error("No se pudo confirmar presencia antes de sirena: " + e.message, "alarma");
+    return false;
+  } finally {
+    state.busy = false;
+  }
+}
+async function confirmedAutoAlarm(reason, afterVoice = false) {
+  const token = soundGeneration, episode = state.episode;
+  const present = $("alarmSource").value === "person" ? await currentPersonVisible() : threatActive();
+  if (token !== soundGeneration || !state.armed || $("mode").value !== "alarm" || !$("autoAlarm").checked || state.episode !== episode) return;
+  if (afterVoice) state.warningPending = false;
+  if (present && state.zone) alarm(reason, true);
+  else {
+    $("sequenceStatus").textContent = "Sin presencia confirmada \xB7 sirena cancelada";
+    log("alarma", "Sirena cancelada: comprobaci\xF3n actual sin detecci\xF3n");
+  }
 }
 async function warnThenAlarm() {
   stopSounds();
@@ -820,13 +918,8 @@ async function warnThenAlarm() {
     state.warningStarted = Date.now();
     activeAudio.onended = () => {
       if (!state.warningPending) return;
-      state.warningPending = false;
-      if (state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone && threatActive())
-        alarm("Detecci\xF3n persistente despu\xE9s del aviso", true);
-      else {
-        $("sequenceStatus").textContent = "Sin detecci\xF3n \xB7 sirena cancelada";
-        log("alarma", "Sirena cancelada al terminar aviso");
-      }
+      $("sequenceStatus").textContent = "Comprobando presencia antes de sirena\u2026";
+      confirmedAutoAlarm("Detecci\xF3n persistente despu\xE9s del aviso", true);
     };
   } catch (e) {
     stopSounds();
@@ -836,32 +929,51 @@ async function warnThenAlarm() {
     );
   }
 }
+function personInterval() {
+  return Math.max(1, +$("aiInterval").value, $("lowPower").checked ? 5 : 1);
+}
+function personFresh() {
+  return $("person").checked && state.persons.length && Date.now() - (state.personResultAt || 0) < Math.max(3, personInterval() * 2) * 1e3;
+}
+function recordEpisode(episode) {
+  if (episode.recordAttempted || state.recording || state.recordStarting || state.storageFailed || Date.now() < (state.recordCooldownUntil || 0) || $("recordMode").value !== "event") return;
+  episode.recordAttempted = true;
+  startRecording(episode.kind, episode);
+}
 function detected(type) {
-  if (!state.armed || $("mode").value === "disarmed") return;
-  const now = Date.now();
-  state.eventTimes || (state.eventTimes = {});
-  if (now - (state.eventTimes[type] || 0) < Math.max(1e4, +$("clip").value * 1e3))
-    return;
-  state.eventTimes[type] = now;
-  log(
-    type,
-    type === "persona" ? "Persona en zona de detecci\xF3n" : "Movimiento en zona de detecci\xF3n"
-  );
-  if ($("recordMode").value === (type === "persona" ? "person" : "motion"))
-    startRecording(type);
-  if ($("mode").value === "deter") {
-    if ($("autoVoice").checked) {
-      const first = $("autoNotice").checked ? "notice" : $("autoWarning").checked ? "warning" : null;
-      if (first)
-        sound(first).then(() => {
-          if (first === "notice" && $("autoWarning").checked && activeAudio) {
-            activeAudio.onended = () => {
-              if (state.armed && $("mode").value === "deter") sound("warning");
-            };
+  if (!state.armed) return;
+  if (type === "persona" && state.episode) {
+    const episode2 = state.episode;
+    if (episode2.kind !== "persona detectada") {
+      episode2.kind = "persona detectada";
+      log("persona", "Persona confirmada en el evento de movimiento");
+      if (episode2.clipID && !state.recording) {
+        store("clips", "get", episode2.clipID).then(async (clip) => {
+          if (clip) {
+            clip.reason = episode2.kind;
+            await store("clips", "put", clip);
+            await renderClips();
           }
-        });
+        }).catch((e) => error("No se pudo actualizar la clasificaci\xF3n: " + e.message, "p\xE9rdida"));
+      }
     }
-    if (!$("torch").disabled && $("eventLight").checked) torch(true);
+    return;
+  }
+  if (state.episode) return;
+  const episode = state.episode = { started: Date.now(), kind: type === "persona" || personFresh() ? "persona detectada" : "movimiento detectado" };
+  log(episode.kind.startsWith("persona") ? "persona" : "movimiento", episode.kind + " en zona de vigilancia");
+  if (Date.now() < (state.recordCooldownUntil || 0)) {
+    episode.recordAttempted = true;
+    log("grabaci\xF3n", "Evento registrado sin clip: cooldown activo");
+  } else recordEpisode(episode);
+  if (($("mode").value === "deter" || $("mode").value === "alarm" && !$("autoAlarm").checked) && $("autoVoice").checked) sound("warning");
+}
+function updateEpisode() {
+  const quiet = Date.now() - (state.lastMotionAt || 0) > 4e3 && !personFresh();
+  if (quiet) state.episode = null;
+  else if (state.episode && $("repeatEvents").checked && !state.recording && !state.recordStarting && Date.now() >= (state.recordCooldownUntil || 0)) {
+    state.episode.recordAttempted = false;
+    recordEpisode(state.episode);
   }
 }
 async function loadModel() {
@@ -886,7 +998,8 @@ async function loadModel() {
         enabled: true,
         modelPath: "centernet.json",
         minConfidence: +$("confidence").value / 100,
-        maxDetected: 8,
+        // Preserve lower-ranked person candidates in scenes containing many cars.
+        maxDetected: 32,
         skipFrames: 0,
         skipTime: 0
       }
@@ -920,19 +1033,37 @@ function inside(p, z) {
   return !z || p.x + p.w / 2 >= z.x && p.x + p.w / 2 <= z.x + z.w && p.y + p.h / 2 >= z.y && p.y + p.h / 2 <= z.y + z.h;
 }
 async function tick() {
+  const cycle = ++analysisGeneration, cameraID = cameraGeneration;
+  clearTimeout(loopTimer);
   if (!state.stream || document.hidden) return;
+  if (drawMode) {
+    draw();
+    loopTimer = setTimeout(tick, 1e3);
+    return;
+  }
   if (state.cameraMuted || video.readyState < 2) {
     loopTimer = setTimeout(tick, 1e3);
     return;
   }
   const started = performance.now();
   try {
-    analysis.width = state.slow || $("lowPower").checked ? 128 : 192;
-    analysis.height = Math.round(analysis.width * frame.height / frame.width);
+    if (!state.armed) {
+      state.previous = null;
+      state.movingSince = 0;
+      state.persons = [];
+      state.episode = null;
+      draw();
+      $("health").textContent = "Desarmado \xB7 an\xE1lisis y grabaci\xF3n autom\xE1tica detenidos";
+      return;
+    }
+    const size = state.slow || $("lowPower").checked ? Math.min(128, +$("analysisSize").value) : +$("analysisSize").value;
+    if (analysis.width !== size) state.previous = null;
+    analysis.width = size;
+    analysis.height = Math.round(analysis.width * video.videoHeight / video.videoWidth);
     processed(analysis, ax);
     const d = ax.getImageData(0, 0, analysis.width, analysis.height).data;
     const grey = new Uint8Array(d.length / 4);
-    let sum = 0, count = 0, diff = 0, meanDiff = 0;
+    let sum = 0, count = 0;
     for (let i = 0; i < grey.length; i++) {
       grey[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
       const p = {
@@ -945,59 +1076,65 @@ async function tick() {
         continue;
       sum += grey[i];
       count++;
-      if (state.previous) meanDiff += grey[i] - state.previous[i];
     }
-    meanDiff /= Math.max(1, count);
     state.light = state.rawLight === null ? sum / Math.max(1, count) : state.rawLight;
     state.night = state.night ? state.light < 65 : state.light < 40;
     updatePreview();
-    const sensitivity = +(state.night ? $("nightSensitivity") : $("sensitivity")).value;
-    if (state.previous) {
-      for (let i = 0; i < grey.length; i++) {
-        const p = {
-          x: i % analysis.width / analysis.width,
-          y: Math.floor(i / analysis.width) / analysis.height,
-          w: 0,
-          h: 0
-        };
-        if (!inside(p, state.zone) || state.mask && inside(p, state.mask))
-          continue;
-        if (Math.abs(grey[i] - state.previous[i] - meanDiff) > 16 + (100 - sensitivity) * 0.35)
-          diff++;
-      }
-      const moving = diff / Math.max(1, count) > 0.015 + (100 - sensitivity) * 1e-3;
-      state.motionFrames = moving ? (state.motionFrames || 0) + 1 : 0;
-      if ($("motion").checked && state.motionFrames >= 2) {
-        state.lastMotionAt = Date.now();
+    if (!state.previous) motionDetector.reset();
+    const signal = motionDetector.analyze(
+      grey,
+      analysis.width,
+      analysis.height,
+      state.zone,
+      state.mask,
+      +$("sensitivity").value,
+      +$("motionConfirm").value,
+      Date.now(),
+      +$("analysisInterval").value
+    );
+    state.motionSignal = signal;
+    if (signal.moving) {
+      state.lastVisualChange = Date.now();
+      state.motionBounds = signal.bounds;
+    }
+    state.moving = signal.moving && $("motion").checked;
+    if (state.moving) {
+      state.lastMotionAt = Date.now();
+      state.motionBounds = signal.bounds;
+      if (signal.confirmed) {
+        state.motionConfirmedAt = Date.now();
         detected("movimiento");
       }
     }
     state.previous = grey;
-    if ($("person").checked && state.model && !state.busy && Date.now() - lastAI >= Math.max(1, +$("aiInterval").value) * 1e3) {
+    const motionMS = performance.now() - started;
+    if ($("person").checked && state.model && !state.busy && !state.recordStarting && !state.recordFinalizing && Date.now() - lastAI >= personInterval() * 1e3) {
       lastAI = Date.now();
       state.busy = true;
       try {
-        aiFrame.height = Math.round(320 * frame.height / frame.width);
-        processed(aiFrame, aiCtx);
+        const pass = aiPass++;
+        const zone = state.zone || { x: 0, y: 0, w: 1, h: 1 };
+        const detail = $("autoDetail").checked && pass % 2 === 1;
+        const region = detail ? SecurityDetection.detailRegion(zone, Date.now() - (state.lastVisualChange || 0) < 5e3 ? state.motionBounds : null, Math.floor(pass / 2) % 4) : SecurityDetection.expand(zone, 0.06);
+        const ratio = video.videoWidth * region.w / (video.videoHeight * region.h);
+        aiFrame.width = Math.round(ratio >= 1 ? 512 : 512 * ratio);
+        aiFrame.height = Math.round(ratio >= 1 ? 512 / ratio : 512);
+        processed(aiFrame, aiCtx, region);
+        const aiStarted = performance.now();
         const result = await state.model.detect(aiFrame, {
           object: { minConfidence: +$("confidence").value / 100 }
         });
+        if (cycle !== analysisGeneration || cameraID !== cameraGeneration || !state.armed || drawMode || !$("person").checked || document.hidden) return;
+        state.aiMS = performance.now() - aiStarted;
+        state.aiRegion = region;
+        state.aiDetail = detail;
         const predictions = result.object || [];
-        state.persons = predictions.filter(
-          (p) => p.label === "person" && p.score >= +$("confidence").value / 100
-        ).map((p) => ({
-          x: p.boxRaw[0],
-          y: p.boxRaw[1],
-          w: p.boxRaw[2],
-          h: p.boxRaw[3],
-          score: p.score
-        })).filter((p) => inside(p, state.zone));
+        const found = predictions.filter((p) => p.label === "person" && p.score >= +$("confidence").value / 100 && p.boxRaw).map((p) => ({ ...SecurityDetection.mapBox(p.boxRaw, region), score: p.score, seen: Date.now() })).filter((p) => SecurityDetection.personInside(p, state.zone) && !(state.mask && SecurityDetection.personInside(p, state.mask)));
+        state.persons = SecurityDetection.mergePeople(found, state.persons, Date.now(), personInterval() * 3e3).filter((p) => SecurityDetection.personInside(p, state.zone) && !(state.mask && SecurityDetection.personInside(p, state.mask)));
         state.personResultAt = Date.now();
         if (state.persons.length) {
-          if (!state.personPresent) {
-            detected("persona");
-            state.personPresent = true;
-          }
+          detected("persona");
+          state.personPresent = true;
           state.personMissing = 0;
         } else {
           state.confirmed = 0;
@@ -1020,20 +1157,29 @@ async function tick() {
       state.confirmed = 0;
       state.personPresent = false;
     }
+    updateEpisode();
     considerThreat();
+    renderDetectionStatus();
     draw();
     const ms = performance.now() - started;
-    state.slow = ms > 220 || state.slow && ms > 100;
-    $("health").textContent = "".concat(state.night ? "Luz insuficiente: detecci\xF3n limitada" : "Iluminaci\xF3n disponible", " \xB7 an\xE1lisis ").concat(analysis.width, " px \xB7 ").concat(Math.round(ms), " ms").concat(state.slow ? " \xB7 resoluci\xF3n reducida por rendimiento" : "", " \xB7 activo ").concat(Math.floor((Date.now() - state.started) / 6e4), " min");
+    state.slow = motionMS > 120 || state.slow && motionMS > 70;
+    $("health").textContent = "".concat(state.night ? "Luz insuficiente: detecci\xF3n limitada" : "Iluminaci\xF3n disponible", " \xB7 an\xE1lisis ").concat(analysis.width, " px \xB7 ").concat(Math.round(motionMS), " ms").concat(state.slow ? " \xB7 resoluci\xF3n reducida por rendimiento" : "", " \xB7 activo ").concat(Math.floor((Date.now() - state.started) / 6e4), " min");
   } catch (e) {
     error("Fallo de an\xE1lisis: " + e.message);
   } finally {
-    if (state.stream && !document.hidden)
-      loopTimer = setTimeout(tick, $("lowPower").checked ? 500 : 250);
+    if (cycle === analysisGeneration && cameraID === cameraGeneration && state.stream && !document.hidden)
+      loopTimer = setTimeout(tick, !state.armed ? 1500 : Math.max($("lowPower").checked ? 500 : 200, +$("analysisInterval").value));
   }
 }
 function setMode() {
   state.confirmed = 0;
+  state.previous = null;
+  state.movingSince = 0;
+  state.moving = false;
+  state.lastMotionAt = 0;
+  state.motionConfirmedAt = 0;
+  state.persons = [];
+  state.episode = null;
   state.lastEvent = 0;
   state.personPresent = false;
   state.eventTimes = {};
@@ -1042,8 +1188,10 @@ function setMode() {
   $("arm").textContent = state.armed ? "DESACTIVAR VIGILANCIA" : "ACTIVAR VIGILANCIA";
   stopSounds();
   if (!state.armed) stopRecording();
-  else if ($("recordMode").value === "continuous") startRecording("continua");
+  renderProtection();
+  renderSurveillanceStatus();
   log("modo", $("status").textContent);
+  if (state.armed && $("person").checked) loadModel();
   save();
 }
 $("camera").onclick = () => state.stream ? stopCamera() : startCamera();
@@ -1231,13 +1379,30 @@ settingIds.forEach(
     save();
     state.previous = null;
     if (id === "mode") setMode();
+    if (id === "person") state.persons = [];
+    if (id === "motion") {
+      state.movingSince = 0;
+      state.lastMotionAt = 0;
+      state.moving = false;
+    }
     if (["brightness", "contrast", "gamma", "zoom", "nightMode"].includes(id)) {
       updatePreview();
       draw();
     }
     if (["person", "autoAlarm", "confirmation"].includes(id))
       state.confirmed = 0;
-    if (id === "person") loadModel();
+    if (id === "person" && state.armed) loadModel();
+    if (id === "recordQuality" && (state.recording || state.recordStarting)) {
+      $(id).value = configuredRecordQuality;
+      save();
+      error("Det\xE9n el clip antes de cambiar su resoluci\xF3n.", "grabaci\xF3n");
+    }
+    if (id === "recordQuality" && !state.recording && !state.recordStarting) {
+      configuredRecordQuality = $(id).value;
+      frame.width = Math.min(video.videoWidth || 640, +$(id).value);
+      frame.height = Math.round(frame.width * (video.videoHeight || 480) / (video.videoWidth || 640));
+    }
+    if (id === "previewQuality" && state.stream) $("sequenceStatus").textContent = "Calidad de captura guardada. Reinicia la c\xE1mara para aplicarla.";
     if (id === "zoom") {
       state.confirmed = 0;
       if (state.zone || state.mask) {
@@ -1247,75 +1412,128 @@ settingIds.forEach(
         );
       }
     }
-    if (id === "recordMode" && state.armed) {
-      stopRecording().then(() => {
-        if ($("recordMode").value === "continuous") startRecording("continua");
-      });
-    }
+    if (id === "recordMode" && state.armed) stopRecording();
   })
 );
 $("volume").oninput = () => {
   if (activeAudio) activeAudio.volume = +$("volume").value / 100;
 };
 $("torch").onchange = () => torch($("torch").checked);
-$("zone").onclick = () => {
-  drawMode = "zone";
+async function beginZoneEditor(kind) {
+  if (drawMode) return;
+  if (!state.stream) await startCamera();
+  if (!state.stream || !video.videoWidth) {
+    error("Inicia y autoriza la c\xE1mara para dibujar la zona.");
+    return;
+  }
+  await stopRecording();
+  stopSounds();
+  analysisGeneration++;
+  state.previous = null;
+  editorScroll = window.scrollY;
+  drawMode = kind;
+  zoneDraft = state[kind] ? { ...state[kind] } : null;
+  $("zoneEditorTitle").textContent = kind === "mask" ? "M\xE1scara de privacidad" : "Zona de vigilancia";
+  $("zoneEditorTools").hidden = false;
+  $("zoneEditorHeading").hidden = false;
+  $("zoneApply").disabled = !zoneDraft;
   document.body.classList.add("drawing");
+  requestAnimationFrame(draw);
+  tick();
+}
+function closeZoneEditor() {
+  drawMode = null;
+  zoneDraft = null;
+  drag = null;
+  document.body.classList.remove("drawing");
+  $("zoneEditorTools").hidden = true;
+  $("zoneEditorHeading").hidden = true;
+  state.previous = null;
+  state.movingSince = 0;
+  window.scrollTo(0, editorScroll);
+  requestAnimationFrame(draw);
+  tick();
+}
+$("zone").onclick = () => beginZoneEditor("zone");
+$("mask").onclick = () => beginZoneEditor("mask");
+$("zoneCancel").onclick = closeZoneEditor;
+$("zoneNew").onclick = () => {
+  zoneDraft = null;
+  $("zoneApply").disabled = true;
+  draw();
 };
-$("mask").onclick = () => {
-  drawMode = "mask";
-  document.body.classList.add("drawing");
+$("zoneApply").onclick = async () => {
+  if (!zoneDraft || !drawMode) return;
+  state[drawMode] = { ...zoneDraft };
+  state.episode = null;
+  state.persons = [];
+  state.motionBounds = null;
+  save();
+  log("modo", drawMode === "mask" ? "M\xE1scara privada guardada" : "Zona de vigilancia guardada");
+  $("sequenceStatus").textContent = "Zona guardada. Puedes ajustarla de nuevo con los tiradores.";
+  closeZoneEditor();
 };
 $("clearZones").onclick = async () => {
   await stopRecording();
+  stopSounds();
   state.zone = null;
   state.mask = null;
+  state.episode = null;
+  state.persons = [];
   state.confirmed = 0;
   state.previous = null;
   save();
+  draw();
 };
 function point(e) {
   const b = overlay.getBoundingClientRect(), v = viewRect();
-  return {
-    x: Math.max(0, Math.min(1, (e.clientX - b.left - v.x) / v.w)),
-    y: Math.max(0, Math.min(1, (e.clientY - b.top - v.y) / v.h))
-  };
+  return { x: Math.max(0, Math.min(1, (e.clientX - b.left - v.x) / v.w)), y: Math.max(0, Math.min(1, (e.clientY - b.top - v.y) / v.h)) };
 }
 overlay.onpointerdown = (e) => {
-  if (!drawMode || !state.stream) return;
-  const p = point(e);
-  drag = { start: p, rect: { ...p, w: 0, h: 0 } };
-  overlay.setPointerCapture(e.pointerId);
-};
-overlay.onpointermove = (e) => {
-  if (!drag) return;
-  const p = point(e), s = drag.start;
-  drag.rect = {
-    x: Math.min(p.x, s.x),
-    y: Math.min(p.y, s.y),
-    w: Math.abs(p.x - s.x),
-    h: Math.abs(p.y - s.y)
-  };
+  if (!drawMode || !state.stream || drag || e.pointerType === "mouse" && e.button !== 0) return;
+  e.preventDefault();
+  const p = point(e), v = viewRect();
+  let corner = null;
+  if (zoneDraft) for (const x of [0, 1]) for (const y of [0, 1]) {
+    if (Math.abs(p.x - zoneDraft.x - x * zoneDraft.w) * v.w < 26 && Math.abs(p.y - zoneDraft.y - y * zoneDraft.h) * v.h < 26) corner = { x, y };
+  }
+  const moving = zoneDraft && SecurityDetection.contains(p.x, p.y, zoneDraft) && !corner;
+  drag = { pointerId: e.pointerId, start: p, original: zoneDraft ? { ...zoneDraft } : null, corner, moving };
+  if (!corner && !moving) zoneDraft = { ...p, w: 0, h: 0 };
+  try {
+    overlay.setPointerCapture(e.pointerId);
+  } catch {
+  }
   draw();
 };
-overlay.onpointerup = async () => {
-  if (!drag) return;
-  const r = drag.rect, kind = drawMode;
-  drag = null;
-  drawMode = null;
-  document.body.classList.remove("drawing");
-  if (r.w > 0.02 && r.h > 0.02) {
-    await stopRecording();
-    state[kind] = r;
-    state.previous = null;
-    state.confirmed = 0;
-    save();
-    log(
-      "modo",
-      kind === "mask" ? "M\xE1scara privada aplicada" : "Zona restringida aplicada"
-    );
+overlay.onpointermove = (e) => {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  e.preventDefault();
+  const p = point(e), o = drag.original;
+  if (drag.moving) zoneDraft = { ...o, x: Math.max(0, Math.min(1 - o.w, o.x + p.x - drag.start.x)), y: Math.max(0, Math.min(1 - o.h, o.y + p.y - drag.start.y)) };
+  else {
+    const anchor = drag.corner ? { x: o.x + (1 - drag.corner.x) * o.w, y: o.y + (1 - drag.corner.y) * o.h } : drag.start;
+    zoneDraft = { x: Math.min(p.x, anchor.x), y: Math.min(p.y, anchor.y), w: Math.abs(p.x - anchor.x), h: Math.abs(p.y - anchor.y) };
   }
+  $("zoneApply").disabled = zoneDraft.w < 0.02 || zoneDraft.h < 0.02;
+  draw();
 };
+overlay.onpointerup = (e) => {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  overlay.onpointermove(e);
+  drag = null;
+  $("zoneApply").disabled = !zoneDraft || zoneDraft.w < 0.02 || zoneDraft.h < 0.02;
+  draw();
+};
+overlay.onpointercancel = () => {
+  if (drag) zoneDraft = drag.original;
+  drag = null;
+  $("zoneApply").disabled = !zoneDraft;
+  draw();
+};
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && drawMode) closeZoneEditor();
+});
 $("filter").onchange = renderEvents;
 $("clearLog").onclick = () => authorizeLocalAction("Borrar historial", () => {
   events = [];
@@ -1410,6 +1628,12 @@ $("diagnose").onclick = async () => {
 };
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    analysisGeneration++;
+    state.previous = null;
+    state.movingSince = 0;
+    state.lastMotionAt = 0;
+    state.persons = [];
+    state.episode = null;
     clearTimeout(loopTimer);
     state.confirmed = 0;
     stopSounds();
@@ -1421,8 +1645,6 @@ document.addEventListener("visibilitychange", () => {
   } else if (state.stream) {
     state.previous = null;
     tick();
-    if (state.armed && $("recordMode").value === "continuous")
-      startRecording("continua");
   }
 });
 window.addEventListener("pagehide", () => {
@@ -1446,7 +1668,6 @@ if (navigator.getBattery)
   });
 openDB().then(async () => {
   await renderClips();
-  await loadSounds();
 }).catch((e) => {
   state.storageFailed = true;
   error("Almacenamiento local no disponible: " + e.message, "p\xE9rdida");
@@ -1492,29 +1713,17 @@ $("fullZone").onclick = () => {
 function prepareDetection() {
   state.threatSince = 0;
   if (state.warningPending) stopSounds();
-  if ($("autoAlarm").checked && state.armed) {
-    enableAudio();
-    $("mode").value = "alarm";
-    setMode();
-    if ($("alarmSource").value === "person") {
-      $("person").checked = true;
-      loadModel();
-    } else $("motion").checked = true;
-    if (!state.zone)
-      $("sequenceStatus").textContent = "Selecciona la zona de tu propiedad antes de activar la alarma.";
-  }
   save();
 }
 $("autoAlarm").addEventListener("change", prepareDetection);
 $("alarmSource").addEventListener("change", prepareDetection);
-loadSounds().catch((e) => error(e.message, "audio"));
 let protecting = false;
 function renderProtection() {
   const title = $("protectionTitle"), hint = $("protectionHint");
   document.body.dataset.protection = state.alarm ? "alarm" : state.warningPending ? "warning" : state.armed ? "armed" : "idle";
   if (protecting) {
     title.textContent = "Preparando protecci\xF3n";
-    hint.textContent = state.stream ? "Comprobando sonido y detector\u2026" : "Esperando permiso de c\xE1mara\u2026";
+    hint.textContent = state.stream ? "Preparando c\xE1mara y detectores\u2026" : "Esperando permiso de c\xE1mara\u2026";
   } else if (state.alarm) {
     title.textContent = siren || activeAudio ? "Alarma activada" : "Alarma sin sonido";
     hint.textContent = siren || activeAudio ? "El navegador reproduce la sirena. Si no la oyes, toca Probar sonido." : "El navegador no ha iniciado el audio. Revisa el error de sonido.";
@@ -1525,33 +1734,18 @@ function renderProtection() {
       Math.ceil(22.13 - (Date.now() - state.warningStarted) / 1e3)
     );
     hint.textContent = "Aviso de voz \xB7 " + left + " s. Despu\xE9s, sirena si contin\xFAa la detecci\xF3n.";
-  } else if (state.armed && !audioReady) {
-    title.textContent = "Sonido interrumpido";
-    hint.textContent = "Toca Reactivar sonido. Safari ha suspendido el audio.";
-  } else if (state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone) {
-    title.textContent = "Vigilancia activa";
-    hint.textContent = $("alarmSource").value === "person" ? "Personas \u2192 aviso de voz \u2192 sirena si permanecen." : "Movimiento \u2192 aviso de voz \u2192 sirena si contin\xFAa.";
   } else if (state.armed) {
-    title.textContent = "Vigilancia sin alarma";
-    hint.textContent = "Este modo detecta, pero no activa la sirena. Usa Proteger esta imagen para habilitarla.";
+    title.textContent = $("mode").selectedOptions[0].textContent;
+    hint.textContent = $("recordMode").value === "event" ? "Un clip por evento \xB7 " + $("clip").value + " s \xB7 sin micr\xF3fono" : "Detecci\xF3n activa \xB7 grabaci\xF3n autom\xE1tica deshabilitada";
   } else {
     title.textContent = "Sistema desarmado";
     hint.textContent = state.persons.length ? "Se ve una persona, pero la alarma est\xE1 desactivada." : "Arma el sistema para activar la detecci\xF3n y la respuesta.";
   }
   $("protect").disabled = protecting;
   $("protect").textContent = protecting ? "Preparando\u2026" : state.armed ? "Desarmar" : "Armar sistema";
-  if (state.armed && !audioReady) $("protect").textContent = "Activar sonido";
 }
 $("protect").onclick = async () => {
   if (protecting) return;
-  if (state.armed && !audioReady) {
-    if (await enableAudio()) {
-      state.lastAlarm = 0;
-      state.threatSince = 0;
-    }
-    renderProtection();
-    return;
-  }
   if (state.armed) {
     $("mode").value = "disarmed";
     setMode();
@@ -1559,54 +1753,21 @@ $("protect").onclick = async () => {
     return;
   }
   protecting = true;
+  $("error").textContent = "";
   renderProtection();
   try {
-    if (!await enableAudio())
-      throw Error("El sonido est\xE1 bloqueado. Toca de nuevo para habilitarlo.");
-    await loadSounds();
-    if (!state.stream) {
-      $("person").checked = false;
-      await startCamera();
-    }
-    if (!state.stream)
-      throw Error("No se ha podido iniciar la c\xE1mara. Revisa el permiso.");
-    if ($("alarmSource").value === "person") {
-      $("person").checked = true;
-      await loadModel();
-      if (!state.model)
-        throw Error(
-          "Personas no est\xE1 disponible en este dispositivo. Selecciona Movimiento."
-        );
-    } else {
-      $("motion").checked = true;
-      $("person").checked = false;
-    }
-    if (!audioReady)
-      throw Error(
-        "Safari ha suspendido el sonido. Vuelve a tocar Proteger esta imagen."
-      );
-    if (+$("volume").value === 0) $("volume").value = "70";
+    if ($("surveillanceMode").value !== "silent" && ($("autoVoice").checked || $("autoAlarm").checked)) await enableAudio();
+    if (!state.stream) await startCamera();
+    if (!state.stream) throw Error("No se ha podido iniciar la c\xE1mara. Revisa el permiso.");
+    if (!$("motion").checked && !$("person").checked) throw Error("Activa al menos un detector.");
     state.zone || (state.zone = { x: 0, y: 0, w: 1, h: 1 });
-    $("autoAlarm").checked = true;
-    $("mode").value = "alarm";
-    $("nightMode").value = "auto";
-    $("brightness").value = "100";
-    $("contrast").value = "100";
-    $("gamma").value = "100";
-    $("confirmation").value = "1";
-    $("confidence").value = "60";
-    $("aiInterval").value = "3";
-    $("sensitivity").value = "60";
-    $("nightSensitivity").value = "75";
-    $("lowPower").checked = true;
-    $("torchLimit").value = "30";
+    $("mode").value = $("surveillanceMode").value;
     state.threatSince = 0;
     state.lastAlarm = 0;
     setMode();
     updatePreview();
     draw();
     save();
-    $("error").textContent = "";
   } catch (e) {
     error(e.message, "alarma");
   } finally {
@@ -1647,3 +1808,25 @@ mediaAudio.addEventListener("error", () => {
     );
   }
 });
+function renderSurveillanceStatus() {
+  const cooldown = Math.max(0, Math.ceil(((state.recordCooldownUntil || 0) - Date.now()) / 1e3));
+  $("eventState").textContent = state.recording ? "REC \xB7 grabando clip" : cooldown ? "Cooldown \xB7 " + cooldown + " s" : state.episode ? "Episodio activo \xB7 sin repetir clip" : "Esperando evento";
+  $("motionBadge").hidden = !state.armed || !state.moving;
+  $("personBadge").hidden = !state.armed || !personFresh();
+  $("audioBadge").textContent = audioReady ? "AUDIO READY" : "AUDIO \xB7 toca Probar sonido";
+  renderDetectionStatus();
+  $("powerBadge").textContent = $("lowPower").checked ? "LOW POWER" : state.slow ? "AN\xC1LISIS REDUCIDO" : "EST\xC1NDAR";
+  $("darkBadge").hidden = !state.armed || !state.night;
+  $("modeBadge").textContent = "MODE \xB7 " + (state.armed ? $("mode").selectedOptions[0].textContent : "DESARMADO");
+}
+setInterval(renderSurveillanceStatus, 500);
+$("openRecordings").onclick = () => $("navClips").click();
+setInterval(() => {
+  if (state.storageFailed) $("storageBadge").textContent = "STORAGE \xB7 ERROR";
+}, 1e3);
+function renderDetectionStatus() {
+  var _a, _b, _c;
+  const signal = state.motionSignal;
+  const capture = ((_c = (_b = (_a = state.stream) == null ? void 0 : _a.getVideoTracks()[0]) == null ? void 0 : _b.getSettings) == null ? void 0 : _c.call(_b)) || {};
+  $("detectionReadout").textContent = !state.stream ? "Inicia la c\xE1mara para comprobar el encuadre." : "".concat(capture.width || video.videoWidth, " \xD7 ").concat(capture.height || video.videoHeight, " \xB7 movimiento ").concat(signal ? (signal.ratio * 100).toFixed(2) : "0", "% de la zona \xB7 ") + (!state.armed ? "Desarmado: pulsa Armar sistema para detectar" : drawMode ? "Detecci\xF3n en pausa mientras ajustas la zona" : !$("person").checked ? "IA desactivada" : !state.model ? "IA pendiente: se carga al armar" : "IA ".concat(state.aiDetail ? "detalle autom\xE1tico" : "vista general", " \xB7 ").concat(Math.round(state.aiMS || 0), " ms \xB7 ").concat(state.persons.length, " persona(s)"));
+}

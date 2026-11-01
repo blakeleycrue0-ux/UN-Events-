@@ -45,7 +45,7 @@ async function verifyLocalPin(title, { required = false, warmAudio = false } = {
     if (value === null) return false;
     if (await hash(value) === pinStored()) {
       pinFailures = 0;
-      if (preparation && !await preparation) return false;
+      if (preparation) await preparation;
       return true;
     }
     if (++pinFailures >= 5) {
@@ -68,22 +68,7 @@ async function lockApplication() {
   try {
     if (!pinStored()) await createLocalPin();
     else await verifyLocalPin("Desbloquear SECURITY CAM", { required: true });
-    if (!state.stream) {
-      for (const [id, value] of Object.entries({
-        nightMode: "auto",
-        brightness: "100",
-        contrast: "100",
-        gamma: "100",
-        sensitivity: "60",
-        confidence: "60",
-        aiInterval: "3",
-        nightSensitivity: "75",
-        torchLimit: "30"
-      }))
-        $(id).value = value;
-      $("lowPower").checked = true;
-      updatePreview();
-    }
+    updatePreview();
     await new Promise((resolve) => requestAnimationFrame(resolve));
     securityUnlocked = true;
     document.body.classList.remove("auth-pending", "locked", "hidden-controls");
@@ -130,7 +115,7 @@ function protectHandler(id, title, { when = () => true, warm = false } = {}) {
 protectHandler(
   "protect",
   () => state.armed ? "Desactivar vigilancia" : "Activar vigilancia",
-  { when: () => !(state.armed && !audioReady), warm: () => !state.armed }
+  { warm: () => !state.armed && $("surveillanceMode").value !== "silent" && ($("autoVoice").checked || $("autoAlarm").checked) }
 );
 protectHandler(
   "arm",
@@ -140,7 +125,7 @@ protectHandler(
 protectHandler("camera", "Detener la c\xE1mara", { when: () => !!state.stream });
 protectHandler("restart", "Reiniciar la c\xE1mara", { when: () => state.armed });
 protectHandler("alarm", "Activar sirena manual", { warm: true });
-for (const id of ["zone", "mask", "clearZones"])
+for (const id of ["zone", "mask", "clearZones", "fullZone"])
   protectHandler(id, "Cambiar zona de vigilancia", { when: () => state.armed });
 const previousCameraChange = $("device").onchange;
 $("device").onchange = async (event) => {
@@ -182,4 +167,18 @@ $("alarmSource").addEventListener(
 );
 protectHandler("connectRemote", "Compartir la c\xE1mara", {
   when: () => $("remoteRole").value === "camera"
+});
+let previousSurveillanceMode = $("surveillanceMode").value;
+$("surveillanceMode").addEventListener("change", async () => {
+  const selected = $("surveillanceMode").value;
+  if (state.armed) {
+    const ok = await authorizeLocalAction("Cambiar modo de vigilancia", () => {
+      $("mode").value = selected;
+      setMode();
+      return true;
+    });
+    if (!ok) $("surveillanceMode").value = previousSurveillanceMode;
+    else previousSurveillanceMode = selected;
+  } else previousSurveillanceMode = selected;
+  save();
 });
