@@ -16,7 +16,7 @@ with sync_playwright() as p:
  page.wait_for_function('state.warningPending',timeout=15000)
  page.wait_for_function('state.alarm && !!siren',timeout=30000)
  print('PASS primary button starts camera, unlocks sound, authorizes zone, arms detector and real motion triggers MP3 then siren')
- page.click('#silence');page.click('#protect');confirm_action(page);page.wait_for_function('!state.armed')
+ page.click('#globalSilence');page.click('#protect');confirm_action(page);page.wait_for_function('!state.armed')
  assert not page.evaluate('state.alarm || state.warningPending')
  page.click('#navClips');assert page.locator('.evidence').get_attribute('open') is not None
  assert not errors,errors

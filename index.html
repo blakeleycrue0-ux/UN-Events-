@@ -2,309 +2,306 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SECURITY CAM</title>
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0d68e8" />
+    <title>Security Cam</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body class="auth-pending">
     <header class="app-header">
-      <button id="backHome" aria-label="Volver al inicio">←</button>
-      <div class="brand-mark">S</div>
-      <strong>SECURITY CAM<span class="brand-subtitle">MI HOGAR</span></strong
-      ><button id="unlock">PIN</button>
+      <button id="backHome" class="icon-button" aria-label="Volver">←</button>
+      <div class="wordmark">
+        <span class="brand-symbol">S</span
+        ><span>security<span class="wordmark-light">cam</span></span>
+      </div>
+      <button id="unlock" class="icon-button" aria-label="Bloquear aplicación">
+        Bloquear
+      </button>
     </header>
-    <section id="landingPage" class="landing-page">
-      <div class="welcome">
-        <span class="eyebrow">BIENVENIDO A TU HOGAR</span>
-        <h1>Tu casa.<br />Siempre contigo.</h1>
-        <p>Un espacio para proteger lo que más importa.</p>
+    <div id="globalAlert" role="alert" hidden="">
+      <span id="globalAlertText"></span
+      ><button id="globalSilence">Silenciar</button>
+    </div>
+    <section id="welcomePage" class="page welcome-page" hidden="">
+      <div class="welcome-emblem">
+        <svg viewBox="0 0 48 48" fill="none">
+          <rect
+            x="6"
+            y="12"
+            width="27"
+            height="24"
+            rx="8"
+            stroke="currentColor"
+            stroke-width="2"
+          ></rect>
+          <path
+            d="m33 21 9-5v16l-9-5"
+            stroke="currentColor"
+            stroke-width="2"
+          ></path>
+          <circle
+            cx="19"
+            cy="24"
+            r="5"
+            stroke="currentColor"
+            stroke-width="2"
+          ></circle>
+        </svg>
       </div>
-      <div class="glass house-card">
-        <div>
-          <span class="eyebrow">MI ESPACIO</span>
-          <h2>Mi casa</h2>
-        </div>
-        <span id="homeLocalState" class="home-state"
-          >Protección local desactivada</span
-        >
-        <p id="homeLocalDetail">Elige el papel de este móvil para empezar.</p>
-      </div>
-      <div class="role-cards">
-        <button id="openCamera" class="glass role-card">
-          <span class="role-number">01</span
-          ><strong>Este móvil será la cámara</strong
-          ><span
-            >Vigilar, detectar y guardar grabaciones en este dispositivo.</span
-          ><b>Configurar vigilancia →</b></button
-        ><button id="openViewer" class="glass role-card">
-          <span class="role-number">02</span
-          ><strong>Quiero ver otra cámara</strong
-          ><span>Conectar con el móvil que se queda en casa.</span
-          ><b>Abrir monitor remoto →</b>
+      <p class="kicker">TU ESPACIO, CONECTADO</p>
+      <h1>Todo bajo<br />tu mirada.</h1>
+      <p class="welcome-copy">
+        Tus cámaras, tus grabaciones y tu hogar. En una sola aplicación.
+      </p>
+      <div class="welcome-actions">
+        <button id="welcomeLogin" class="primary">Acceder a mi cuenta</button
+        ><button id="welcomeLocal" class="text-button">
+          Usar en este dispositivo
         </button>
       </div>
-      <div class="home-shortcuts">
-        <button id="homeClips">Mis grabaciones</button
-        ><button id="homeConnection">Conexión entre móviles</button>
-      </div>
-      <p class="landing-footnote">
-        Cámara local disponible. La conexión desde otra red necesita el servicio
-        remoto configurado; no se conecta por el mero hecho de abrir esta web.
+      <p class="fine-print">
+        El acceso remoto requiere una cuenta y el servicio configurado. La
+        vigilancia local funciona de forma independiente.
       </p>
     </section>
-    <section id="remotePage" class="remote-page" hidden="">
-      <div class="remote-title">
-        <span class="eyebrow">TUS DISPOSITIVOS</span>
-        <h1>Conecta con tu hogar.</h1>
-        <p>Un móvil vigila. El otro te permite mirar.</p>
-      </div>
-      <div class="glass remote-card">
-        <label
-          >Conexión<select id="remoteProvider">
-            <option value="supabase">Mi cuenta de Supabase</option>
-            <option value="server">Servidor WSS propio</option>
-          </select></label
-        >
-        <div id="supabasePanel">
-          <details id="supabaseSetup" open>
-            <summary>Configurar mi proyecto (una vez)</summary>
-            <label
-              >URL pública de Supabase<input
-                id="supabaseUrl"
-                type="url"
-                placeholder="https://tu-proyecto.supabase.co" /></label
-            ><label
-              >Clave pública publishable / anon<input
-                id="supabasePublicKey"
-                type="text"
-                autocomplete="off"
-                placeholder="sb_publishable_…"
-            /></label>
-            <p>Solo la clave pública. Nunca uses secret ni service_role.</p>
-          </details>
-          <div id="supabaseLoginFields">
-            <label
-              >Email de tu cuenta<input
-                id="supabaseEmail"
-                type="email"
-                autocomplete="username" /></label
-            ><label
-              >Contraseña de tu cuenta<input
-                id="supabasePassword"
-                type="password"
-                autocomplete="current-password" /></label
-            ><button id="supabaseLogin">Iniciar sesión</button>
-          </div>
-          <div id="supabaseAccount" hidden>
-            <p id="supabaseAccountStatus"></p>
-            <button id="supabaseLogout">Cerrar sesión</button>
-            <div id="supabaseCameraFields">
-              <label
-                >Nombre de esta cámara<input
-                  id="supabaseCameraName"
-                  maxlength="60"
-                  value="Entrada"
-              /></label>
-            </div>
-            <div id="supabaseViewerFields">
-              <label
-                >Cámara de mi cuenta<select id="supabaseCameraList">
-                  <option value="">Busca tus cámaras</option>
-                </select></label
-              ><button id="supabaseRefresh">Buscar cámaras</button>
-            </div>
-          </div>
-          <p id="supabaseStatus" role="status">
-            Sin sesión. Usa la misma cuenta en tus dos móviles.
-          </p>
+    <section id="landingPage" class="page" hidden="">
+      <div class="page-heading">
+        <div>
+          <p class="kicker" id="greeting">BIENVENIDO</p>
+          <h1 id="homeTitle">Mi hogar</h1>
         </div>
-        <label
-          >Papel de este móvil<select id="remoteRole">
-            <option value="viewer">Ver la cámara de casa</option>
-            <option value="camera">Compartir la cámara de este móvil</option>
-          </select></label
-        >
-        <label
-          >Servidor de conexión<input
-            id="signalUrl"
-            type="url"
-            placeholder="wss://conexion.tudominio.com"
-        /></label>
-        <div id="hostCredentials">
-          <label
-            >Clave de instalación del servidor<input
-              id="hostAccess"
-              type="password"
-              autocomplete="off"
-          /></label>
-          <p>
-            Solo la necesita el móvil cámara. No se guarda en este navegador.
-          </p>
-        </div>
-        <div id="viewerCredentials">
-          <label
-            >Clave de emparejamiento<input
-              id="pairKey"
-              type="password"
-              autocomplete="off"
-              placeholder="Pega la clave creada en el móvil cámara"
-          /></label>
-        </div>
-        <button id="connectRemote" class="remote-primary">Conectar</button
-        ><button id="disconnectRemote">Desconectar</button>
-        <p id="remoteStatus" role="status">
-          Sin conexión remota. No se está publicando vídeo.
-        </p>
-        <div id="pairingResult" hidden="">
-          <label
-            >Clave privada para el otro móvil<input
-              id="createdPair"
-              readonly=""
-              type="password" /></label
-          ><button id="copyPair">Copiar clave</button>
-          <p>
-            Caduca en una hora. Desconectar la cámara invalida la clave.
-            Compártela solo con tu otro móvil por un canal de confianza.
-          </p>
-        </div>
-      </div>
-      <div id="remoteVideoBox" class="remote-video-box" hidden="">
-        <video
-          id="remoteVideo"
-          autoplay=""
-          muted=""
-          playsinline=""
-          controls=""
-        ></video>
-        <p>
-          Solo vídeo. Las grabaciones continúan guardándose en el móvil cámara.
-        </p>
-      </div>
-      <details class="glass remote-info">
-        <summary>Preparar la conexión desde fuera</summary>
-        <p>
-          Con Supabase, usa la misma cuenta en los dos móviles. El proyecto debe
-          tener configurados los permisos de cámaras, Realtime privado y la
-          función de conexión. Necesitas también un relay TURN para que el vídeo
-          atraviese redes distintas.
-        </p>
-        <p>
-          Los clips siguen guardándose en el móvil cámara. Mantén Safari visible
-          y el móvil desbloqueado. El PIN local no sustituye tu cuenta remota.
-        </p>
-      </details>
-    </section>
-    <main id="cameraPage" hidden="">
-      <section class="home-card">
-        <div class="home-top">
-          <span>MI SISTEMA</span><span id="status">DESARMADO</span
-          ><span id="alarmStatus" hidden="">ALARMA ACTIVA</span>
-        </div>
-        <div class="shield-mark">
-          <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
-            <path
-              d="M24 5 40 11v12c0 10-8 17-16 21C16 40 8 33 8 23V11Z"
-              stroke="currentColor"
-              stroke-width="2.5"
-            ></path>
-            <path
-              d="m16 24 6 6 11-13"
-              stroke="currentColor"
-              stroke-width="2.5"
-            ></path>
-          </svg>
-        </div>
-        <h1 id="protectionTitle">Tu hogar, bajo control</h1>
-        <p id="protectionHint">
-          Activa la protección cuando quieras vigilar tu entrada.
-        </p>
-        <div class="protection-choice controls">
-          <label
-            >Qué quieres detectar<select id="alarmSource">
-              <option value="person">Personas</option>
-              <option value="motion">Movimiento</option>
-            </select></label
-          >
-        </div>
-        <button id="protect" class="protect-button controls">
-          PROTEGER ESTA IMAGEN
+        <button id="openAdd" class="add-button" aria-label="Añadir cámara">
+          +
         </button>
-        <p class="consent-note">
-          Al activar autorizas aviso y sirena sobre tu zona guardada o, si aún
-          no existe, toda esta imagen. Encuadra solo tu propiedad.
-        </p>
-        <div class="audio-actions">
-          <button id="testSpeaker">Probar sonido</button
-          ><button id="silence" class="silence-action">
-            Silenciar sonidos
-          </button>
+      </div>
+      <button id="systemOpen" class="system-strip" type="button">
+        <span class="status-dot" id="homeStatusDot"></span>
+        <div>
+          <strong id="homeLocalState">Sin vigilancia activa</strong>
+          <p id="homeLocalDetail">Configura un dispositivo para empezar.</p>
         </div>
-        <p id="speakerStatus" role="status"></p>
-        <p id="sequenceStatus" role="status"></p>
-      </section>
-      <div class="section-heading">
-        <h2>Tu entrada</h2>
+        <span class="small-arrow">›</span>
+      </button>
+      <div class="section-title">
+        <h2>Mis dispositivos</h2>
+        <button id="seeDevices" class="text-button">Ver todos</button>
+      </div>
+      <button id="openCamera" class="device-card">
+        <div class="device-art">
+          <svg viewBox="0 0 72 72" fill="none">
+            <rect
+              x="14"
+              y="15"
+              width="33"
+              height="43"
+              rx="10"
+              stroke="currentColor"
+              stroke-width="2"
+            ></rect>
+            <circle
+              cx="30.5"
+              cy="30"
+              r="7"
+              stroke="currentColor"
+              stroke-width="2"
+            ></circle>
+            <path
+              d="m47 29 12-7v24l-12-7M26 51h9"
+              stroke="currentColor"
+              stroke-width="2"
+            ></path></svg
+          ><span id="deviceBadge" class="device-badge">Este teléfono</span>
+        </div>
+        <div class="device-card-copy">
+          <div>
+            <strong id="deviceCardName">Entrada</strong>
+            <p id="deviceCardState">Preparar como cámara</p>
+          </div>
+          <span class="round-arrow">→</span>
+        </div>
+      </button>
+      <div class="quick-grid">
+        <button id="homeClips" class="quick-tile">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="5" width="18" height="15" rx="4"></rect>
+            <path d="m10 10 5 3-5 3Z"></path></svg
+          ><span>Grabaciones</span
+          ><strong id="clipCount">0 clips</strong></button
+        ><button id="openViewer" class="quick-tile">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="12" rx="2"></rect>
+            <rect x="14" y="9" width="7" height="12" rx="2"></rect>
+            <path d="m13 4 5 2-4 2M11 20l-5-2 4-2"></path></svg
+          ><span>Mis conexiones</span
+          ><strong id="cloudHomeState">Vincular cuenta</strong>
+        </button>
+      </div>
+      <div class="section-title">
+        <h2>Última actividad</h2>
+        <button id="viewEvents" class="text-button">Ver historial</button>
+      </div>
+      <div id="recentActivity" class="list-card"></div>
+    </section>
+    <section id="camerasPage" class="page" hidden="">
+      <div class="page-heading">
+        <div>
+          <p class="kicker">TUS DISPOSITIVOS</p>
+          <h1>Cámaras</h1>
+        </div>
+        <button
+          id="addFromCameras"
+          class="add-button"
+          aria-label="Añadir cámara"
+        >
+          +
+        </button>
+      </div>
+      <div id="cameraList" class="list-card"></div>
+      <div class="section-title">
+        <h2>En tu cuenta</h2>
+        <button id="refreshDevices" class="text-button">Actualizar</button>
+      </div>
+      <div id="cloudCameraCards" class="list-card"></div>
+      <p id="devicesStatus" class="fine-print"></p>
+    </section>
+    <main id="cameraPage" class="page camera-page" hidden="">
+      <div class="page-heading compact">
+        <div>
+          <p class="kicker">ESTE DISPOSITIVO</p>
+          <h1 id="cameraTitle">Entrada</h1>
+        </div>
+        <span id="cameraStateBadge" class="pill">Sin conexión</span>
+      </div>
+      <div id="stage">
+        <div id="videoViewport">
+          <video id="video" autoplay="" muted="" playsinline=""></video>
+        </div>
+        <canvas id="overlay"></canvas>
+        <div class="badges">
+          <span id="live">SIN CÁMARA</span><span id="rec" hidden="">REC</span>
+        </div>
+        <div id="cameraMessage">
+          La cámara se inicia al proteger esta imagen. Sin micrófono.
+        </div>
         <time id="clock"></time>
       </div>
-
-      <section class="monitor">
-        <div id="stage">
-          <div id="videoViewport">
-            <video id="video" autoplay="" muted="" playsinline=""></video>
-          </div>
-          <canvas id="overlay"></canvas>
-          <div class="badges">
-            <span id="live">SIN CÁMARA</span><span id="rec" hidden="">REC</span>
-          </div>
-          <div id="cameraMessage">
-            La cámara se inicia al proteger esta imagen. Sin micrófono.
-          </div>
+      <div class="camera-toolbar">
+        <button id="fullscreen">Ampliar</button><button id="photo">Foto</button
+        ><button id="record">Grabar manual</button>
+      </div>
+      <div class="camera-status">
+        <span class="status-dot"></span>
+        <div>
+          <h2 id="protectionTitle"></h2>
+          <p id="protectionHint"></p>
         </div>
-        <input id="nightMode" type="hidden" value="auto" />
-        <p id="nightHint"></p>
-        <div hidden="">
-          <input id="autoAlarm" type="checkbox" /><button id="fullZone">
-            Usar imagen completa
-          </button>
+      </div>
+      <div class="camera-control-card">
+        <label
+          >Detectar<select id="alarmSource">
+            <option value="person">Personas</option>
+            <option value="motion">Movimiento</option>
+          </select></label
+        ><button id="protect" class="protect-button controls">
+          PROTEGER ESTA IMAGEN
+        </button>
+        <p class="fine-print">
+          Al armar autorizas aviso y sirena en la zona guardada, o en toda esta
+          imagen. Encuadra solo tu propiedad.
+        </p>
+      </div>
+      <p id="sequenceStatus" role="status"></p>
+      <p id="error" role="alert"></p>
+      <div class="inline-actions">
+        <button id="camera">Iniciar cámara</button
+        ><button id="shareCamera">Conectar con otro móvil</button>
+      </div>
+    </main>
+    <section id="activityPage" class="page" hidden="">
+      <div class="page-heading">
+        <div>
+          <p class="kicker">TU HISTORIAL</p>
+          <h1>Actividad</h1>
         </div>
-
-        <details class="controls extra-tools">
-          <summary>Controles de cámara</summary>
-          <div class="toolbar controls primary">
-            <button id="camera">Iniciar cámara</button>
-            <button id="record">Grabar manual</button>
-          </div>
-          <div id="extraToolsModeAnchor"></div>
-          <div class="toolbar">
-            <button id="photo">Fotografía</button>
-            <button id="fullscreen">Pantalla completa</button>
-            <button id="alarm" class="danger">Alarma manual</button>
-          </div>
-        </details>
-        <p id="health" role="status"></p>
-        <p id="error" role="alert"></p>
+      </div>
+      <div class="segmented">
+        <button id="showClips" class="selected">Grabaciones</button
+        ><button id="showEvents">Eventos</button>
+      </div>
+      <details class="evidence" open="">
+        <summary>Grabaciones</summary>
+        <p id="storage">Comprobando almacenamiento…</p>
+        <div id="clips"></div>
+      </details>
+      <section id="eventsGroup" hidden="">
+        <div class="activity-tools">
+          <select id="filter">
+            <option value="">Todos</option>
+            <option>movimiento</option>
+            <option>persona</option>
+            <option>grabación</option>
+            <option>alarma</option>
+            <option>cámara</option>
+            <option>audio</option>
+            <option>pérdida</option>
+            <option>modo</option></select
+          ><button id="clearLog">Borrar historial</button>
+        </div>
+        <ol id="events"></ol>
       </section>
-      <details class="controls settings">
-        <summary>Preferencias</summary>
-        <section class="panels">
-          <article>
-            <h2>Cámara y privacidad</h2>
+    </section>
+    <section id="profilePage" class="page" hidden="">
+      <div class="page-heading">
+        <div>
+          <p class="kicker">TU ESPACIO</p>
+          <h1>Perfil</h1>
+        </div>
+      </div>
+      <div class="identity-card">
+        <div id="profileAvatar" class="avatar">S</div>
+        <div>
+          <h2 id="profileDisplayName">Mi perfil</h2>
+          <p id="profileAccountLabel">En este dispositivo</p>
+        </div>
+        <button id="editProfile" class="text-button">Editar</button>
+      </div>
+      <button id="accountOpen" class="account-cta">
+        <span
+          ><strong id="accountCTATitle">Accede a tu cuenta</strong
+          ><small id="accountCTAHint"
+            >Conecta tus móviles de forma privada</small
+          ></span
+        ><span>→</span>
+      </button>
+      <section class="settings">
+        <h2 class="settings-title">Preferencias</h2>
+        <details class="preference-group">
+          <summary>Dispositivo y privacidad</summary>
+          <div class="preference-content">
             <label
               >Cámara
               <select id="device">
                 <option value="">Trasera automática</option>
               </select></label
-            ><button id="zone">Dibujar zona restringida</button
-            ><button id="mask">Dibujar máscara privada</button
-            ><button id="clearZones">Borrar zonas</button>
-            <p>
-              Encuadra solo tu propiedad. El brillo, la noche y el consumo se
-              ajustan automáticamente.
+            >
+            <div class="button-grid">
+              <button id="zone">Dibujar zona restringida</button
+              ><button id="mask">Dibujar máscara privada</button
+              ><button id="clearZones">Borrar zonas</button>
+            </div>
+            <p class="fine-print">
+              Vigila solo tu propiedad. Imagen y detección se ajustan
+              automáticamente.
             </p>
-          </article>
-          <article>
-            <h2>Grabaciones</h2>
+          </div>
+        </details>
+        <details class="preference-group">
+          <summary>Grabaciones</summary>
+          <div class="preference-content">
             <label
               >Modo
               <select id="recordMode">
@@ -322,14 +319,15 @@
                 <option>60</option>
               </select>
               segundos</label
-            ><label
+            ><label class="checkbox-row"
               ><input id="autoDelete" type="checkbox" /> Borrar clips antiguos
               no importantes al superar el 80% de cuota</label
             >
-            <p id="storage">Comprobando almacenamiento…</p>
-          </article>
-          <article>
-            <h2>Sonido e iluminación</h2>
+          </div>
+        </details>
+        <details class="preference-group">
+          <summary>Sonido e iluminación</summary>
+          <div class="preference-content">
             <label
               >Volumen general<input
                 id="volume"
@@ -337,66 +335,258 @@
                 min="0"
                 max="100"
                 value="70" /></label
-            ><label
+            ><button id="testSpeaker">Probar sonido</button>
+            <p id="speakerStatus" role="status"></p>
+            <label class="checkbox-row"
               ><input id="torch" type="checkbox" disabled="" /> Linterna
               continua</label
-            ><label
+            ><label class="checkbox-row"
               ><input id="alarmFlash" type="checkbox" disabled="" /> Luz lenta
               durante alarma (cada 2 segundos)</label
             >
             <p id="torchInfo">
               Se comprobará la capacidad real al iniciar la cámara.
             </p>
-          </article>
-          <article>
-            <h2>Seguridad</h2>
-            <button id="pin">Cambiar mi PIN</button>
-            <p>
-              El PIN es local. No cifra grabaciones ni sustituye el acceso
-              remoto.
+          </div>
+        </details>
+        <details class="preference-group">
+          <summary>Seguridad</summary>
+          <div class="preference-content">
+            <button id="pin">Cambiar PIN</button>
+            <p class="fine-print">
+              Tu PIN protege los controles locales. No cifra los clips ni
+              sustituye la cuenta remota.
             </p>
-          </article>
-        </section>
-      </details>
-      <details class="controls evidence">
-        <summary>Grabaciones y eventos</summary>
-        <section>
-          <h2>Evidencias</h2>
-          <div id="clips"></div>
-          <h2>Cronología</h2>
-          <select id="filter">
-            <option value="">Todos</option>
-            <option>movimiento</option>
-            <option>persona</option>
-            <option>grabación</option>
-            <option>alarma</option>
-            <option>cámara</option>
-            <option>audio</option>
-            <option>pérdida</option>
-            <option>modo</option></select
-          ><button id="clearLog">Borrar historial</button>
-          <ol id="events"></ol>
-        </section>
-      </details>
-      <nav class="app-navigation controls" aria-label="Navegación">
-        <button id="navHome">Inicio</button
-        ><button id="navClips">Grabaciones</button
-        ><button id="navSettings">Ajustes</button>
-      </nav>
-      <details class="privacy-note">
-        <summary>Privacidad y uso seguro</summary>
-        <footer>
-          Uso local. Mantén Safari visible y la pantalla desbloqueada. La cámara
-          puede detenerse en segundo plano. Alimentación continua, sol y
-          grabación prolongada pueden calentar el iPhone: ventílalo y revisa su
-          batería. No hay sensor de temperatura disponible. Orienta la cámara
-          solo a tu propiedad; enmascara zonas ajenas. El ajuste digital no
-          añade visión infrarroja. No hay transmisión remota.
-        </footer>
-      </details>
-    </main>
+          </div>
+        </details>
+      </section>
+      <button id="profileLock" class="text-button wide">
+        Bloquear aplicación
+      </button>
+      <p class="version-label">SECURITY CAM · ALMACENAMIENTO LOCAL</p>
+    </section>
+    <section id="remotePage" class="page" hidden="">
+      <div class="page-heading compact">
+        <div>
+          <p class="kicker">CONEXIÓN PRIVADA</p>
+          <h1>Monitor</h1>
+        </div>
+      </div>
+      <div id="remoteAccountNeeded" class="empty-card">
+        <h2>Tu hogar, en los dos móviles</h2>
+        <p>
+          Accede a la misma cuenta para consultar las cámaras que hayas
+          vinculado.
+        </p>
+        <button id="remoteLogin" class="primary">Acceder a mi cuenta</button>
+      </div>
+      <div id="remoteControls" class="form-card">
+        <label
+          >Papel de este móvil<select id="remoteRole">
+            <option value="viewer">Ver la cámara de casa</option>
+            <option value="camera">Compartir la cámara de este móvil</option>
+          </select></label
+        >
+        <div id="supabaseCameraFields">
+          <label
+            >Nombre de esta cámara<input
+              id="supabaseCameraName"
+              maxlength="60"
+              value="Entrada"
+          /></label>
+        </div>
+        <div id="supabaseViewerFields">
+          <label
+            >Cámara de mi cuenta<select id="supabaseCameraList">
+              <option value="">Busca tus cámaras</option>
+            </select></label
+          ><button id="supabaseRefresh">Buscar cámaras</button>
+        </div>
+        <button id="connectRemote" class="remote-primary">Conectar</button
+        ><button id="disconnectRemote">Desconectar</button>
+      </div>
+      <p id="remoteStatus" role="status"></p>
+      <div id="remoteVideoBox" class="remote-video-box" hidden="">
+        <video
+          id="remoteVideo"
+          autoplay=""
+          muted=""
+          playsinline=""
+          controls=""
+        ></video>
+      </div>
+      <p class="fine-print">
+        Solo vídeo. Los clips se guardan en el móvil cámara. El acceso exterior
+        requiere el servicio y TURN configurados.
+      </p>
+    </section>
+    <section id="accountPage" class="page" hidden="">
+      <div class="login-heading">
+        <div class="login-symbol">S</div>
+        <p class="kicker">TU CUENTA SECURITY CAM</p>
+        <h1>Bienvenido<br />de nuevo.</h1>
+        <p>La misma cuenta. Tus móviles conectados.</p>
+      </div>
+      <div id="supabasePanel">
+        <div id="supabaseLoginFields">
+          <label
+            >Email de tu cuenta<input
+              id="supabaseEmail"
+              type="email"
+              autocomplete="username"
+              placeholder="tu@email.com" /></label
+          ><label
+            >Contraseña de tu cuenta<input
+              id="supabasePassword"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Tu contraseña" /></label
+          ><button id="supabaseLogin">Entrar a mi cuenta</button>
+        </div>
+        <div id="supabaseAccount" hidden="">
+          <p id="supabaseAccountStatus"></p>
+          <button id="supabaseLogout">Cerrar sesión</button>
+        </div>
+        <p id="supabaseStatus" role="status">
+          Sin sesión. Usa la misma cuenta en tus dos móviles.
+        </p>
+        <details id="supabaseSetup">
+          <summary>Conexión del servicio</summary>
+          <label
+            >URL pública de Supabase<input
+              id="supabaseUrl"
+              type="url"
+              placeholder="https://tu-proyecto.supabase.co" /></label
+          ><label
+            >Clave pública publishable / anon<input
+              id="supabasePublicKey"
+              type="text"
+              autocomplete="off"
+              placeholder="sb_publishable_…"
+          /></label>
+          <p>Solo la clave pública. Nunca uses secret ni service_role.</p>
+        </details>
+      </div>
+      <p class="fine-print">
+        El acceso con cuenta es real y usa tu proyecto de Supabase. Hasta
+        configurarlo puedes seguir usando la cámara local.
+      </p>
+      <button id="accountLocal" class="text-button wide">
+        Volver a mi dispositivo
+      </button>
+    </section>
+    <nav class="app-navigation" aria-label="Navegación principal">
+      <button id="navHome" data-tab="home">
+        <svg viewBox="0 0 24 24">
+          <path d="m3 10 9-7 9 7v10H3Z"></path>
+          <path d="M9 20v-7h6v7"></path></svg
+        ><span>Inicio</span></button
+      ><button id="navCameras" data-tab="cameras">
+        <svg viewBox="0 0 24 24">
+          <rect x="3" y="6" width="13" height="12" rx="4"></rect>
+          <path d="m16 10 5-3v10l-5-3"></path></svg
+        ><span>Cámaras</span></button
+      ><button id="navClips" data-tab="activity">
+        <svg viewBox="0 0 24 24">
+          <rect x="4" y="4" width="16" height="17" rx="4"></rect>
+          <path d="M8 2v4m8-4v4M8 11h8m-8 5h5"></path></svg
+        ><span>Actividad</span></button
+      ><button id="navSettings" data-tab="profile">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M4 21v-3a8 8 0 0 1 16 0v3"></path></svg
+        ><span>Perfil</span>
+      </button>
+    </nav>
+    <div id="addSheet" class="sheet-backdrop" hidden="">
+      <section
+        class="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Añadir cámara"
+      >
+        <div class="sheet-handle"></div>
+        <button id="closeAdd" class="sheet-close" aria-label="Cerrar">×</button>
+        <p class="kicker">AÑADIR DISPOSITIVO</p>
+        <h2>Una nueva mirada.</h2>
+        <button id="useThisPhone" class="sheet-option">
+          <strong>Usar este teléfono</strong
+          ><span>Convertir este dispositivo en cámara</span></button
+        ><button id="linkOtherPhone" class="sheet-option">
+          <strong>Vincular otra cámara</strong
+          ><span>Acceder a una cámara de tu cuenta</span>
+        </button>
+      </section>
+    </div>
+    <div id="profileSheet" class="sheet-backdrop" hidden="">
+      <form id="profileForm" class="sheet">
+        <div class="sheet-handle"></div>
+        <button
+          id="closeProfile"
+          type="button"
+          class="sheet-close"
+          aria-label="Cerrar"
+        >
+          ×
+        </button>
+        <p class="kicker">PERSONALIZA TU ESPACIO</p>
+        <h2>Hazlo tuyo.</h2>
+        <label
+          >Tu nombre<input
+            id="profileNameInput"
+            maxlength="40"
+            autocomplete="given-name" /></label
+        ><label
+          >Nombre del hogar<input
+            id="profileHomeInput"
+            maxlength="40"
+            placeholder="Mi hogar" /></label
+        ><label
+          >Nombre de esta cámara<input
+            id="profileCameraInput"
+            maxlength="40"
+            placeholder="Entrada" /></label
+        ><button class="primary" type="submit">Guardar perfil</button>
+        <p class="fine-print">Estos nombres se guardan en este dispositivo.</p>
+      </form>
+    </div>
     <div id="captureDock" aria-hidden="true"></div>
     <div id="engineSettings" hidden="">
+      <button id="homeConnection">Conexión entre móviles</button
+      ><select id="remoteProvider">
+        <option value="supabase">Mi cuenta de Supabase</option>
+        <option value="server">Servidor WSS propio</option></select
+      ><label
+        ><input
+          id="signalUrl"
+          type="url"
+          placeholder="wss://conexion.tudominio.com"
+      /></label>
+      <div id="hostCredentials"></div>
+      <input id="hostAccess" type="password" autocomplete="off" />
+      <div id="viewerCredentials"></div>
+      <input
+        id="pairKey"
+        type="password"
+        autocomplete="off"
+        placeholder="Pega la clave creada en el móvil cámara"
+      />
+      <div id="pairingResult" hidden=""></div>
+      <input id="createdPair" readonly="" type="password" /><button
+        id="copyPair"
+      >
+        Copiar clave</button
+      ><span id="status">DESARMADO</span
+      ><span id="alarmStatus" hidden="">ALARMA ACTIVA</span
+      ><button id="silence" class="silence-action">Silenciar sonidos</button
+      ><input id="nightMode" type="hidden" value="auto" />
+      <p id="nightHint"></p>
+      <input id="autoAlarm" type="checkbox" /><button id="fullZone">
+        Usar imagen completa
+      </button>
+      <div id="extraToolsModeAnchor"></div>
+      <button id="alarm" class="danger">Alarma manual</button>
+      <p id="health" role="status"></p>
       <button id="restart">Reiniciar cámara</button
       ><input id="motion" type="checkbox" checked="" /><input
         id="sensitivity"
@@ -473,6 +663,7 @@
         <option value="alarm">ALARMA</option>
       </select>
     </div>
+    <div id="appToast" hidden="" role="status"></div>
     <script src="app.js"></script>
     <script src="remote.js"></script>
     <script src="supabase-remote.js"></script>

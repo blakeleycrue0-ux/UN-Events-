@@ -71,7 +71,7 @@ async function lockApplication() {
   document.body.classList.add("auth-pending");
   if (state.stream) $("captureDock").append($("videoViewport"));
   for (const el of document.querySelectorAll(
-    ".app-header,#landingPage,#cameraPage,#remotePage",
+    ".app-header,#landingPage,#cameraPage,#remotePage,#profilePage,#activityPage,#camerasPage,#welcomePage,#accountPage",
   ))
     el.inert = true;
   try {
@@ -93,11 +93,11 @@ async function lockApplication() {
       $("lowPower").checked = true;
       updatePreview();
     }
-    await new Promise(resolve=>requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     securityUnlocked = true;
     document.body.classList.remove("auth-pending", "locked", "hidden-controls");
     for (const el of document.querySelectorAll(
-      ".app-header,#landingPage,#cameraPage,#remotePage",
+      ".app-header,#landingPage,#cameraPage,#remotePage,#profilePage,#activityPage,#camerasPage,#welcomePage,#accountPage",
     ))
       el.inert = false;
     $("unlock").textContent = "Bloquear";

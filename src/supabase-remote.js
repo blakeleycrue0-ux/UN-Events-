@@ -5,6 +5,7 @@ let cloudClient = null,
 let cloudVisibleUser = null;
 function cloudStatus(text) {
   $("supabaseStatus").textContent = text;
+  document.dispatchEvent(new Event("security:cloud"));
 }
 function updateSupabaseUI() {
   const current = cloudUser?.id || null;
@@ -18,8 +19,9 @@ function updateSupabaseUI() {
   $("supabasePublicKey").disabled = !!cloudUser;
   const cloud = $("remoteProvider").value === "supabase",
     host = $("remoteRole").value === "camera";
-  $("supabasePanel").hidden = !cloud;
-  $("signalUrl").closest("label").hidden = cloud;
+  $("supabasePanel").hidden = false;
+  if ($("signalUrl").closest("label"))
+    $("signalUrl").closest("label").hidden = cloud;
   $("hostCredentials").hidden = cloud || !host;
   $("viewerCredentials").hidden = cloud || host;
   $("supabaseLoginFields").hidden = !!cloudUser;
@@ -31,6 +33,10 @@ function updateSupabaseUI() {
     : "";
 }
 function publicSupabaseConfig() {
+  if (!$("supabaseUrl").value.trim())
+    throw Error(
+      "El servicio de cuentas aún no está conectado. Configúralo en Conexión del servicio.",
+    );
   const url = new URL($("supabaseUrl").value.trim());
   if (
     url.protocol !== "https:" ||
@@ -81,7 +87,7 @@ $("remoteProvider").onchange = () => {
   disconnectRemote();
   updateRemoteRole();
 };
-$("supabasePanel").before($("remoteRole").closest("label"));
+
 try {
   const config = JSON.parse(
     localStorage.getItem("supabase-public-config") || "null",
@@ -112,8 +118,18 @@ $("supabaseLogin").onclick = async () => {
       email: $("supabaseEmail").value.trim(),
       password,
     });
-    if (err || !data.user)
-      throw Error(err?.message || "No se pudo iniciar sesión");
+    if (err || !data.user) {
+      const messages = {
+        invalid_credentials: "Email o contraseña incorrectos.",
+        email_not_confirmed: "Confirma tu email antes de entrar.",
+        over_request_rate_limit:
+          "Demasiados intentos. Espera un momento y vuelve a probar.",
+      };
+      throw Error(
+        messages[err?.code] ||
+          "No se pudo iniciar sesión. Revisa tu conexión y la configuración del servicio.",
+      );
+    }
     const membership = await cloudClient
       .from("remote_memberships")
       .select("enabled")
@@ -122,7 +138,7 @@ $("supabaseLogin").onclick = async () => {
     if (membership.error || !membership.data?.enabled) {
       await cloudClient.auth.signOut({ scope: "local" });
       throw Error(
-        "La cuenta aún no tiene acceso remoto habilitado. Aplica el SQL y autoriza tu usuario en Supabase.",
+        "La cuenta aún no tiene acceso a cámaras. Revisa su autorización en el servicio.",
       );
     }
     cloudUser = data.user;
