@@ -71,7 +71,7 @@ async function lockApplication() {
   document.body.classList.add("auth-pending");
   if (state.stream) $("captureDock").append($("videoViewport"));
   for (const el of document.querySelectorAll(
-    ".app-header,#landingPage,#cameraPage,#remotePage,#profilePage,#activityPage,#camerasPage,#welcomePage,#accountPage",
+    ".app-header,#landingPage,#cameraPage,#profilePage,#activityPage,#camerasPage,#welcomePage",
   ))
     el.inert = true;
   try {
@@ -82,7 +82,7 @@ async function lockApplication() {
     securityUnlocked = true;
     document.body.classList.remove("auth-pending", "locked", "hidden-controls");
     for (const el of document.querySelectorAll(
-      ".app-header,#landingPage,#cameraPage,#remotePage,#profilePage,#activityPage,#camerasPage,#welcomePage,#accountPage",
+      ".app-header,#landingPage,#cameraPage,#profilePage,#activityPage,#camerasPage,#welcomePage",
     ))
       el.inert = false;
     $("unlock").textContent = "Bloquear";
@@ -177,9 +177,7 @@ $("alarmSource").addEventListener(
   },
   true,
 );
-protectHandler("connectRemote", "Compartir la cámara", {
-  when: () => $("remoteRole").value === "camera",
-});
+
 
 let previousSurveillanceMode = $("surveillanceMode").value;
 $("surveillanceMode").addEventListener("change", async () => {

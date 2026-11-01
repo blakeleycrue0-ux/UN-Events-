@@ -3,16 +3,16 @@ from playwright.sync_api import sync_playwright
 from pin_helpers import unlock_app,confirm_action
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
- c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});page=c.new_page();errors=[];requests=[];page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:requests.append(r.url))
  page.goto('http://127.0.0.1:8001');unlock_app(page)
  page.wait_for_selector('#welcomePage:visible');page.screenshot(path='/workspace/security-setup/app-welcome.png',full_page=True)
  page.click('#welcomeLocal');page.wait_for_selector('#landingPage:visible');assert not page.evaluate('!!state.stream')
  page.click('#navSettings');page.wait_for_selector('#profilePage:visible');page.click('#editProfile');page.fill('#profileNameInput','Alex');page.fill('#profileHomeInput','Casa Mallorca');page.fill('#profileCameraInput','Puerta principal');page.get_by_role('button',name='Guardar perfil',exact=True).click()
  page.wait_for_selector('#profileSheet',state='hidden');assert page.locator('#profileDisplayName').inner_text()=='Alex'
  page.screenshot(path='/workspace/security-setup/app-profile.png',full_page=True)
- page.click('#accountOpen');page.wait_for_selector('#accountPage:visible');page.screenshot(path='/workspace/security-setup/app-login.png',full_page=True);page.locator('#supabaseSetup').evaluate('el=>el.open=true');assert page.locator('#supabaseUrl').input_value()=='https://pmzekgfgwlfugfffzhrt.supabase.co';page.fill('#supabaseUrl','');page.fill('#supabaseEmail','test@example.com');page.fill('#supabasePassword','not-a-real-password');page.click('#supabaseLogin');page.wait_for_function("document.getElementById('supabaseStatus').textContent.includes('aún no está conectado')");assert not page.evaluate('!!cloudUser')
- page.click('#accountLocal');page.wait_for_selector('#landingPage:visible');assert page.locator('#homeTitle').inner_text()=='Casa Mallorca';page.screenshot(path='/workspace/security-setup/app-home.png',full_page=True)
- page.click('#navCameras');page.wait_for_selector('#camerasPage:visible');assert 'Puerta principal' in page.locator('#cameraList').inner_text();assert 'Accede a tu cuenta' in page.locator('#cloudCameraCards').inner_text()
+ assert page.locator('#accountPage,#supabaseEmail,#supabasePassword,#accountOpen').count()==0
+ page.evaluate("location.hash='account'");page.wait_for_function("currentPage==='home'");assert page.locator('#landingPage').is_visible();assert page.locator('#homeTitle').inner_text()=='Casa Mallorca';page.screenshot(path='/tmp/security-soft-blue-home.png',full_page=True)
+ page.click('#navCameras');page.wait_for_selector('#camerasPage:visible');assert 'Puerta principal' in page.locator('#cameraList').inner_text();assert page.locator('#cloudCameraCards,#linkOtherPhone').count()==0
  page.click('#addFromCameras');page.wait_for_selector('#addSheet:visible');page.click('#useThisPhone');page.wait_for_selector('#cameraPage:visible');page.uncheck('#person');page.click('#protect');confirm_action(page);page.wait_for_function('state.armed && !protecting',timeout=30000)
  page.screenshot(path='/workspace/security-setup/app-camera.png',full_page=True)
  page.click('#record');page.wait_for_function('state.recording');page.wait_for_timeout(1800);page.click('#record');page.wait_for_function("document.querySelectorAll('.clip').length===1")
@@ -25,6 +25,7 @@ with sync_playwright() as p:
  page.evaluate('state.mask=null')
  page.click('#homeClips');page.wait_for_selector('#activityPage:visible');page.click('#showEvents');assert page.locator('#eventsGroup').is_visible()
  page.reload();unlock_app(page);page.click('#navSettings');assert page.locator('#profileDisplayName').inner_text()=='Alex'
+ assert not any('supabase' in url or url.startswith('wss:') for url in requests),requests
  assert not errors,errors
- print('PASS app onboarding, local profile save/reload, real login rejection without service, camera list, add-device sheet, PIN-protected arming and activity navigation')
+ print('PASS app onboarding, local profile save/reload, removed account forms and legacy-route redirect, no cloud requests, camera list, add-device sheet, PIN-protected arming and activity navigation')
  b.close()

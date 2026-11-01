@@ -1,5 +1,5 @@
 "use strict";
-let currentPage = "home", profileData = {}, lastActivitySignature = "", lastCloudSignature = null;
+let currentPage = "home", profileData = {}, lastActivitySignature = "";
 try {
   profileData = JSON.parse(localStorage.getItem("security-profile") || "{}");
 } catch {
@@ -10,11 +10,10 @@ const pageIDs = {
   camera: "cameraPage",
   activity: "activityPage",
   profile: "profilePage",
-  remote: "remotePage",
-  account: "accountPage",
   welcome: "welcomePage"
 };
 function showPage(name) {
+  if (["account", "remote"].includes(name)) name = "home";
   if (!pageIDs[name])
     name = localStorage.getItem("security-app-started") ? "home" : "welcome";
   currentPage = name;
@@ -26,20 +25,13 @@ function showPage(name) {
   document.body.dataset.page = name;
   $("backHome").hidden = ["home", "welcome"].includes(name);
   $("unlock").hidden = name === "welcome";
-  document.querySelector(".app-navigation").hidden = [
-    "welcome",
-    "account"
-  ].includes(name);
+  document.querySelector(".app-navigation").hidden = name === "welcome";
   for (const button of document.querySelectorAll("[data-tab]"))
     button.classList.toggle(
       "active",
-      button.dataset.tab === (name === "camera" || name === "remote" ? "cameras" : name)
+      button.dataset.tab === (name === "camera" ? "cameras" : name)
     );
   if (name === "camera") requestAnimationFrame(draw);
-  if (name === "cameras" && cloudUser)
-    refreshCloudCameras().catch(
-      (e) => $("devicesStatus").textContent = e.message
-    );
   window.scrollTo(0, 0);
   renderApp();
 }
@@ -52,30 +44,15 @@ function startApp() {
   localStorage.setItem("security-app-started", "1");
   goPage("home");
 }
-function accountPage() {
-  goPage("account");
-}
 function openLocalCamera() {
   localStorage.setItem("security-app-started", "1");
   localStorage.setItem("security-device-configured", "1");
   goPage("camera");
 }
-function openMonitor() {
-  if (!cloudUser) {
-    accountPage();
-    return;
-  }
-  goPage("remote");
-  $("remoteRole").value = "viewer";
-  updateRemoteRole();
-  refreshCloudCameras().catch((e) => remoteStatus(e.message));
-}
 $("backHome").onclick = () => goPage("home");
 $("welcomeLocal").onclick = startApp;
-$("welcomeLogin").onclick = accountPage;
-$("accountLocal").onclick = startApp;
 $("openCamera").onclick = openLocalCamera;
-$("openViewer").onclick = openMonitor;
+$("quickCamera").onclick = openLocalCamera;
 $("navHome").onclick = () => goPage("home");
 $("navCameras").onclick = () => goPage("cameras");
 $("navClips").onclick = () => {
@@ -97,18 +74,7 @@ function selectActivity(tab) {
 }
 $("showClips").onclick = () => selectActivity("clips");
 $("showEvents").onclick = () => selectActivity("events");
-$("accountOpen").onclick = accountPage;
-$("remoteLogin").onclick = accountPage;
 $("profileLock").onclick = lockApplication;
-$("shareCamera").onclick = () => {
-  if (!cloudUser) {
-    accountPage();
-    return;
-  }
-  goPage("remote");
-  $("remoteRole").value = "camera";
-  updateRemoteRole();
-};
 function openAdd() {
   $("addSheet").hidden = false;
   $("useThisPhone").focus();
@@ -119,10 +85,6 @@ $("closeAdd").onclick = () => $("addSheet").hidden = true;
 $("useThisPhone").onclick = () => {
   $("addSheet").hidden = true;
   openLocalCamera();
-};
-$("linkOtherPhone").onclick = () => {
-  $("addSheet").hidden = true;
-  openMonitor();
 };
 $("editProfile").onclick = () => {
   $("profileNameInput").value = profileData.name || "";
@@ -143,27 +105,12 @@ $("profileForm").onsubmit = (event) => {
     localStorage.setItem("security-profile", JSON.stringify(nextProfile));
     profileData = nextProfile;
     $("profileSheet").hidden = true;
-    if (profileData.camera) $("supabaseCameraName").value = profileData.camera;
     renderApp();
   } catch (e) {
     $("profileForm").querySelector(".fine-print").textContent = "No se pudo guardar: " + e.message;
   }
 };
 $("globalSilence").onclick = stopSounds;
-$("refreshDevices").onclick = async () => {
-  if (!cloudUser) {
-    accountPage();
-    return;
-  }
-  try {
-    await refreshCloudCameras();
-    $("devicesStatus").textContent = "Lista actualizada.";
-    lastCloudSignature = "";
-    renderApp();
-  } catch (e) {
-    $("devicesStatus").textContent = e.message;
-  }
-};
 function deviceRow(name, status, action) {
   const button = document.createElement("button");
   button.className = "device-row";
@@ -191,15 +138,12 @@ function emptyState(target, title, detail) {
   target.replaceChildren(box);
 }
 function renderApp() {
-  var _a;
-  const name = profileData.name || ((_a = cloudUser == null ? void 0 : cloudUser.user_metadata) == null ? void 0 : _a.full_name) || "Mi perfil";
+  const name = profileData.name || "Mi perfil";
   $("greeting").textContent = profileData.name ? "HOLA, " + profileData.name.toUpperCase() : "TU ESPACIO";
   $("homeTitle").textContent = profileData.home || "Mi hogar";
   $("profileDisplayName").textContent = name;
   $("profileAvatar").textContent = Array.from(name)[0].toUpperCase();
-  $("profileAccountLabel").textContent = (cloudUser == null ? void 0 : cloudUser.email) || "Perfil de este dispositivo";
-  $("accountCTATitle").textContent = cloudUser ? "Mi cuenta" : "Accede a tu cuenta";
-  $("accountCTAHint").textContent = cloudUser ? "Gestionar sesi\xF3n y conexi\xF3n" : "Conecta tus m\xF3viles de forma privada";
+  $("profileAccountLabel").textContent = "Perfil de este dispositivo";
   $("deviceCardName").textContent = $("cameraTitle").textContent = profileData.camera || "Entrada";
   const status = state.stream ? state.armed ? "Vigilancia activa" : "C\xE1mara encendida" : "Sin c\xE1mara activa";
   $("deviceCardState").textContent = state.stream ? status : "Preparar como c\xE1mara";
@@ -212,11 +156,8 @@ function renderApp() {
   const clips = $("clips").querySelectorAll(".clip").length;
   const pending = $("clips").querySelectorAll(".pending-evidence").length;
   $("clipCount").textContent = pending ? pending + " pendiente de guardar" : clips + " " + (clips === 1 ? "clip" : "clips");
-  $("cloudHomeState").textContent = cloudUser ? "Cuenta conectada" : "Vincular cuenta";
   $("globalAlert").hidden = !state.alarm && !state.warningPending && !(activeAudio && !mediaAudio.paused);
   $("globalAlertText").textContent = state.alarm ? "Alarma activada en este dispositivo" : state.warningPending ? "Aviso de seguridad en curso" : "Reproduciendo sonido";
-  $("remoteAccountNeeded").hidden = !!cloudUser;
-  $("remoteControls").hidden = !cloudUser;
   if (currentPage === "cameras") {
     const label = profileData.camera || "Entrada";
     const signature = label + status;
@@ -256,35 +197,6 @@ function renderApp() {
       $("recentActivity").append(row);
     }
   }
-  const options = [...$("supabaseCameraList").options].filter((o) => o.value);
-  const cloudSignature = ((cloudUser == null ? void 0 : cloudUser.id) || "") + options.map((o) => o.value + o.textContent).join();
-  if (cloudSignature !== lastCloudSignature) {
-    lastCloudSignature = cloudSignature;
-    const target = $("cloudCameraCards");
-    target.replaceChildren();
-    if (!cloudUser)
-      emptyState(
-        target,
-        "Tu cuenta, tus c\xE1maras",
-        "Accede a tu cuenta para vincular otro m\xF3vil."
-      );
-    else if (!options.length)
-      emptyState(
-        target,
-        "No hay c\xE1maras anunciadas",
-        "Activa Compartir en el otro dispositivo y actualiza la lista."
-      );
-    else
-      for (const option of options)
-        target.append(
-          deviceRow(option.textContent, "Anunciada por tu cuenta", () => {
-            goPage("remote");
-            $("remoteRole").value = "viewer";
-            updateRemoteRole();
-            $("supabaseCameraList").value = option.value;
-          })
-        );
-  }
 }
 for (const sheet of [$("addSheet"), $("profileSheet")])
   sheet.addEventListener("click", (e) => {
@@ -297,16 +209,6 @@ window.addEventListener("keydown", (e) => {
   }
 });
 setInterval(renderApp, 700);
-let lastAccountSeen = null;
-document.addEventListener("security:cloud", () => {
-  const account = (cloudUser == null ? void 0 : cloudUser.id) || null;
-  const newLogin = account && account !== lastAccountSeen;
-  lastAccountSeen = account;
-  if (newLogin && currentPage === "account") {
-    localStorage.setItem("security-app-started", "1");
-    goPage("home");
-  } else renderApp();
-});
 showPage(location.hash.slice(1));
 $("systemOpen").onclick = openLocalCamera;
 let toastTimer;

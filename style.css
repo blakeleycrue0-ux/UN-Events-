@@ -1545,3 +1545,26 @@ body.drawing #overlay { touch-action:none; user-select:none; -webkit-user-select
 body.drawing .badges, body.drawing #clock, body.drawing #cameraMessage { pointer-events:none; }
 #detectionReadout { font-size:12px; color:#a7d6b8; overflow-wrap:anywhere; grid-column:1/-1; }
 @media(max-height:500px) { body.drawing #stage { top:75px; bottom:80px; } #zoneEditorHeading p { margin:2px 0; } #zoneEditorTools { bottom:10px; } }
+
+/* Muted blue: restrained gradient, solid panels and no animated background. */
+:root { background:#152e52; --surface:#1c3758; --line:#466284; --muted:#c0cfe1; --blue:#9fc8ff; }
+body { background:#152e52; background:radial-gradient(ellipse at 10% 0%,#375d86 0%,transparent 55%),linear-gradient(150deg,#1b3d66 0%,#173252 55%,#142b48 100%); background-attachment:fixed; }
+.pin-screen { background:radial-gradient(ellipse at 10% 0%,#375d86 0%,transparent 60%),linear-gradient(150deg,#1b3d66,#142b48); }
+.app-header,.app-navigation,.sheet,#appToast { background:#203e61; border-color:#466284; }
+.camera-control-card,.camera-status,.identity-card,.surveillance-panel,.list-card,.settings { background:#1c3758; }
+.device-card { background:#244567; }
+.device-art { background:linear-gradient(135deg,#365f88,#244567); }
+.device-card-copy,.system-strip,.quick-tile { background:#234261; }
+input,select { background:#172f4c; border-color:#4b6788; }
+input::placeholder { color:#aebfd3; }
+input[type=checkbox],input[type=range] { accent-color:#a7cfff; }
+.camera-control-card .protect-button,.pin-accept,.primary,#zoneEditorTools #zoneApply { background:#c5ddff; color:#16385c; }
+.camera-toolbar button,.panel-grid button,.panel-grid #openRecordings,#zoneEditorTools button { background:#2a4a6b; border-color:#4e6e91; }
+.app-navigation .active,.app-navigation .active svg { color:#c5ddff; }
+#zoneEditorHeading { background:#1b3b60; }
+body.drawing { background:#1b3b60; }
+.pin-keys button { background:#2b4b6e; }
+.system-indicators span { background:#193e36; border-color:#3e7560; color:#b4ebca; }
+#modeBadge,#audioBadge,#storageBadge,#powerBadge { background:#24486a; border-color:#537599; color:#d1e4fa; }
+#darkBadge { background:#4b412a; color:#f0dba9; }
+#stage { background:#050a10; }
