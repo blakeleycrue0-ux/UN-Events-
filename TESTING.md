@@ -58,3 +58,20 @@ Resultado de esta fase Supabase: pasaron 3 pruebas Node (políticas PostgreSQL y
 La suite actual se ejecuta con `npm test`: app_interface (bienvenida, perfil local, cámaras, formularios y grabación real), security (PIN), protect (detección real con vídeo controlado → audio completo → sirena), media_audio (multimedia y errores), people (carga/inferencia real de modelo local) y app_storage (fallo de IndexedDB inyectado con clip codificado y descarga pendiente que sobrevive al refresco de evidencias).
 
 Se mantuvo el motor y se reemplazaron pantallas, estilos y navegación. El perfil editable se guarda localmente; el acceso Supabase real se prueba con el SDK y HTTP de fixture. No se realiza sincronización de nombres de perfil. El vídeo exterior sigue sin validar por las limitaciones registradas anteriormente. El iPhone real continúa siendo una comprobación pendiente.
+
+## Adaptación a iPhone 14 exterior y grabación por eventos — 2026-11-01
+
+La versión actual sustituye las preferencias anteriores de grabación continua/por detector por un ciclo de episodio con clasificación adicional de personas. Predeterminado silencioso, sin IA ni respuesta sonora automática. El acceso PIN y la cámara nativa se conservan; desbloquear ya no sobrescribe sensibilidades, imagen ni ahorro guardados. La interfaz pasa a grafito y expone los ajustes necesarios en paneles de cámara.
+
+Validación disponible: `npm run build`, `npm test`, comparación de los dos entrypoints y `git diff --check`. La suite actual comprende:
+
+- `app_interface.py`: navegación/perfil local, login sin servicio no simulado, cámara real de navegador con fuente sintética, clip manual, eliminación con PIN y miniatura de Inicio enmascarada.
+- `security.py`: creación doble, recarga bloqueada, PIN incorrecto/cancelado sin cambios de vigilancia, autorización y silencio inmediato.
+- `event_recording.py`: fotogramas controlados pasan por el analizador real; no hay análisis desarmado; se dibuja una zona mediante puntero; no disparan movimiento exterior ni cambios uniformes de iluminación; movimiento confirmado crea un clip codificado real, miniatura y registro IndexedDB; una salida IA controlada mejora la clasificación sin duplicar clip; se decodifica el vídeo guardado; un episodio persistente no se repite tras cooldown y uno nuevo puede iniciar otro; configuración/zona sobreviven a recarga. La clasificación de este test usa un modelo controlado, no evalúa precisión de reconocimiento.
+- `protect.py`: modo Alarma y opciones son explícitos; fotogramas de movimiento disparan aviso MP3 completo y sirena multimedia real; desarmado con PIN.
+- `media_audio.py`: el audio nativo avanza sin mute, pide sesión playback si existe, silencio inmediato y errores reales de reproducción/rechazo/interrupción. No prueba altavoz físico.
+- `people.py`: carga e inferencia del modelo Human/CenterNet local real, en modo solo-personas; no mide precisión en una entrada real.
+- `app_storage.py`: fallo de escritura inyectado sobre clip realmente codificado; REC se apaga, queda descarga pendiente y sobrevive al refresco del listado.
+- `compatibility.py`: ramas de capacidad simuladas (sin MediaRecorder, sin canvas.captureStream/torch), clip nativo real sin micrófono, rechazo de máscara que no puede protegerse, audio bloqueado conserva vigilancia y muestra su error, permiso de cámara rechazado, descarte de inferencia pendiente tras reinicio y parada al perder pista.
+
+Límites de la comprobación: Chromium en Linux, sin iPhone físico ni WebKit instalado. No verificados Safari real, salida de altavoz/Silencio/Bluetooth, torch del iPhone 14, formato y calidad exactos negociados, cuota/expulsión real de Safari, detección de personas de noche, falsos positivos por lluvia/sombras, temperatura/batería dentro de carcasa ni sesiones de muchas horas. El indicador LOW POWER es configuración y no un sensor. Los avisos de propiedad/abandono separados están desactivados porque solo hay un archivo de voz suministrado. La integración remota preparada no fue desplegada ni certificada como vídeo fuera de casa por esta tarea.

@@ -13,7 +13,7 @@ with sync_playwright() as p:
  assert page.evaluate("!localStorage.getItem('security-pin')")
  unlock_app(page);assert page.locator('#openCamera').is_visible()
  page.reload();page.wait_for_selector('#pinEntry:visible');enter_pin(page,'000000');page.wait_for_function("document.querySelector('.pin-card p')?.textContent.includes('incorrecto')");assert not page.evaluate('securityUnlocked');unlock_app(page)
- page.click('#openCamera');page.wait_for_selector('#cameraPage:visible');page.select_option('#alarmSource','motion');page.click('#protect');page.wait_for_selector('#pinEntry:visible');assert not page.evaluate('state.armed || !!state.stream')
+ page.click('#openCamera');page.wait_for_selector('#cameraPage:visible');page.click('#protect');page.wait_for_selector('#pinEntry:visible');assert not page.evaluate('state.armed || !!state.stream')
  page.get_by_role('button',name='Cancelar',exact=True).click();assert not page.evaluate('state.armed')
  page.click('#protect');confirm_action(page);page.wait_for_function('state.armed && !protecting',timeout=30000)
  page.screenshot(path='/workspace/security-setup/camera-glass.png',full_page=True)
@@ -21,7 +21,7 @@ with sync_playwright() as p:
  page.click('#protect');enter_pin(page,'000000');page.wait_for_function("document.querySelector('.pin-card p')?.textContent.includes('incorrecto')");assert page.evaluate('state.armed');page.get_by_role('button',name='Cancelar',exact=True).click();assert page.evaluate('state.armed')
  page.locator('#silence').evaluate('e=>e.click()');assert page.evaluate('state.armed')
  page.click('#protect');confirm_action(page);page.wait_for_function('!state.armed')
- for id in ['brightness','contrast','gamma','sensitivity','confidence','aiInterval','mode','nightToggle','arm']:assert not page.locator('#'+id).is_visible(),id
+ for id in ['mode','nightToggle','arm']:assert not page.locator('#'+id).is_visible(),id
  page.click('#unlock');unlock_app(page);assert not page.evaluate('state.armed')
  page.click('#navSettings');page.get_by_text('Seguridad',exact=True).click();page.click('#pin');enter_pin(page);page.wait_for_function("document.querySelector('.pin-card h2')?.textContent==='Crea tu PIN'")
  page.get_by_role('button',name='Cancelar',exact=True).click();page.wait_for_function('!pinPromptOpen')

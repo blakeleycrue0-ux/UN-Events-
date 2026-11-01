@@ -1484,3 +1484,48 @@ body[data-protection="armed"] .camera-status .status-dot {
   padding: 5px 8px;
   pointer-events: none;
 }
+
+/* Event surveillance: graphite surfaces avoid expensive full-screen blur on a fixed iPhone. */
+:root { background:#0d1014; --surface:#181d24; --line:#303943; --muted:#aab6c3; --blue:#96e6bb; }
+body { background:#0d1014; }
+.pin-screen { background:#10151b; }
+.app-header, .bottom-nav, .sheet, #appToast { background:#181d24; }
+.bottom-nav, .sheet, .home-hero, .list-card, .settings, .device-card { backdrop-filter:none; -webkit-backdrop-filter:none; }
+input, select { background:#11161d; color:#edf3fa; }
+button, select, input { touch-action:manipulation; }
+button:disabled { cursor:not-allowed; opacity:.5; }
+input[type=checkbox], input[type=range] { accent-color:#83d9ad; }
+.pin-submit, .protect-button { background:#9ce6bd; color:#10271b; }
+.camera-page { max-width:1100px; }
+#stage { background:#050607; border:1px solid #303943; }
+#live.active { background:#154c35; color:#b9f9d3; }
+#rec { background:#ac2836; color:white; }
+.system-indicators { display:flex; flex-wrap:wrap; gap:7px; margin:18px 0 10px; }
+.system-indicators span { font-size:10px; letter-spacing:.06em; padding:8px 10px; border:1px solid #35413d; background:#17251f; color:#abdfc2; border-radius:6px; }
+#darkBadge { color:#ead2a1; background:#302a1d; }
+#eventState { color:#b8c4d0; font-size:13px; margin-bottom:18px; }
+.surveillance-panel { border:1px solid var(--line); background:var(--surface); border-radius:16px; margin:12px 0; overflow:hidden; }
+.surveillance-panel summary { padding:20px; font-size:16px; font-weight:650; cursor:pointer; }
+.panel-grid { padding:0 20px 20px; display:grid; gap:8px 20px; }
+.panel-grid > label { font-size:13px; margin:10px 0; }
+.panel-grid input[type=range] { width:100%; }
+.panel-grid button, #openRecordings { background:#252e38; color:#eef4fa; padding:14px; min-height:48px; border:1px solid #3a4654; border-radius:10px; }
+.panel-grid .fine-print { color:var(--muted); font-size:12px; }
+.panel-grid #sounds { display:flex; flex-wrap:wrap; gap:10px; }
+.safety-note { border-left:3px solid #a88c53; padding:16px; margin:24px 0; background:#1e1d19; font-size:12px; color:#d1c4a8; }
+.camera-control-card, .camera-status, .home-hero, .home-device, .account-cta, .identity-card { background:#181d24; }
+#globalAlert { background:#68232b; }
+#silence { color:#ffd5d9; border-color:#7b3a44; }
+#diagnostics { white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; }
+@media(min-width:760px) { .panel-grid { grid-template-columns:1fr 1fr; } .panel-grid > p, .panel-grid > .button-grid, .panel-grid > #sounds, .panel-grid > pre { grid-column:1/-1; } }
+#cameraPage .fine-print { color:var(--muted); font-size:12px; line-height:1.65; }
+#stage::before { display:none; }
+#stage { aspect-ratio:4/3; }
+@media(min-width:760px) { #stage { aspect-ratio:16/9; } }
+.app-navigation { background:#181d24; backdrop-filter:none; -webkit-backdrop-filter:none; border-color:#303943; }
+.app-navigation .active, .app-navigation .active svg { color:#9ce6bd; }
+.camera-control-card .protect-button, .pin-accept { background:#9ce6bd; color:#10271b; }
+.camera-control-card > label { display:flex; flex-direction:column; align-items:stretch; }
+.camera-control-card > label select { width:100%; }
+.surveillance-panel > label { margin:0 20px 16px; }
+body[data-protection=armed] .camera-status .status-dot { background:#78d9a4; }
