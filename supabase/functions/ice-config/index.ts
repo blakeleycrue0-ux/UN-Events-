@@ -1,9 +1,12 @@
 // Supabase Edge Function. TURN_SHARED_SECRET stays on the server, never in the web app.
 Deno.serve(async (request: Request) => {
-  const origin = request.headers.get("origin") || "";
+  // Tolerate common typing slips in the secret: spaces, quotes, trailing slashes, case.
+  const normalize = (x: string) => x.trim().replace(/^["']+|["']+$/g, "").replace(/\/+$/, "").toLowerCase();
+  const origin = normalize(request.headers.get("origin") || "");
   const allowed = (Deno.env.get("APP_ORIGINS") || "")
-    .split(",")
-    .map((x) => x.trim());
+    .split(/[,\s]+/)
+    .map(normalize)
+    .filter(Boolean);
   const headers = {
     "Access-Control-Allow-Origin": allowed.includes(origin) ? origin : "null",
     "Access-Control-Allow-Headers":
@@ -17,8 +20,10 @@ Deno.serve(async (request: Request) => {
       status,
       headers: { ...headers, "Content-Type": "application/json" },
     });
-  if (!allowed.includes(origin))
+  if (!origin || !allowed.includes(origin)) {
+    console.log("ice-config rejected origin", JSON.stringify(origin), "allowed", JSON.stringify(allowed));
     return reply(403, { error: "Origin not allowed" });
+  }
   if (request.method === "OPTIONS")
     return new Response(null, { status: 204, headers });
   if (request.method !== "POST") return reply(405, { error: "POST required" });
@@ -64,7 +69,10 @@ Deno.serve(async (request: Request) => {
         { method: "POST", headers: { Authorization: "Bearer " + turnToken, "Content-Type": "application/json" },
           body: JSON.stringify({ ttl: 3600 }), signal: AbortSignal.timeout(10000) },
       );
-      if (!result.ok) return reply(503, { error: "Hosted TURN is unavailable" });
+      if (!result.ok) {
+        console.log("ice-config Cloudflare TURN status", result.status);
+        return reply(503, { error: "Hosted TURN is unavailable" });
+      }
       const payload = await result.json();
       const servers = [].concat(payload.iceServers || []).map(server => ({
         urls: [].concat(server.urls || []).filter(u => typeof u === "string" && /^turns?:/.test(u)),
