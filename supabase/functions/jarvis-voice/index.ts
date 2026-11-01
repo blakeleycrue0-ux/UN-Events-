@@ -18,10 +18,10 @@ Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (request.method !== "POST") return reply(405, "POST required");
 
-  const expected = Deno.env.get("JARVIS_KEY") || "";
-  const apiKey = Deno.env.get("ELEVENLABS_API_KEY") || "";
+  const expected = (Deno.env.get("JARVIS_KEY") || "").trim();
+  const apiKey = (Deno.env.get("ELEVENLABS_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
   if (expected.length < 6 || !apiKey) return reply(428, "Voice not configured");
-  const given = request.headers.get("x-jarvis-key") || "";
+  const given = (request.headers.get("x-jarvis-key") || "").trim();
   // Length-independent comparison so timing does not reveal the key.
   const a = new TextEncoder().encode(given), b = new TextEncoder().encode(expected);
   let diff = a.length ^ b.length;
@@ -50,8 +50,15 @@ Deno.serve(async (request: Request) => {
       },
     );
     if (!upstream.ok) {
-      console.log("jarvis-voice ElevenLabs status", upstream.status);
-      return reply(502, upstream.status === 401 ? "ElevenLabs key rejected" : upstream.status === 402 || upstream.status === 429 ? "ElevenLabs quota reached" : "ElevenLabs unavailable");
+      // ElevenLabs explains refusals in detail.status (never contains the key).
+      let reason = "";
+      try { const d = (await upstream.json())?.detail; reason = String(d?.status || d?.code || (typeof d === "string" ? d : "")).slice(0, 80); } catch { /* not JSON */ }
+      console.log("jarvis-voice ElevenLabs status", upstream.status, reason, "key length", apiKey.length);
+      const message = /unusual_activity/.test(reason) ? "ElevenLabs blocked free tier"
+        : /missing_permissions/.test(reason) ? "ElevenLabs key lacks text to speech permission"
+        : upstream.status === 401 ? "ElevenLabs key rejected"
+        : upstream.status === 402 || upstream.status === 429 || /quota/.test(reason) ? "ElevenLabs quota reached" : "ElevenLabs unavailable";
+      return reply(502, message);
     }
     return new Response(upstream.body, { status: 200, headers: { ...cors, "Content-Type": "audio/mpeg" } });
   } catch {

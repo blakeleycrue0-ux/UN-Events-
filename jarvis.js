@@ -118,7 +118,12 @@
       throw Error({
         401: "La clave de Jarvis no coincide con la de Supabase.",
         428: "Falta configurar la voz en Supabase."
-      }[response.status] || (/quota/.test(error) ? "Se han acabado los cr\xE9ditos de ElevenLabs este mes." : "La voz no est\xE1 disponible ahora."));
+      }[response.status] || {
+        "ElevenLabs key rejected": "ElevenLabs no acepta la clave. C\xF3piala otra vez en Supabase.",
+        "ElevenLabs key lacks text to speech permission": "A la clave de ElevenLabs le falta el permiso Text to Speech.",
+        "ElevenLabs blocked free tier": "ElevenLabs ha bloqueado el plan gratis desde servidores. Hace falta el plan Starter.",
+        "ElevenLabs quota reached": "Se han acabado los cr\xE9ditos de ElevenLabs este mes."
+      }[error] || "La voz no est\xE1 disponible ahora.");
     }
     const blob = await response.blob();
     if (cache) {

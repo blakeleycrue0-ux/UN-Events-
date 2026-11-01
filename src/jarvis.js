@@ -79,7 +79,12 @@
       throw Error({
         401: "La clave de Jarvis no coincide con la de Supabase.",
         428: "Falta configurar la voz en Supabase.",
-      }[response.status] || (/quota/.test(error) ? "Se han acabado los créditos de ElevenLabs este mes." : "La voz no está disponible ahora."));
+      }[response.status] || ({
+        "ElevenLabs key rejected": "ElevenLabs no acepta la clave. Cópiala otra vez en Supabase.",
+        "ElevenLabs key lacks text to speech permission": "A la clave de ElevenLabs le falta el permiso Text to Speech.",
+        "ElevenLabs blocked free tier": "ElevenLabs ha bloqueado el plan gratis desde servidores. Hace falta el plan Starter.",
+        "ElevenLabs quota reached": "Se han acabado los créditos de ElevenLabs este mes.",
+      })[error] || "La voz no está disponible ahora.");
     }
     const blob = await response.blob();
     if (cache) { try { await cache.put(keyUrl, new Response(blob, { headers: { "Content-Type": "audio/mpeg" } })); } catch {} }
