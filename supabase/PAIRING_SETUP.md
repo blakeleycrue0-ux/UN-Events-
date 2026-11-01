@@ -12,7 +12,9 @@ Se aplica la limitación de creación de usuarios del proyecto. Si tu proyecto e
 
 ## 2. Instalar los permisos y las invitaciones
 
-Abre [SQL Editor](https://supabase.com/dashboard/project/pmzekgfgwlfugfffzhrt/sql/new), copia **todo** el contenido de [`migrations/202611010001_pairing.sql`](migrations/202611010001_pairing.sql) y pulsa **Run**.
+Abre [SQL Editor](https://supabase.com/dashboard/project/pmzekgfgwlfugfffzhrt/sql/new), selecciona el rol **postgres**, copia **todo** el contenido de [`migrations/202611010001_pairing.sql`](migrations/202611010001_pairing.sql) y pulsa **Run**.
+
+Si una versión anterior devolvió `42501: must be owner of table messages`, vuelve a copiar el archivo completo actualizado y ejecútalo. La versión corregida no altera la tabla interna `realtime.messages` ni sus grants: comprueba que RLS ya está activo y crea únicamente las políticas privadas de la app. No cambies el propietario ni desactives RLS. Supabase permite a `postgres` gestionar esas políticas mediante `supautils`; no permite el `ALTER TABLE` de la versión anterior. [Explicación oficial](https://supabase.com/docs/guides/realtime/authorization#how-it-works).
 
 Esta migración funciona por sí sola, sin instalar la migración antigua de login. Si ya existe la anterior, ambas pueden convivir: usan tablas y prefijos de canal diferentes. La nueva migración es idempotente, habilita RLS y no da permiso de escritura directa al navegador. Si hay políticas Realtime ajenas, se detiene para revisarlas; no borra permisos de otras aplicaciones.
 

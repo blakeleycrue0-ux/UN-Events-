@@ -149,3 +149,7 @@ El flujo nuevo no restaura email/login ni la antigua cuenta compartida. Usa Anon
 - Regresiones: panel glass, PIN/entrada/recarga/armado y cancelación, navegación, perfil y vista previa de personas siguen comprobándose en sus pruebas existentes. `npm test` incluye invitaciones, SQL y Edge.
 
 Captura local de revisión: `/tmp/security-camera-invitation.png`. No se ha probado vídeo real por TURN, API real de Cloudflare, Supabase real, Wi-Fi frente a datos móviles, iPhone físico, Safari o temperatura. Los vínculos necesitan los pasos administrativos de `supabase/PAIRING_SETUP.md`; un build de Netlify no despliega estos componentes.
+
+### Instalación en la tabla Realtime gestionada
+
+Tras el error real `42501: must be owner of table messages`, las dos migraciones dejan de ejecutar ALTER TABLE/GRANT sobre `realtime.messages`. La documentación oficial de Supabase confirma que RLS ya está activo y que `supautils` permite a postgres crear políticas sin ser propietario. Las pruebas locales ahora preconfiguran RLS/grants como prerrequisitos de la plataforma. La prueba de emparejamiento rechaza la reintroducción de ALTER TABLE, verifica que sin RLS la instalación falla y revierte las tablas nuevas, y vuelve a comprobar aislamiento, caducidad, leases y revocación con RLS activo. PGlite no simula la extensión supautils; sigue pendiente reejecutar el SQL corregido en el proyecto real.

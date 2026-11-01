@@ -39,8 +39,13 @@ do $$ begin
   raise exception 'Review existing realtime.messages policies before installing SECURITY CAM';
  end if;
 end $$;
-alter table realtime.messages enable row level security;
-grant select, insert on realtime.messages to authenticated;
+-- RLS and table grants are managed by Supabase. postgres may create policies
+-- through supautils but does not own this table and must not ALTER it.
+do $$ begin
+ if not (select relrowsecurity from pg_class where oid='realtime.messages'::regclass) then
+   raise exception 'Supabase Realtime must already have RLS enabled on realtime.messages';
+ end if;
+end $$;
 -- Realtime Broadcast uses private channels; anonymous or other-account access is denied.
 drop policy if exists "security cam private read" on realtime.messages;
 create policy "security cam private read" on realtime.messages for select to authenticated

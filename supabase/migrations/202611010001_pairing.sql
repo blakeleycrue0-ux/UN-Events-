@@ -96,9 +96,14 @@ do $$ begin
    raise exception 'Review existing realtime.messages policies before installing paired cameras';
  end if;
 end $$;
-alter table realtime.messages enable row level security;
-grant usage on schema realtime to authenticated;
-grant select,insert on realtime.messages to authenticated;
+-- Supabase manages this table's owner, RLS and grants. Its postgres role may
+-- manage policies through supautils, but cannot ALTER TABLE. Never change the
+-- managed table: check the platform prerequisite instead, failing closed.
+do $$ begin
+ if not (select relrowsecurity from pg_class where oid='realtime.messages'::regclass) then
+   raise exception 'Supabase Realtime must already have RLS enabled on realtime.messages';
+ end if;
+end $$;
 drop policy if exists "paired cameras read" on realtime.messages;
 create policy "paired cameras read" on realtime.messages for select to authenticated
  using(extension='broadcast' and public.pair_camera_channel_allowed((select realtime.topic())));

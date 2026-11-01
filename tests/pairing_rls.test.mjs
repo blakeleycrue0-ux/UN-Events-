@@ -14,8 +14,17 @@ test('single-use invitations isolate installations, leases and private signal ch
    create table auth.users(id uuid primary key);grant usage on schema auth,realtime to anon,authenticated;
    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
    create function realtime.topic() returns text language sql stable as $$select current_setting('realtime.topic',true)$$;
-   create table realtime.messages(extension text);insert into auth.users values('${viewer}'),('${host}'),('${stranger}');`);
+   create table realtime.messages(extension text);
+   alter table realtime.messages enable row level security;
+   grant select,insert on realtime.messages to authenticated;
+   insert into auth.users values('${viewer}'),('${host}'),('${stranger}');`);
   const migration=await fs.readFile(new URL('../supabase/migrations/202611010001_pairing.sql',import.meta.url),'utf8');
+  // Supabase's managed messages table permits policy changes, not owner-only DDL.
+  assert.doesNotMatch(migration,/alter\s+table\s+(?:"?realtime"?\.)?"?messages"?/i);
+  await db.exec('alter table realtime.messages disable row level security');
+  await assert.rejects(()=>db.exec(migration),/must already have RLS enabled/);
+  await db.exec('rollback;alter table realtime.messages enable row level security');
+  assert.equal((await db.query("select to_regclass('public.camera_links') missing")).rows[0].missing,null);
   await db.exec(migration);await db.exec(migration);
   await db.exec('set role anon');await assert.rejects(()=>db.query(`select public.pair_camera_create('${hash}','Entrada')`));
   await assert.rejects(()=>db.query('select id from public.camera_links'));

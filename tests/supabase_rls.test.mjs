@@ -11,6 +11,8 @@ test('Supabase policies isolate accounts and private broadcast, deny anonymous/d
    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
    create function realtime.topic() returns text language sql stable as $$select current_setting('realtime.topic',true)$$;
    create table realtime.messages(id bigserial primary key,extension text);
+   alter table realtime.messages enable row level security;
+   grant select,insert on realtime.messages to authenticated;
    grant usage,select on sequence realtime.messages_id_seq to authenticated;
    insert into auth.users values('${alice}'),('${bob}');`);
   const migration=await fs.readFile(new URL('../supabase/migrations/202610310001_remote.sql',import.meta.url),'utf8');await db.exec(migration);await db.exec(migration);
