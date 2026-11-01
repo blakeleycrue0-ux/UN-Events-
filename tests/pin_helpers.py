@@ -16,3 +16,7 @@ def unlock_app(page):
 def confirm_action(page,value=PIN):
  enter_pin(page,value)
  page.wait_for_function('!pinPromptOpen')
+
+def empty_people_model(page):
+ """Controlled empty model for navigation/security tests; real inference has separate tests."""
+ page.evaluate('()=>{state.model={detect:async()=>({object:[]})};state.peopleError=""}')

@@ -1860,3 +1860,5 @@ body[data-protection=armed] .camera-status .status-dot {
   padding-top:6px;
   padding-bottom:6px
 }
+.people-strip{display:flex;align-items:center;gap:8px;padding:13px 14px;border-top:1px solid #ffffff18;background:#ffffff04}.people-strip>div{flex:1;min-width:0}.people-state{font-size:11px;line-height:1.5;display:block;letter-spacing:.4px;color:#b6bdc9}.people-state.ready{color:#a5ebbb}.people-state.error{color:#ffb0b8}.people-strip p{font-size:10px;color:#acb5c1;line-height:1.55;margin-top:4px}.people-strip .small-button{min-height:40px;min-width:52px;font-size:10px;padding:7px 10px}body.drawing .people-strip{visibility:hidden}
+body.drawing #cameraMessage{display:none!important}body.drawing .badges,body.drawing #clock{pointer-events:none}

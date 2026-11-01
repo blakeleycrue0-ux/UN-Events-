@@ -191,7 +191,7 @@ function renderApp() {
   $("deviceBadge").textContent = state.stream ? "En este dispositivo" : "Configurar";
   $("deviceBadge").classList.toggle("online", !!state.stream);
   $("homeLocalState").textContent = state.alarm ? "Alarma activada" : state.warningPending ? "Aviso de seguridad" : state.armed ? "Sistema armado" : "Sistema desarmado";
-  $("homeLocalDetail").textContent = state.recording ? "Grabaci\xF3n en curso en este dispositivo." : state.armed ? "Detecci\xF3n y respuesta activadas." : "La vigilancia se activa desde tu c\xE1mara.";
+  $("homeLocalDetail").textContent = state.recording ? "Grabaci\xF3n en curso en este dispositivo." : state.armed ? $("recordMode").value === "event" ? "Solo personas \xB7 clips por detecci\xF3n." : "Solo personas \xB7 clips en modo manual." : "Recuadros al encender. Arma para grabar personas.";
   $("homeStatusDot").classList.toggle("on", state.armed);
   const clips = $("clips").querySelectorAll(".clip").length;
   const pending = $("clips").querySelectorAll(".pending-evidence").length;
@@ -209,7 +209,7 @@ function renderApp() {
     }
   }
   renderHomeStatus(clips);
-  const entries = events.filter((e) => !e.message.includes("PIN")).slice(0, 3);
+  const entries = events.filter((e) => e.type !== "movimiento" && !e.message.includes("PIN")).slice(0, 3);
   const activitySignature = JSON.stringify(entries);
   if (activitySignature !== lastActivitySignature) {
     lastActivitySignature = activitySignature;
@@ -312,17 +312,17 @@ function renderHomeStatus(clips) {
   $("record").disabled = !state.stream || !window.MediaRecorder || state.recordStarting || state.recordFinalizing;
   $("photo").disabled = !state.stream;
   $("fullscreen").disabled = !state.stream;
-  const status = state.alarm ? "Alarma activa" : state.warningPending ? "Aviso de seguridad" : state.storageFailed ? "Revisar almacenamiento" : state.cameraMuted ? "Captura en pausa" : !live ? "C\xE1mara apagada" : state.armed ? "Vigilancia activa" : "Solo vista previa";
+  const status = state.alarm ? "Alarma activa" : state.warningPending ? "Aviso de seguridad" : state.storageFailed ? "Revisar almacenamiento" : state.peopleError ? "Error de IA" : state.peopleLoading || state.stream && $("person").checked && !state.personResultAt ? "Preparando personas" : !$("person").checked ? "Personas pausadas" : state.cameraMuted ? "Captura en pausa" : !live ? "C\xE1mara apagada" : state.armed ? "Vigilancia activa" : "Solo vista previa";
   $("homeSystemPill").textContent = status;
-  $("homeSystemPill").classList.toggle("online", live && state.armed && !state.storageFailed && !state.alarm);
-  $("homeSystemPill").classList.toggle("alarm", state.alarm);
+  $("homeSystemPill").classList.toggle("online", live && state.armed && !state.storageFailed && !state.alarm && !state.peopleError && !state.peopleLoading && !!state.personResultAt && $("person").checked);
+  $("homeSystemPill").classList.toggle("alarm", state.alarm || !!state.peopleError);
   const summary = state.clipSummary || [], bytes = summary.reduce((n, c) => n + c.size, 0), estimate = state.storageEstimate;
   $("homeStorageDetail").textContent = state.storageFailed ? "Error local \xB7 revisa tus clips" : estimate && estimate.quota ? "".concat((estimate.usage / 1048576).toFixed(1), " MB de ").concat((estimate.quota / 1048576).toFixed(0), " MB \xB7 cuota estimada") : "".concat(clips, " clips \xB7 ").concat((bytes / 1048576).toFixed(1), " MB guardados \xB7 cuota no disponible");
   $("homeStorageProgress").hidden = !(estimate && estimate.quota);
   if (estimate == null ? void 0 : estimate.quota) $("homeStorageProgress").value = Math.min(1, estimate.usage / estimate.quota);
 }
 function eventTitle(e) {
-  return { persona: "Persona detectada", movimiento: "Movimiento detectado", alarma: "Alarma", audio: "Sonido", c\u00E1mara: "C\xE1mara", modo: "Vigilancia" }[e.type] || (e.type === "grabaci\xF3n" && e.message.includes("guardada") ? "Clip guardado" : e.type === "grabaci\xF3n" ? "Grabaci\xF3n" : "Evento del sistema");
+  return { persona: "Persona detectada", movimiento: "Movimiento (hist\xF3rico)", alarma: "Alarma", audio: "Sonido", c\u00E1mara: "C\xE1mara", modo: "Vigilancia" }[e.type] || (e.type === "grabaci\xF3n" && e.message.includes("guardada") ? "Clip guardado" : e.type === "grabaci\xF3n" ? "Grabaci\xF3n" : "Evento del sistema");
 }
 function highlightTarget(target) {
   if (!target) return;

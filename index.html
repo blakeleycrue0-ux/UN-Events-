@@ -128,7 +128,7 @@
         <button id="fullscreen">Ampliar</button><button id="photo">Foto</button
         ><button id="record">Grabar manual</button>
       </div>
-</div></div>
+<div class="people-strip"><div><strong id="peopleStatus" class="people-state" role="status">DETECCIÓN DE PERSONAS</strong><p id="peopleStatusDetail">Enciende la cámara para ver los recuadros.</p></div><button id="retryPeople" class="small-button" hidden>Reintentar</button><button id="peopleZone" class="small-button">Zona</button></div></div></div>
       <div class="camera-status">
         <span class="status-dot"></span>
         <div>
@@ -141,7 +141,7 @@
           PROTEGER ESTA IMAGEN
         </button>
         <p class="fine-print">
-          Armar inicia la detección en tu zona guardada. Los sonidos solo se activan si los habilitas. Encuadra solo tu propiedad.
+          Al encender la cámara se buscan personas. Armar autoriza clips y alertas solo por personas en tu zona. Los sonidos solo se activan si los habilitas. Encuadra solo tu propiedad.
         </p>
       </div>
       <p id="sequenceStatus" role="status"></p>
@@ -150,13 +150,7 @@
         <button id="camera">Iniciar cámara</button
         >
       </div>
-<div class="system-indicators" aria-label="Estado del sistema"><span id="modeBadge">MODE · DESARMADO</span><span id="motionBadge" hidden>MOVEMENT</span><span id="personBadge" hidden>PERSON</span><span id="audioBadge">AUDIO · sin autorizar</span><span id="storageBadge">STORAGE · local</span><span id="powerBadge">LOW POWER</span><span id="darkBadge" hidden>Escena oscura</span></div><p id="eventState" role="status">Esperando evento</p><details class="surveillance-panel" open><summary>Detección y zona</summary><div class="panel-grid"><label class="checkbox-row"><input id="motion" type="checkbox" checked="" />Movimiento · disparador principal</label><label>Sensibilidad de movimiento<input
-        id="sensitivity"
-        type="range"
-        min="1"
-        max="100"
-        value="60"
-      /></label><label>Confirmar movimiento durante<select id="motionConfirm"><option value="0.5" selected>0,5 s</option><option value="1">1 s</option><option value="2">2 s</option></select></label><label class="checkbox-row"><input id="person" type="checkbox" checked />Detectar personas · también sin movimiento</label><label>Confianza mínima de persona (%)<input
+<div class="system-indicators" aria-label="Estado del sistema"><span id="modeBadge">MODE · DESARMADO</span><span id="motionBadge" hidden>MOVEMENT</span><span id="personBadge" hidden>PERSONA</span><span id="audioBadge">AUDIO · sin autorizar</span><span id="storageBadge">STORAGE · local</span><span id="powerBadge">LOW POWER</span><span id="darkBadge" hidden>Escena oscura</span></div><p id="eventState" role="status">Esperando evento</p><details class="surveillance-panel" open><summary>Detección y zona</summary><div class="panel-grid"><label class="checkbox-row"><input id="person" type="checkbox" checked />Detección de personas y recuadros</label><label>Confianza mínima de persona (%)<input
         id="confidence"
         type="range"
         min="30"
@@ -169,7 +163,7 @@
         min="0.25"
         max="30"
         value="2"
-      /></label><label class="checkbox-row"><input id="autoDetail" type="checkbox" checked>Detalle automático para personas pequeñas</label><p id="detectionReadout" role="status"></p><p class="fine-print">Alterna vista general y recortes a partir de la cámara original, sin cambiar el vídeo ni la zona. HD y detalle automático aumentan el consumo; activa ahorro si necesitas reducirlo. La rapidez depende del dispositivo: se muestra el tiempo medido, no se garantiza 1 ms. No mide metros ni garantiza detectar a 10 m. Prueba caminando a la distancia real, con luz suficiente.</p><p class="fine-print">Movimiento o persona confirmada inician el evento; si coinciden, se guarda un solo clip. La zona debe incluir el centro o los pies de la persona. La IA se carga solo al habilitarla y armar. Sombras, lluvia o luces pueden causar falsos positivos.</p><div class="button-grid"><button id="zone">Dibujar zona restringida</button
+      /></label><label class="checkbox-row"><input id="autoDetail" type="checkbox" checked>Detalle automático para personas pequeñas</label><p id="detectionReadout" role="status"></p><p class="fine-print">Alterna vista general y recortes a partir de la cámara original, sin cambiar el vídeo ni la zona. HD y detalle automático aumentan el consumo; activa ahorro si necesitas reducirlo. La rapidez depende del dispositivo: se muestra el tiempo medido, no se garantiza 1 ms. No mide metros ni garantiza detectar a 10 m. Prueba caminando a la distancia real, con luz suficiente.</p><p class="fine-print">Solo una persona reconocida puede iniciar un clip o una alerta. El movimiento no es un disparador. Los recuadros aparecen al encender la cámara; armar autoriza grabaciones y alertas. La zona debe incluir el centro o los pies de la persona. Si falla la IA se muestra el error y se pausan nuevos eventos automáticos.</p><div class="button-grid"><button id="zone">Dibujar zona restringida</button
               ><button id="fullZone">
         Usar imagen completa
       </button><button id="mask">Dibujar máscara privada</button
@@ -180,10 +174,7 @@
                 <option selected="">20</option>
                 <option>30</option>
                 <option>60</option>
-              </select></label><label>Cooldown después de cada clip<select id="recordCooldown"><option>10</option><option>20</option><option selected>30</option><option>60</option></select></label><label class="checkbox-row"><input id="repeatEvents" type="checkbox">Permitir repetir clips de un evento persistente después del cooldown</label><label class="checkbox-row"><input id="autoDelete" type="checkbox" />Liberar clips antiguos no importantes al superar el 80% de cuota</label><label>Resolución de grabación procesada<select id="recordQuality"><option value="640" selected>640 px · menor calor</option><option value="1280">1280 px · más consumo</option></select></label><p class="fine-print">Límite local: 100 clips o 480 MB antes de iniciar otro. Sin grabación continua ni micrófono. Un clip por episodio; se rearma tras 4 s sin movimiento y sin persona confirmada. La duración elegida se completa salvo desarmado, fallo o interrupción de Safari. Si otro episodio empieza durante el cooldown, queda registrado sin clip. Safari puede eliminar IndexedDB por falta de espacio, navegación privada o limpieza del navegador. Descarga las pruebas importantes; marcarlas no impide que iOS borre datos. La calidad de grabación no supera la captura de la cámara. En Safari sin captura de canvas se graba la pista nativa y se informa de los límites.</p><button id="openRecordings">Ver grabaciones e historial</button></div></details><details class="surveillance-panel"><summary>Audio y respuesta</summary><div class="panel-grid"><label class="checkbox-row"><input id="autoVoice" type="checkbox" />Aviso de voz automático (disuasorio y alarma)</label><label class="checkbox-row"><input id="autoAlarm" type="checkbox" />Sirena automática (solo modo alarma)</label><label>Confirmación de alarma<select id="alarmSource">
-            <option value="person">Personas</option>
-            <option value="motion" selected>Movimiento</option>
-          </select></label><label>Confirmación adicional de alarma (segundos)<input id="confirmation" type="number" min="1" max="60" value="3" /></label><label>Intervalo mínimo entre alarmas (segundos)<input
+              </select></label><label>Cooldown después de cada clip<select id="recordCooldown"><option>10</option><option>20</option><option selected>30</option><option>60</option></select></label><label class="checkbox-row"><input id="repeatEvents" type="checkbox">Permitir repetir clips de un evento persistente después del cooldown</label><label class="checkbox-row"><input id="autoDelete" type="checkbox" />Liberar clips antiguos no importantes al superar el 80% de cuota</label><label>Resolución de grabación procesada<select id="recordQuality"><option value="640" selected>640 px · menor calor</option><option value="1280">1280 px · más consumo</option></select></label><p class="fine-print">Límite local: 100 clips o 480 MB antes de iniciar otro. Sin grabación continua ni micrófono. Un clip por episodio de persona; se rearma al dejar de observar personas. La duración elegida se completa salvo desarmado, fallo o interrupción de Safari. Si otro episodio empieza durante el cooldown, queda registrado sin clip. Safari puede eliminar IndexedDB por falta de espacio, navegación privada o limpieza del navegador. Descarga las pruebas importantes; marcarlas no impide que iOS borre datos. La calidad de grabación no supera la captura de la cámara. En Safari sin captura de canvas se graba la pista nativa y se informa de los límites.</p><button id="openRecordings">Ver grabaciones e historial</button></div></details><details class="surveillance-panel"><summary>Audio y respuesta</summary><div class="panel-grid"><label class="checkbox-row"><input id="autoVoice" type="checkbox" />Aviso de voz automático (disuasorio y alarma)</label><label class="checkbox-row"><input id="autoAlarm" type="checkbox" />Sirena automática (solo modo alarma)</label><label>Confirmación adicional de alarma (segundos)<input id="confirmation" type="number" min="1" max="60" value="3" /></label><label>Intervalo mínimo entre alarmas (segundos)<input
         id="cooldown"
         type="number"
         min="10"
@@ -247,7 +238,7 @@
         <div class="activity-tools">
           <select id="filter">
             <option value="">Todos</option>
-            <option>movimiento</option>
+            <option value="movimiento">Movimiento (histórico)</option>
             <option>persona</option>
             <option>grabación</option>
             <option>alarma</option>
@@ -371,7 +362,13 @@
       </form>
     </div>
     <div id="captureDock" aria-hidden="true"></div>
-    <div id="engineSettings" hidden="">
+    <div id="engineSettings" hidden=""><input id="motion" type="checkbox" /><input
+        id="sensitivity"
+        type="range"
+        min="1"
+        max="100"
+        value="60"
+      /><select id="motionConfirm"><option value="0.5" selected>0,5 s</option><option value="1">1 s</option><option value="2">2 s</option></select><select id="alarmSource"><option value="person" selected>Personas</option></select>
 <span id="status">DESARMADO</span
       ><span id="alarmStatus" hidden="">ALARMA ACTIVA</span
       >

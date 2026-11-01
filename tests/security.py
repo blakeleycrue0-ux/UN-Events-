@@ -1,6 +1,6 @@
 """Required entry PIN and authorization for state-changing surveillance actions."""
 from playwright.sync_api import sync_playwright
-from pin_helpers import enter_pin,unlock_app,confirm_action
+from pin_helpers import empty_people_model,enter_pin,unlock_app,confirm_action
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
@@ -11,7 +11,7 @@ with sync_playwright() as p:
  enter_pin(page);page.wait_for_function("document.querySelector('.pin-card h2')?.textContent==='Repite tu PIN'");enter_pin(page,'654321')
  page.wait_for_function("document.querySelector('.pin-card h2')?.textContent==='Crea tu PIN'")
  assert page.evaluate("!localStorage.getItem('security-pin')")
- unlock_app(page);assert page.locator('#openCamera').is_visible()
+ unlock_app(page);empty_people_model(page);assert page.locator('#openCamera').is_visible()
  page.reload();page.wait_for_selector('#pinEntry:visible');enter_pin(page,'000000');page.wait_for_function("document.querySelector('.pin-card p')?.textContent.includes('incorrecto')");assert not page.evaluate('securityUnlocked');unlock_app(page)
  page.click('#openCamera');page.wait_for_selector('#cameraPage:visible');page.uncheck('#person');page.click('#protect');page.wait_for_selector('#pinEntry:visible');assert not page.evaluate('state.armed || !!state.stream')
  page.get_by_role('button',name='Cancelar',exact=True).click();assert not page.evaluate('state.armed')
@@ -22,7 +22,7 @@ with sync_playwright() as p:
  page.locator('#silence').evaluate('e=>e.click()');assert page.evaluate('state.armed')
  page.click('#protect');confirm_action(page);page.wait_for_function('!state.armed')
  for id in ['mode','nightToggle','arm']:assert not page.locator('#'+id).is_visible(),id
- page.click('#unlock');unlock_app(page);assert not page.evaluate('state.armed')
+ page.click('#unlock');unlock_app(page);empty_people_model(page);assert not page.evaluate('state.armed')
  page.click('#navSettings');page.get_by_text('Seguridad',exact=True).click();page.click('#pin');enter_pin(page);page.wait_for_function("document.querySelector('.pin-card h2')?.textContent==='Crea tu PIN'")
  page.get_by_role('button',name='Cancelar',exact=True).click();page.wait_for_function('!pinPromptOpen')
  page.click('#pin');enter_pin(page);page.wait_for_function("document.querySelector('.pin-card h2')?.textContent==='Crea tu PIN'");enter_pin(page,'654321');page.wait_for_function("document.querySelector('.pin-card h2')?.textContent==='Repite tu PIN'");enter_pin(page,'654321');page.wait_for_function('!pinPromptOpen')
