@@ -7,9 +7,11 @@ if (!Element.prototype.replaceChildren)
 const $ = (id) => document.getElementById(id), video = $("video"), overlay = $("overlay"), ctx = overlay.getContext("2d");
 const frame = document.createElement("canvas"), fx = frame.getContext("2d", { willReadFrequently: true });
 const aiFrame = document.createElement("canvas");
-aiFrame.width = 320;
+aiFrame.width = 512;
 aiFrame.height = 240;
 const aiCtx = aiFrame.getContext("2d");
+const motionDetector = new SecurityDetection.Motion();
+let aiPass = 0, zoneDraft = null, editorScroll = 0;
 const analysis = document.createElement("canvas"), ax = analysis.getContext("2d", { willReadFrequently: true });
 const state = {
   stream: null,
@@ -35,6 +37,7 @@ let db, recorder, recTimer, alarmTimer, flashTimer, torchTimer, siren, activeAud
 let events = [], clipURLs = [], soundURLs = {}, soundBlobs = {}, soundGeneration = 0;
 const settingIds = [
   "mode",
+  "autoDetail",
   "surveillanceMode",
   "motionConfirm",
   "recordCooldown",
@@ -101,6 +104,7 @@ function save() {
       (id) => s[id] = $(id).type === "checkbox" ? $(id).checked : $(id).value
     );
     s.eventSettingsVersion = 2;
+    s.detectionVersion = 3;
     s.zone = state.zone;
     s.mask = state.mask;
     localStorage.setItem("security-settings", JSON.stringify(s));
@@ -117,6 +121,15 @@ try {
     }
   });
   if (s.eventSettingsVersion !== 2) $("recordMode").value = "event";
+  if (s.detectionVersion !== 3) {
+    $("previewQuality").value = "1280";
+    $("analysisSize").value = "256";
+    $("person").checked = true;
+    $("confidence").value = "45";
+    $("aiInterval").value = "2";
+    $("lowPower").checked = false;
+    $("motionConfirm").value = "0.5";
+  }
   state.zone = s.zone || null;
   state.mask = s.mask || null;
   events = JSON.parse(localStorage.getItem("security-events") || "[]");
@@ -269,10 +282,11 @@ function updatePreview() {
   $("nightToggle").setAttribute("aria-pressed", String(enabled));
   $("nightHint").textContent = enabled ? "Mejora nocturna activa \xB7 necesita luz visible" : $("nightMode").value === "auto" ? "Noche autom\xE1tica seg\xFAn la luz de la c\xE1mara" : "";
 }
-function processed(target = frame, context = fx) {
+function processed(target = frame, context = fx, region = null) {
   if (!video.videoWidth) return;
   const [x, y, w, h] = crop();
-  context.drawImage(video, x, y, w, h, 0, 0, target.width, target.height);
+  const r = region || { x: 0, y: 0, w: 1, h: 1 };
+  context.drawImage(video, x + w * r.x, y + h * r.y, w * r.w, h * r.h, 0, 0, target.width, target.height);
   const boost = nightEnabled();
   const brightness = +$("brightness").value / 100 * (boost ? 1.6 : 1), contrast = +$("contrast").value / 100 * (boost ? 1.12 : 1), gamma = +$("gamma").value / 100 * (boost ? 1.25 : 1);
   state.rawLight = null;
@@ -307,16 +321,16 @@ function processed(target = frame, context = fx) {
     const m = state.mask;
     context.fillStyle = "#000";
     context.fillRect(
-      m.x * target.width,
-      m.y * target.height,
-      m.w * target.width,
-      m.h * target.height
+      (m.x - r.x) / r.w * target.width,
+      (m.y - r.y) / r.h * target.height,
+      m.w / r.w * target.width,
+      m.h / r.h * target.height
     );
   }
 }
 function viewRect() {
   const r = overlay.getBoundingClientRect();
-  const ratio = frame.width / frame.height;
+  const ratio = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : frame.width / frame.height;
   let w = r.width, h = w / ratio;
   if (h > r.height) {
     h = r.height;
@@ -356,11 +370,16 @@ function draw() {
       ctx.fillText(label, v.x + b.x * v.w + 4, v.y + b.y * v.h + 18);
     }
   }
-  if (state.zone) rect(state.zone, "#70d39a", "Zona restringida");
+  if (state.zone && !drawMode) rect(state.zone, "#70d39a", "Zona de vigilancia");
   for (const p of state.persons)
-    rect(p, "#fff", "Persona " + Math.round(p.score * 100) + "%");
-  if (drag)
-    rect(drag.rect, drawMode === "mask" ? "#ff9c9c" : "#70d39a", "Selecci\xF3n");
+    rect(p, "#fff", "Persona " + Math.round(p.score * 100) + "%" + (p.seen && Date.now() - p.seen >= 2e3 ? " \xB7 hace " + Math.floor((Date.now() - p.seen) / 1e3) + " s" : ""));
+  if (drawMode && zoneDraft) {
+    rect(zoneDraft, "#9ce6bd", "Zona pendiente \xB7 ajusta los tiradores");
+    ctx.fillStyle = "#9ce6bd";
+    for (const x of [zoneDraft.x, zoneDraft.x + zoneDraft.w])
+      for (const y of [zoneDraft.y, zoneDraft.y + zoneDraft.h])
+        ctx.fillRect(v.x + x * v.w - 7, v.y + y * v.h - 7, 14, 14);
+  }
 }
 async function torch(on) {
   var _a, _b;
@@ -561,10 +580,11 @@ function renderRecording() {
   );
 }
 async function startRecording(reason, episode = null) {
-  if (document.hidden || state.recording || state.recordStarting || state.recordFinalizing || !state.stream || state.storageFailed)
+  if (document.hidden || drawMode || state.recording || state.recordStarting || state.recordFinalizing || !state.stream || state.storageFailed)
     return;
   state.recordStarting = true;
   let captureStream = null;
+  const recordingCameraID = cameraGeneration;
   if (!window.MediaRecorder) {
     state.recordStarting = false;
     error(
@@ -575,7 +595,7 @@ async function startRecording(reason, episode = null) {
   }
   try {
     await capacity();
-    if (!state.stream || episode && (!state.armed || state.episode !== episode)) return;
+    if (!state.stream || drawMode || recordingCameraID !== cameraGeneration || episode && (!state.armed || state.episode !== episode)) return;
     const type = mime();
     let stream;
     if (frame.captureStream) {
@@ -838,7 +858,44 @@ function considerThreat() {
   if (Date.now() - state.threatSince >= Math.max(1, +$("confirmation").value) * 1e3 && !state.warningPending && !state.alarm && !state.episode.alerted && Date.now() - state.lastAlarm >= Math.max(10, +$("cooldown").value) * 1e3) {
     state.episode.alerted = true;
     if ($("autoVoice").checked) warnThenAlarm();
-    else alarm("Evento confirmado en zona de vigilancia");
+    else confirmedAutoAlarm("Evento confirmado en zona de vigilancia");
+  }
+}
+async function currentPersonVisible() {
+  const token = soundGeneration, cameraID = cameraGeneration;
+  const deadline = Date.now() + 5e3;
+  while (state.busy && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
+  if (state.busy || !state.model || !state.armed || !$("person").checked || drawMode || document.hidden || token !== soundGeneration || cameraID !== cameraGeneration) return false;
+  state.busy = true;
+  try {
+    const region = SecurityDetection.expand(state.persons[0] || state.zone || { x: 0, y: 0, w: 1, h: 1 }, 0.15);
+    const check = document.createElement("canvas"), ratio = video.videoWidth * region.w / (video.videoHeight * region.h);
+    check.width = Math.round(ratio >= 1 ? 512 : 512 * ratio);
+    check.height = Math.round(ratio >= 1 ? 512 / ratio : 512);
+    processed(check, check.getContext("2d"), region);
+    const result = await state.model.detect(check, { object: { minConfidence: +$("confidence").value / 100 } });
+    if (token !== soundGeneration || cameraID !== cameraGeneration || !state.armed || drawMode || document.hidden) return false;
+    const fresh = (result.object || []).filter((p) => p.label === "person" && p.score >= +$("confidence").value / 100 && p.boxRaw).map((p) => ({ ...SecurityDetection.mapBox(p.boxRaw, region), score: p.score, seen: Date.now() })).filter((p) => SecurityDetection.personInside(p, state.zone) && !(state.mask && SecurityDetection.personInside(p, state.mask)));
+    state.persons = fresh;
+    state.personResultAt = Date.now();
+    draw();
+    return fresh.length > 0;
+  } catch (e) {
+    error("No se pudo confirmar presencia antes de sirena: " + e.message, "alarma");
+    return false;
+  } finally {
+    state.busy = false;
+  }
+}
+async function confirmedAutoAlarm(reason, afterVoice = false) {
+  const token = soundGeneration, episode = state.episode;
+  const present = $("alarmSource").value === "person" ? await currentPersonVisible() : threatActive();
+  if (token !== soundGeneration || !state.armed || $("mode").value !== "alarm" || !$("autoAlarm").checked || state.episode !== episode) return;
+  if (afterVoice) state.warningPending = false;
+  if (present && state.zone) alarm(reason, true);
+  else {
+    $("sequenceStatus").textContent = "Sin presencia confirmada \xB7 sirena cancelada";
+    log("alarma", "Sirena cancelada: comprobaci\xF3n actual sin detecci\xF3n");
   }
 }
 async function warnThenAlarm() {
@@ -861,13 +918,8 @@ async function warnThenAlarm() {
     state.warningStarted = Date.now();
     activeAudio.onended = () => {
       if (!state.warningPending) return;
-      state.warningPending = false;
-      if (state.armed && $("mode").value === "alarm" && $("autoAlarm").checked && state.zone && threatActive())
-        alarm("Detecci\xF3n persistente despu\xE9s del aviso", true);
-      else {
-        $("sequenceStatus").textContent = "Sin detecci\xF3n \xB7 sirena cancelada";
-        log("alarma", "Sirena cancelada al terminar aviso");
-      }
+      $("sequenceStatus").textContent = "Comprobando presencia antes de sirena\u2026";
+      confirmedAutoAlarm("Detecci\xF3n persistente despu\xE9s del aviso", true);
     };
   } catch (e) {
     stopSounds();
@@ -907,7 +959,6 @@ function detected(type) {
     }
     return;
   }
-  if (type === "persona" && $("motion").checked) return;
   if (state.episode) return;
   const episode = state.episode = { started: Date.now(), kind: type === "persona" || personFresh() ? "persona detectada" : "movimiento detectado" };
   log(episode.kind.startsWith("persona") ? "persona" : "movimiento", episode.kind + " en zona de vigilancia");
@@ -947,7 +998,8 @@ async function loadModel() {
         enabled: true,
         modelPath: "centernet.json",
         minConfidence: +$("confidence").value / 100,
-        maxDetected: 8,
+        // Preserve lower-ranked person candidates in scenes containing many cars.
+        maxDetected: 32,
         skipFrames: 0,
         skipTime: 0
       }
@@ -984,6 +1036,11 @@ async function tick() {
   const cycle = ++analysisGeneration, cameraID = cameraGeneration;
   clearTimeout(loopTimer);
   if (!state.stream || document.hidden) return;
+  if (drawMode) {
+    draw();
+    loopTimer = setTimeout(tick, 1e3);
+    return;
+  }
   if (state.cameraMuted || video.readyState < 2) {
     loopTimer = setTimeout(tick, 1e3);
     return;
@@ -1002,11 +1059,11 @@ async function tick() {
     const size = state.slow || $("lowPower").checked ? Math.min(128, +$("analysisSize").value) : +$("analysisSize").value;
     if (analysis.width !== size) state.previous = null;
     analysis.width = size;
-    analysis.height = Math.round(analysis.width * frame.height / frame.width);
+    analysis.height = Math.round(analysis.width * video.videoHeight / video.videoWidth);
     processed(analysis, ax);
     const d = ax.getImageData(0, 0, analysis.width, analysis.height).data;
     const grey = new Uint8Array(d.length / 4);
-    let sum = 0, count = 0, diff = 0, meanDiff = 0;
+    let sum = 0, count = 0;
     for (let i = 0; i < grey.length; i++) {
       grey[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
       const p = {
@@ -1019,58 +1076,61 @@ async function tick() {
         continue;
       sum += grey[i];
       count++;
-      if (state.previous) meanDiff += grey[i] - state.previous[i];
     }
-    meanDiff /= Math.max(1, count);
     state.light = state.rawLight === null ? sum / Math.max(1, count) : state.rawLight;
     state.night = state.night ? state.light < 65 : state.light < 40;
     updatePreview();
-    const sensitivity = +$("sensitivity").value;
-    if (state.previous) {
-      for (let i = 0; i < grey.length; i++) {
-        const p = {
-          x: i % analysis.width / analysis.width,
-          y: Math.floor(i / analysis.width) / analysis.height,
-          w: 0,
-          h: 0
-        };
-        if (!inside(p, state.zone) || state.mask && inside(p, state.mask))
-          continue;
-        if (Math.abs(grey[i] - state.previous[i] - meanDiff) > 16 + (100 - sensitivity) * 0.35)
-          diff++;
+    if (!state.previous) motionDetector.reset();
+    const signal = motionDetector.analyze(
+      grey,
+      analysis.width,
+      analysis.height,
+      state.zone,
+      state.mask,
+      +$("sensitivity").value,
+      +$("motionConfirm").value,
+      Date.now(),
+      +$("analysisInterval").value
+    );
+    state.motionSignal = signal;
+    if (signal.moving) {
+      state.lastVisualChange = Date.now();
+      state.motionBounds = signal.bounds;
+    }
+    state.moving = signal.moving && $("motion").checked;
+    if (state.moving) {
+      state.lastMotionAt = Date.now();
+      state.motionBounds = signal.bounds;
+      if (signal.confirmed) {
+        state.motionConfirmedAt = Date.now();
+        detected("movimiento");
       }
-      const moving = diff / Math.max(1, count) > 0.015 + (100 - sensitivity) * 1e-3;
-      state.moving = moving && $("motion").checked;
-      if (state.moving) {
-        state.lastMotionAt = Date.now();
-        state.movingSince || (state.movingSince = Date.now());
-        if (Date.now() - state.movingSince >= +$("motionConfirm").value * 1e3) {
-          state.motionConfirmedAt = Date.now();
-          detected("movimiento");
-        }
-      } else state.movingSince = 0;
     }
     state.previous = grey;
-    if ($("person").checked && (!$("motion").checked || state.episode || Date.now() - (state.lastMotionAt || 0) < 5e3) && state.model && !state.busy && !state.recordStarting && !state.recordFinalizing && Date.now() - lastAI >= personInterval() * 1e3) {
+    const motionMS = performance.now() - started;
+    if ($("person").checked && state.model && !state.busy && !state.recordStarting && !state.recordFinalizing && Date.now() - lastAI >= personInterval() * 1e3) {
       lastAI = Date.now();
       state.busy = true;
       try {
-        aiFrame.height = Math.round(320 * frame.height / frame.width);
-        processed(aiFrame, aiCtx);
+        const pass = aiPass++;
+        const zone = state.zone || { x: 0, y: 0, w: 1, h: 1 };
+        const detail = $("autoDetail").checked && pass % 2 === 1;
+        const region = detail ? SecurityDetection.detailRegion(zone, Date.now() - (state.lastVisualChange || 0) < 5e3 ? state.motionBounds : null, Math.floor(pass / 2) % 4) : SecurityDetection.expand(zone, 0.06);
+        const ratio = video.videoWidth * region.w / (video.videoHeight * region.h);
+        aiFrame.width = Math.round(ratio >= 1 ? 512 : 512 * ratio);
+        aiFrame.height = Math.round(ratio >= 1 ? 512 / ratio : 512);
+        processed(aiFrame, aiCtx, region);
+        const aiStarted = performance.now();
         const result = await state.model.detect(aiFrame, {
           object: { minConfidence: +$("confidence").value / 100 }
         });
-        if (cycle !== analysisGeneration || cameraID !== cameraGeneration || !state.armed || document.hidden) return;
+        if (cycle !== analysisGeneration || cameraID !== cameraGeneration || !state.armed || drawMode || !$("person").checked || document.hidden) return;
+        state.aiMS = performance.now() - aiStarted;
+        state.aiRegion = region;
+        state.aiDetail = detail;
         const predictions = result.object || [];
-        state.persons = predictions.filter(
-          (p) => p.label === "person" && p.score >= +$("confidence").value / 100
-        ).map((p) => ({
-          x: p.boxRaw[0],
-          y: p.boxRaw[1],
-          w: p.boxRaw[2],
-          h: p.boxRaw[3],
-          score: p.score
-        })).filter((p) => inside(p, state.zone) && !(state.mask && inside(p, state.mask)));
+        const found = predictions.filter((p) => p.label === "person" && p.score >= +$("confidence").value / 100 && p.boxRaw).map((p) => ({ ...SecurityDetection.mapBox(p.boxRaw, region), score: p.score, seen: Date.now() })).filter((p) => SecurityDetection.personInside(p, state.zone) && !(state.mask && SecurityDetection.personInside(p, state.mask)));
+        state.persons = SecurityDetection.mergePeople(found, state.persons, Date.now(), personInterval() * 3e3).filter((p) => SecurityDetection.personInside(p, state.zone) && !(state.mask && SecurityDetection.personInside(p, state.mask)));
         state.personResultAt = Date.now();
         if (state.persons.length) {
           detected("persona");
@@ -1099,10 +1159,11 @@ async function tick() {
     }
     updateEpisode();
     considerThreat();
+    renderDetectionStatus();
     draw();
     const ms = performance.now() - started;
-    state.slow = ms > 220 || state.slow && ms > 100;
-    $("health").textContent = "".concat(state.night ? "Luz insuficiente: detecci\xF3n limitada" : "Iluminaci\xF3n disponible", " \xB7 an\xE1lisis ").concat(analysis.width, " px \xB7 ").concat(Math.round(ms), " ms").concat(state.slow ? " \xB7 resoluci\xF3n reducida por rendimiento" : "", " \xB7 activo ").concat(Math.floor((Date.now() - state.started) / 6e4), " min");
+    state.slow = motionMS > 120 || state.slow && motionMS > 70;
+    $("health").textContent = "".concat(state.night ? "Luz insuficiente: detecci\xF3n limitada" : "Iluminaci\xF3n disponible", " \xB7 an\xE1lisis ").concat(analysis.width, " px \xB7 ").concat(Math.round(motionMS), " ms").concat(state.slow ? " \xB7 resoluci\xF3n reducida por rendimiento" : "", " \xB7 activo ").concat(Math.floor((Date.now() - state.started) / 6e4), " min");
   } catch (e) {
     error("Fallo de an\xE1lisis: " + e.message);
   } finally {
@@ -1358,71 +1419,121 @@ $("volume").oninput = () => {
   if (activeAudio) activeAudio.volume = +$("volume").value / 100;
 };
 $("torch").onchange = () => torch($("torch").checked);
-$("zone").onclick = () => {
-  drawMode = "zone";
+async function beginZoneEditor(kind) {
+  if (drawMode) return;
+  if (!state.stream) await startCamera();
+  if (!state.stream || !video.videoWidth) {
+    error("Inicia y autoriza la c\xE1mara para dibujar la zona.");
+    return;
+  }
+  await stopRecording();
+  stopSounds();
+  analysisGeneration++;
+  state.previous = null;
+  editorScroll = window.scrollY;
+  drawMode = kind;
+  zoneDraft = state[kind] ? { ...state[kind] } : null;
+  $("zoneEditorTitle").textContent = kind === "mask" ? "M\xE1scara de privacidad" : "Zona de vigilancia";
+  $("zoneEditorTools").hidden = false;
+  $("zoneEditorHeading").hidden = false;
+  $("zoneApply").disabled = !zoneDraft;
   document.body.classList.add("drawing");
-  $("stage").scrollIntoView({ block: "center", behavior: "auto" });
-  $("sequenceStatus").textContent = "Arrastra sobre la imagen para ajustar el rect\xE1ngulo.";
+  requestAnimationFrame(draw);
+  tick();
+}
+function closeZoneEditor() {
+  drawMode = null;
+  zoneDraft = null;
+  drag = null;
+  document.body.classList.remove("drawing");
+  $("zoneEditorTools").hidden = true;
+  $("zoneEditorHeading").hidden = true;
+  state.previous = null;
+  state.movingSince = 0;
+  window.scrollTo(0, editorScroll);
+  requestAnimationFrame(draw);
+  tick();
+}
+$("zone").onclick = () => beginZoneEditor("zone");
+$("mask").onclick = () => beginZoneEditor("mask");
+$("zoneCancel").onclick = closeZoneEditor;
+$("zoneNew").onclick = () => {
+  zoneDraft = null;
+  $("zoneApply").disabled = true;
+  draw();
 };
-$("mask").onclick = () => {
-  drawMode = "mask";
-  document.body.classList.add("drawing");
-  $("stage").scrollIntoView({ block: "center", behavior: "auto" });
-  $("sequenceStatus").textContent = "Arrastra sobre la imagen para ajustar el rect\xE1ngulo.";
+$("zoneApply").onclick = async () => {
+  if (!zoneDraft || !drawMode) return;
+  state[drawMode] = { ...zoneDraft };
+  state.episode = null;
+  state.persons = [];
+  state.motionBounds = null;
+  save();
+  log("modo", drawMode === "mask" ? "M\xE1scara privada guardada" : "Zona de vigilancia guardada");
+  $("sequenceStatus").textContent = "Zona guardada. Puedes ajustarla de nuevo con los tiradores.";
+  closeZoneEditor();
 };
 $("clearZones").onclick = async () => {
   await stopRecording();
+  stopSounds();
   state.zone = null;
   state.mask = null;
+  state.episode = null;
+  state.persons = [];
   state.confirmed = 0;
   state.previous = null;
   save();
+  draw();
 };
 function point(e) {
   const b = overlay.getBoundingClientRect(), v = viewRect();
-  return {
-    x: Math.max(0, Math.min(1, (e.clientX - b.left - v.x) / v.w)),
-    y: Math.max(0, Math.min(1, (e.clientY - b.top - v.y) / v.h))
-  };
+  return { x: Math.max(0, Math.min(1, (e.clientX - b.left - v.x) / v.w)), y: Math.max(0, Math.min(1, (e.clientY - b.top - v.y) / v.h)) };
 }
 overlay.onpointerdown = (e) => {
-  if (!drawMode || !state.stream) return;
-  const p = point(e);
-  drag = { start: p, rect: { ...p, w: 0, h: 0 } };
-  overlay.setPointerCapture(e.pointerId);
-};
-overlay.onpointermove = (e) => {
-  if (!drag) return;
-  const p = point(e), s = drag.start;
-  drag.rect = {
-    x: Math.min(p.x, s.x),
-    y: Math.min(p.y, s.y),
-    w: Math.abs(p.x - s.x),
-    h: Math.abs(p.y - s.y)
-  };
+  if (!drawMode || !state.stream || drag || e.pointerType === "mouse" && e.button !== 0) return;
+  e.preventDefault();
+  const p = point(e), v = viewRect();
+  let corner = null;
+  if (zoneDraft) for (const x of [0, 1]) for (const y of [0, 1]) {
+    if (Math.abs(p.x - zoneDraft.x - x * zoneDraft.w) * v.w < 26 && Math.abs(p.y - zoneDraft.y - y * zoneDraft.h) * v.h < 26) corner = { x, y };
+  }
+  const moving = zoneDraft && SecurityDetection.contains(p.x, p.y, zoneDraft) && !corner;
+  drag = { pointerId: e.pointerId, start: p, original: zoneDraft ? { ...zoneDraft } : null, corner, moving };
+  if (!corner && !moving) zoneDraft = { ...p, w: 0, h: 0 };
+  try {
+    overlay.setPointerCapture(e.pointerId);
+  } catch {
+  }
   draw();
 };
-overlay.onpointerup = async () => {
-  if (!drag) return;
-  const r = drag.rect, kind = drawMode;
-  drag = null;
-  drawMode = null;
-  document.body.classList.remove("drawing");
-  if (r.w > 0.02 && r.h > 0.02) {
-    if (state.warningPending) stopSounds();
-    state.episode = null;
-    state.movingSince = 0;
-    await stopRecording();
-    state[kind] = r;
-    state.previous = null;
-    state.confirmed = 0;
-    save();
-    log(
-      "modo",
-      kind === "mask" ? "M\xE1scara privada aplicada" : "Zona restringida aplicada"
-    );
+overlay.onpointermove = (e) => {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  e.preventDefault();
+  const p = point(e), o = drag.original;
+  if (drag.moving) zoneDraft = { ...o, x: Math.max(0, Math.min(1 - o.w, o.x + p.x - drag.start.x)), y: Math.max(0, Math.min(1 - o.h, o.y + p.y - drag.start.y)) };
+  else {
+    const anchor = drag.corner ? { x: o.x + (1 - drag.corner.x) * o.w, y: o.y + (1 - drag.corner.y) * o.h } : drag.start;
+    zoneDraft = { x: Math.min(p.x, anchor.x), y: Math.min(p.y, anchor.y), w: Math.abs(p.x - anchor.x), h: Math.abs(p.y - anchor.y) };
   }
+  $("zoneApply").disabled = zoneDraft.w < 0.02 || zoneDraft.h < 0.02;
+  draw();
 };
+overlay.onpointerup = (e) => {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  overlay.onpointermove(e);
+  drag = null;
+  $("zoneApply").disabled = !zoneDraft || zoneDraft.w < 0.02 || zoneDraft.h < 0.02;
+  draw();
+};
+overlay.onpointercancel = () => {
+  if (drag) zoneDraft = drag.original;
+  drag = null;
+  $("zoneApply").disabled = !zoneDraft;
+  draw();
+};
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && drawMode) closeZoneEditor();
+});
 $("filter").onchange = renderEvents;
 $("clearLog").onclick = () => authorizeLocalAction("Borrar historial", () => {
   events = [];
@@ -1703,6 +1814,7 @@ function renderSurveillanceStatus() {
   $("motionBadge").hidden = !state.armed || !state.moving;
   $("personBadge").hidden = !state.armed || !personFresh();
   $("audioBadge").textContent = audioReady ? "AUDIO READY" : "AUDIO \xB7 toca Probar sonido";
+  renderDetectionStatus();
   $("powerBadge").textContent = $("lowPower").checked ? "LOW POWER" : state.slow ? "AN\xC1LISIS REDUCIDO" : "EST\xC1NDAR";
   $("darkBadge").hidden = !state.armed || !state.night;
   $("modeBadge").textContent = "MODE \xB7 " + (state.armed ? $("mode").selectedOptions[0].textContent : "DESARMADO");
@@ -1712,3 +1824,9 @@ $("openRecordings").onclick = () => $("navClips").click();
 setInterval(() => {
   if (state.storageFailed) $("storageBadge").textContent = "STORAGE \xB7 ERROR";
 }, 1e3);
+function renderDetectionStatus() {
+  var _a, _b, _c;
+  const signal = state.motionSignal;
+  const capture = ((_c = (_b = (_a = state.stream) == null ? void 0 : _a.getVideoTracks()[0]) == null ? void 0 : _b.getSettings) == null ? void 0 : _c.call(_b)) || {};
+  $("detectionReadout").textContent = !state.stream ? "Inicia la c\xE1mara para comprobar el encuadre." : "".concat(capture.width || video.videoWidth, " \xD7 ").concat(capture.height || video.videoHeight, " \xB7 movimiento ").concat(signal ? (signal.ratio * 100).toFixed(2) : "0", "% de la zona \xB7 ") + (!state.armed ? "Desarmado: pulsa Armar sistema para detectar" : drawMode ? "Detecci\xF3n en pausa mientras ajustas la zona" : !$("person").checked ? "IA desactivada" : !state.model ? "IA pendiente: se carga al armar" : "IA ".concat(state.aiDetail ? "detalle autom\xE1tico" : "vista general", " \xB7 ").concat(Math.round(state.aiMS || 0), " ms \xB7 ").concat(state.persons.length, " persona(s)"));
+}

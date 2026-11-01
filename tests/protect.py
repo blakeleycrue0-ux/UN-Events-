@@ -8,7 +8,7 @@ with sync_playwright() as p:
  assert page.locator('#protect').is_visible()
  assert not page.locator('#brightness').is_visible()
  page.screenshot(path='/tmp/security-event-alarm.png',full_page=True)
- page.select_option('#surveillanceMode','alarm');page.get_by_text('Audio y respuesta',exact=True).click();page.check('#autoVoice');page.check('#autoAlarm');page.select_option('#alarmSource','motion');page.fill('#confirmation','1');page.click('#protect');confirm_action(page);page.wait_for_function('state.armed && !protecting',timeout=30000)
+ page.select_option('#surveillanceMode','alarm');page.get_by_text('Audio y respuesta',exact=True).click();page.check('#autoVoice');page.check('#autoAlarm');page.select_option('#alarmSource','motion');page.fill('#confirmation','1');page.uncheck('#person');page.click('#protect');confirm_action(page);page.wait_for_function('state.armed && !protecting',timeout=30000)
  assert page.evaluate("!!state.zone && document.getElementById('autoAlarm').checked && audioReady")
  assert page.evaluate("document.getElementById('mode').value==='alarm'")
  # Send a controlled sequence through the real camera analysis, no detector-state overrides.

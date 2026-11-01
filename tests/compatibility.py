@@ -13,7 +13,7 @@ with sync_playwright() as p:
  c=b.new_context(permissions=['camera']);page=c.new_page();page.goto('http://127.0.0.1:8001/#camera');unlock_app(page)
  page.select_option('#surveillanceMode','alarm');page.get_by_text('Audio y respuesta',exact=True).click();page.check('#autoAlarm')
  page.evaluate("()=>{HTMLAudioElement.prototype.play=()=>Promise.reject(new DOMException('Audio blocked by fixture','NotAllowedError'))}")
- page.click('#protect');confirm_action(page);page.wait_for_function('state.armed && !protecting')
+ page.uncheck('#person');page.click('#protect');confirm_action(page);page.wait_for_function('state.armed && !protecting')
  assert not page.evaluate('audioReady');assert 'NotAllowedError' in page.locator('#error').inner_text();assert page.evaluate("document.getElementById('mode').value==='alarm'")
  page.click('#protect');confirm_action(page);page.wait_for_function('!state.armed')
  page.select_option('#surveillanceMode','silent');page.evaluate('()=>{state.model={detect:()=>new Promise(resolve=>{window.releaseInference=resolve})}}');page.uncheck('#motion');page.check('#person');page.click('#protect');confirm_action(page);page.wait_for_function('!!window.releaseInference',timeout=15000)

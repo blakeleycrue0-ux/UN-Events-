@@ -189,6 +189,8 @@
         </div>
         <time id="clock"></time>
       </div>
+      <div id="zoneEditorHeading" hidden><h2 id="zoneEditorTitle">Zona de vigilancia</h2><p>Dibuja, mueve o ajusta las esquinas. Detección en pausa hasta salir.</p></div>
+      <div id="zoneEditorTools" hidden><button id="zoneNew">Nueva zona</button><button id="zoneCancel">Cancelar</button><button id="zoneApply" disabled>Guardar zona</button></div>
       <div class="camera-toolbar">
         <button id="fullscreen">Ampliar</button><button id="photo">Foto</button
         ><button id="record">Grabar manual</button>
@@ -220,23 +222,23 @@
         min="1"
         max="100"
         value="60"
-      /></label><label>Confirmar movimiento durante<select id="motionConfirm"><option value="0.5">0,5 s</option><option value="1" selected>1 s</option><option value="2">2 s</option></select></label><label class="checkbox-row"><input id="person" type="checkbox" />Personas · clasificación adicional</label><label>Confianza mínima de persona (%)<input
+      /></label><label>Confirmar movimiento durante<select id="motionConfirm"><option value="0.5" selected>0,5 s</option><option value="1">1 s</option><option value="2">2 s</option></select></label><label class="checkbox-row"><input id="person" type="checkbox" checked />Detectar personas · también sin movimiento</label><label>Confianza mínima de persona (%)<input
         id="confidence"
         type="range"
         min="30"
         max="95"
-        value="60"
+        value="45"
       /></label><label>Intervalo de IA (segundos; mínimo 5 en ahorro)<input
         id="aiInterval"
         type="number"
         min="1"
         max="30"
-        value="3"
-      /></label><p class="fine-print">Movimiento inicia el evento; la IA añade la etiqueta persona. Si desactivas movimiento, las personas pueden iniciar eventos por sí solas. La IA se carga solo al habilitarla y armar. Sombras, lluvia o luces pueden causar falsos positivos.</p><div class="button-grid"><button id="zone">Dibujar zona restringida</button
+        value="2"
+      /></label><label class="checkbox-row"><input id="autoDetail" type="checkbox" checked>Detalle automático para personas pequeñas</label><p id="detectionReadout" role="status"></p><p class="fine-print">Alterna vista general y recortes a partir de la cámara original, sin cambiar el vídeo ni la zona. HD y detalle automático aumentan el consumo; activa ahorro si necesitas reducirlo. No mide metros ni garantiza detectar a 10 m. Prueba caminando a la distancia real, con luz suficiente.</p><p class="fine-print">Movimiento o persona confirmada inician el evento; si coinciden, se guarda un solo clip. La zona debe incluir el centro o los pies de la persona. La IA se carga solo al habilitarla y armar. Sombras, lluvia o luces pueden causar falsos positivos.</p><div class="button-grid"><button id="zone">Dibujar zona restringida</button
               ><button id="fullZone">
         Usar imagen completa
       </button><button id="mask">Dibujar máscara privada</button
-              ><button id="clearZones">Borrar zonas</button></div><p class="fine-print">Arrastra sobre la imagen para dibujar o reemplazar el rectángulo. La máscara oculta zonas ajenas también en las grabaciones procesadas.</p></div></details><details class="surveillance-panel" open><summary>Grabación por eventos</summary><div class="panel-grid"><label>Grabación<select id="recordMode">
+              ><button id="clearZones">Borrar zonas</button></div><p class="fine-print">Abre el editor ampliado, dibuja o ajusta las esquinas y pulsa Guardar zona. Cancelar conserva la anterior. La máscara oculta zonas ajenas también en las grabaciones procesadas.</p></div></details><details class="surveillance-panel" open><summary>Grabación por eventos</summary><div class="panel-grid"><label>Grabación<select id="recordMode">
                 <option value="event" selected>Automática por eventos</option><option value="manual">Solo manual</option>
               </select></label><label>Duración del clip (segundos)<select id="clip">
                 <option>10</option>
@@ -288,8 +290,7 @@
       /></label><label>Gamma (análisis, fotos y clips procesados)<input id="gamma" type="range" min="50" max="200" value="100" /></label><label>Zoom digital<input id="zoom" type="range" min="100" max="250" value="100" /></label><label class="checkbox-row"><input
         id="lowPower"
         type="checkbox"
-        checked=""
-      />Bajo consumo · limita análisis y grabación procesada a 5 fps</label><label>Resolución de análisis<select id="analysisSize"><option value="96">96 px</option><option value="128" selected>128 px</option><option value="192">192 px</option><option value="256">256 px</option></select></label><label>Intervalo de análisis<select id="analysisInterval"><option value="250">250 ms</option><option value="500" selected>500 ms</option><option value="1000">1 s</option></select></label><label>Calidad de captura / vista previa<select id="previewQuality"><option value="640" selected>640 px · ahorro</option><option value="1280">1280 px</option><option value="1920">1920 px</option></select></label><p id="health" role="status"></p><button id="restart">Reiniciar cámara</button
+      />Bajo consumo · limita análisis y grabación procesada a 5 fps</label><label>Resolución de análisis<select id="analysisSize"><option value="96">96 px</option><option value="128">128 px</option><option value="192">192 px</option><option value="256" selected>256 px</option></select></label><label>Intervalo de análisis<select id="analysisInterval"><option value="250">250 ms</option><option value="500" selected>500 ms</option><option value="1000">1 s</option></select></label><label>Calidad de captura / vista previa<select id="previewQuality"><option value="640">640 px · ahorro</option><option value="1280" selected>1280 px</option><option value="1920">1920 px</option></select></label><p id="health" role="status"></p><button id="restart">Reiniciar cámara</button
       ><button id="diagnose">Diagnóstico y prueba integral</button><pre id="diagnostics"></pre><p class="fine-print">La mejora digital necesita luz visible: no es visión nocturna infrarroja. Gamma se aplica al análisis y al vídeo procesado; la vista previa nativa conserva fluidez. No hay lectura de temperatura disponible. LOW POWER indica un ajuste, no una medición térmica.</p></div></details><aside class="safety-note"><strong>Uso fijo en exterior</strong><p>La pantalla debe permanecer encendida. La cámara web no puede funcionar de forma fiable con el iPhone bloqueado. Al recargar debes desbloquear y volver a armar. Una carcasa cerrada puede provocar calor: mantén sombra y ventilación apropiada y revisa el dispositivo físicamente. Reduce calidad o detén la cámara si observas avisos térmicos de iOS.</p></aside>    </main>
     <section id="activityPage" class="page" hidden="">
       <div class="page-heading">
@@ -612,6 +613,8 @@
       </select>
     </div>
     <div id="appToast" hidden="" role="status"></div>
+    <script src="supabase-config.js"></script>
+    <script src="detection.js"></script>
     <script src="app.js"></script>
     <script src="remote.js"></script>
     <script src="supabase-remote.js"></script>

@@ -1529,3 +1529,19 @@ input[type=checkbox], input[type=range] { accent-color:#83d9ad; }
 .camera-control-card > label select { width:100%; }
 .surveillance-panel > label { margin:0 20px 16px; }
 body[data-protection=armed] .camera-status .status-dot { background:#78d9a4; }
+/* Safari uses a CSS editor: no dependency on the unsupported mobile Fullscreen API. */
+body.drawing { overflow:hidden; }
+body.drawing .app-header, body.drawing .app-navigation, body.drawing #globalAlert { visibility:hidden; }
+body.drawing #cameraPage > :not(#stage):not(#zoneEditorHeading):not(#zoneEditorTools) { visibility:hidden; }
+body.drawing #stage { position:fixed; z-index:1200; top:calc(110px + env(safe-area-inset-top, 0px)); bottom:calc(110px + env(safe-area-inset-bottom, 0px)); left:12px; right:12px; width:auto; height:auto; aspect-ratio:auto; margin:0; touch-action:none; }
+#zoneEditorHeading { position:fixed; top:calc(12px + env(safe-area-inset-top, 0px)); left:20px; right:20px; z-index:1201; background:#0d1014; }
+#zoneEditorHeading h2 { font-size:20px; }
+#zoneEditorHeading p { font-size:13px; color:var(--muted); margin-top:8px; }
+#zoneEditorTools { position:fixed; z-index:1201; bottom:calc(20px + env(safe-area-inset-bottom, 0px)); left:12px; right:12px; display:flex; gap:8px; }
+#zoneEditorTools[hidden], #zoneEditorHeading[hidden] { display:none; }
+#zoneEditorTools button { min-height:54px; flex:1; padding:10px 8px; border-radius:12px; background:#28323d; font-size:13px; }
+#zoneEditorTools #zoneApply { background:#9ce6bd; color:#10271b; font-weight:700; }
+body.drawing #overlay { touch-action:none; user-select:none; -webkit-user-select:none; }
+body.drawing .badges, body.drawing #clock, body.drawing #cameraMessage { pointer-events:none; }
+#detectionReadout { font-size:12px; color:#a7d6b8; overflow-wrap:anywhere; grid-column:1/-1; }
+@media(max-height:500px) { body.drawing #stage { top:75px; bottom:80px; } #zoneEditorHeading p { margin:2px 0; } #zoneEditorTools { bottom:10px; } }
