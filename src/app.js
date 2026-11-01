@@ -1924,7 +1924,8 @@ function renderProtection() {
       : "Armar sistema";
 
 }
-$("protect").onclick = async () => {
+// Unwrapped arming routine; the button below gets the local PIN wrapper in security.js.
+async function armProtection() {
   if (protecting) return;
   if (state.armed) {
     $("mode").value = "disarmed";
@@ -1958,7 +1959,8 @@ $("protect").onclick = async () => {
     protecting = false;
     renderProtection();
   }
-};
+}
+$("protect").onclick = armProtection;
 setInterval(renderProtection, 500);
 renderProtection();
 

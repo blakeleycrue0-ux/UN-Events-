@@ -153,3 +153,8 @@ Captura local de revisión: `/tmp/security-camera-invitation.png`. No se ha prob
 ### Instalación en la tabla Realtime gestionada
 
 Tras el error real `42501: must be owner of table messages`, las dos migraciones dejan de ejecutar ALTER TABLE/GRANT sobre `realtime.messages`. La documentación oficial de Supabase confirma que RLS ya está activo y que `supautils` permite a postgres crear políticas sin ser propietario. Las pruebas locales ahora preconfiguran RLS/grants como prerrequisitos de la plataforma. La prueba de emparejamiento rechaza la reintroducción de ALTER TABLE, verifica que sin RLS la instalación falla y revierte las tablas nuevas, y vuelve a comprobar aislamiento, caducidad, leases y revocación con RLS activo. PGlite no simula la extensión supautils; sigue pendiente reejecutar el SQL corregido en el proyecto real.
+
+
+## Control remoto desde el visor — 2026-11-01
+
+El visor vinculado recibe el estado de la cámara cada 2 s y puede enviar tres órdenes por el canal privado del directo: armar/cambiar modo, desarmar y silenciar. Armar/desarmar exigen el PIN local del visor; la cámara ejecuta la misma rutina que su botón Armar (exige modelo de personas y cámara activa) y responde con el resultado. `tests/pairing_ui.py` lo comprueba con dos navegadores, SDK real y servicio controlado. No se ha probado con Supabase real ni en iPhones físicos.

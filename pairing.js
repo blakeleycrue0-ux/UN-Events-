@@ -185,6 +185,7 @@
       }
     }
     $("pairedVideoPanel").hidden = !session;
+    renderRemote();
   }
   function randomToken() {
     return Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -275,6 +276,7 @@
     $("pairedLive").textContent = "CONECTANDO";
   }
   async function stop(message = "Directo desconectado. La vigilancia local contin\xFAa.") {
+    var _a;
     const old = session;
     session = null;
     epoch++;
@@ -283,6 +285,8 @@
       clearInterval(old.paint);
       clearInterval(old.watch);
       clearTimeout(old.expiry);
+      clearInterval(old.stateTimer);
+      clearTimeout((_a = old.pendingCommand) == null ? void 0 : _a.timer);
       closePeer(old);
       if (old.channel) void client.removeChannel(old.channel);
       if (old.role === "camera") {
@@ -322,8 +326,114 @@
     }, 3e4);
     return peer;
   }
+  const remoteModes = { silent: "Silenciosa", deter: "Disuasoria", alarm: "Alarma" };
+  function cameraSnapshot() {
+    return {
+      camera: !!state.stream && !state.cameraMuted,
+      armed: !!state.armed,
+      mode: state.armed ? $("mode").value : "disarmed",
+      alarm: !!state.alarm,
+      recording: !!state.recording,
+      people: state.peopleError ? "error" : state.model ? "ok" : "loading",
+      detected: (state.persons || []).length,
+      at: Date.now()
+    };
+  }
+  function pushState(s) {
+    if (current(s) && s.role === "camera" && s.connection) void send(s, { type: "state", state: cameraSnapshot() });
+  }
+  async function executeCommand(action, mode) {
+    if (action === "silence") {
+      stopSounds();
+      log("alarma", "Silenciada desde el m\xF3vil vinculado");
+      return "Sonido silenciado en la c\xE1mara.";
+    }
+    if (action === "disarm") {
+      if (state.armed) {
+        $("mode").value = "disarmed";
+        setMode();
+        renderProtection();
+      }
+      log("modo", "Desarmado desde el m\xF3vil vinculado");
+      return "Vigilancia desarmada.";
+    }
+    if (action !== "arm" || !remoteModes[mode]) throw Error("Orden no v\xE1lida.");
+    if (!state.stream) throw Error("La c\xE1mara est\xE1 apagada en el iPhone c\xE1mara.");
+    if (protecting) throw Error("La c\xE1mara est\xE1 ocupada armando. Int\xE9ntalo de nuevo.");
+    $("surveillanceMode").value = mode;
+    if (state.armed) {
+      $("mode").value = mode;
+      setMode();
+      renderProtection();
+    } else await armProtection();
+    if (!state.armed) throw Error($("error").textContent || "La c\xE1mara no pudo armarse.");
+    log("modo", "Armado desde el m\xF3vil vinculado: " + remoteModes[mode]);
+    const audio = mode !== "silent" && !audioReady ? " Aviso: el sonido no est\xE1 habilitado en el iPhone c\xE1mara; toca Probar sonido all\xED para que suene." : "";
+    return "Armado en modo " + remoteModes[mode] + "." + audio;
+  }
+  function renderRemote() {
+    const panel = $("remoteControls");
+    const s = session, info = s == null ? void 0 : s.remote;
+    panel.hidden = !s || s.role !== "viewer";
+    if (panel.hidden) return;
+    const fresh = info && Date.now() - info.received < 8e3;
+    const text = !fresh ? "Esperando estado de la c\xE1mara\u2026" : !info.camera ? "C\xE1mara apagada" : (info.armed ? "ARMADA \xB7 " + (remoteModes[info.mode] || info.mode) : "DESARMADA") + (info.alarm ? " \xB7 ALARMA SONANDO" : "") + (info.recording ? " \xB7 GRABANDO" : "") + (info.people === "error" ? " \xB7 error de IA" : info.detected ? " \xB7 persona detectada" : "");
+    $("remoteState").textContent = text;
+    $("remoteState").className = "small-state" + (fresh && info.alarm ? " alert" : "");
+    const waiting = !fresh || !!s.pendingCommand;
+    $("remoteArm").disabled = waiting || !info.camera;
+    $("remoteArm").textContent = fresh && info.armed ? "Cambiar modo" : "Armar";
+    $("remoteDisarm").disabled = waiting || !info.armed;
+    $("remoteSilence").disabled = !fresh || !!s.pendingCommand;
+  }
+  function sendCommand(action) {
+    const s = session;
+    if (!s || s.role !== "viewer" || s.pendingCommand) return;
+    const id = crypto.randomUUID();
+    s.pendingCommand = { id, timer: setTimeout(() => {
+      var _a;
+      if (current(s) && ((_a = s.pendingCommand) == null ? void 0 : _a.id) === id) {
+        s.pendingCommand = null;
+        status("La c\xE1mara no respondi\xF3 a la orden. Comprueba que siga compartiendo.");
+        renderRemote();
+      }
+    }, 15e3) };
+    status("Enviando orden a la c\xE1mara\u2026");
+    renderRemote();
+    void send(s, { type: "command", id, action, mode: $("remoteMode").value });
+  }
   async function handle(s, data) {
+    var _a;
     if (!current(s) || !data || data.role === s.role || !["viewer", "camera"].includes(data.role)) return;
+    if (s.role === "viewer" && data.connection === s.connection) {
+      if (data.type === "state" && data.state && typeof data.state === "object") {
+        s.remote = { ...data.state, received: Date.now() };
+        renderRemote();
+        return;
+      }
+      if (data.type === "result" && ((_a = s.pendingCommand) == null ? void 0 : _a.id) === data.id) {
+        clearTimeout(s.pendingCommand.timer);
+        s.pendingCommand = null;
+        status((data.ok ? "" : "La c\xE1mara rechaz\xF3 la orden: ") + String(data.message || "").slice(0, 300));
+        renderRemote();
+        return;
+      }
+    }
+    if (s.role === "camera" && data.type === "command") {
+      if (data.connection !== s.connection || typeof data.id !== "string" || data.id.length > 40) return;
+      let ok = true, message;
+      try {
+        message = await executeCommand(data.action, data.mode);
+      } catch (e) {
+        ok = false;
+        message = e.message;
+      }
+      if (!current(s)) return;
+      status("Orden remota: " + message);
+      await send(s, { type: "result", id: data.id, ok, message });
+      pushState(s);
+      return;
+    }
     if (s.role === "camera" && data.type === "ready") {
       if (typeof data.connection !== "string" || !/^[a-f0-9-]{36}$/i.test(data.connection)) return;
       s.connection = data.connection;
@@ -345,6 +455,7 @@
       if (!current(s)) return;
       await peer.setLocalDescription(offer);
       await send(s, { type: "offer", sdp: offer.sdp });
+      pushState(s);
     } else {
       if (data.connection !== s.connection) return;
       const peer = s.peer;
@@ -424,6 +535,10 @@
           if (current(s)) await stop("Se perdi\xF3 el permiso o la conexi\xF3n con Supabase. Vuelve a conectar.");
         }
       }, 12e3);
+      s.stateTimer = setInterval(() => {
+        pushState(s);
+        if (current(s)) renderRemote();
+      }, 2e3);
       s.watch = setInterval(() => {
         if (!current(s)) return;
         if (role === "camera" && (!state.stream || state.stream !== s.source || state.cameraMuted || s.native && (state.mask || +$("zoom").value !== 100)))
@@ -481,6 +596,9 @@
   };
   $("cancelInvite").onclick = () => authorizeLocalAction("Cancelar invitaci\xF3n", () => run(() => revoke(invitation.id)));
   $("refreshPairs").onclick = () => run(refresh);
+  $("remoteArm").onclick = () => authorizeLocalAction("Armar la c\xE1mara vinculada", () => sendCommand("arm"));
+  $("remoteDisarm").onclick = () => authorizeLocalAction("Desarmar la c\xE1mara vinculada", () => sendCommand("disarm"));
+  $("remoteSilence").onclick = () => sendCommand("silence");
   $("stopPair").onclick = () => authorizeLocalAction("Desconectar el directo", () => stop());
   $("copyInvite").onclick = async () => {
     try {

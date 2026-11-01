@@ -1854,7 +1854,7 @@ function renderProtection() {
   $("protect").disabled = protecting;
   $("protect").textContent = protecting ? "Preparando\u2026" : state.armed ? "Desarmar" : "Armar sistema";
 }
-$("protect").onclick = async () => {
+async function armProtection() {
   if (protecting) return;
   if (state.armed) {
     $("mode").value = "disarmed";
@@ -1889,7 +1889,8 @@ $("protect").onclick = async () => {
     protecting = false;
     renderProtection();
   }
-};
+}
+$("protect").onclick = armProtection;
 setInterval(renderProtection, 500);
 renderProtection();
 $("navHome").onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });

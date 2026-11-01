@@ -154,6 +154,7 @@
       }
     }
     $("pairedVideoPanel").hidden = !session;
+    renderRemote();
   }
   function randomToken() {
     return Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, "0")).join("");
@@ -226,6 +227,7 @@
     const old = session; session = null; epoch++;
     if (old) {
       clearInterval(old.heartbeat); clearInterval(old.paint); clearInterval(old.watch); clearTimeout(old.expiry);
+      clearInterval(old.stateTimer); clearTimeout(old.pendingCommand?.timer);
       closePeer(old);
       if (old.channel) void client.removeChannel(old.channel);
       if (old.role === "camera") {
@@ -259,8 +261,98 @@
     s.deadline = setTimeout(() => { if (current(s)) void stop("No llegaron fotogramas en 30 segundos. Comprueba el relay y ambos móviles."); }, 30000);
     return peer;
   }
+  // Remote control travels over the same private, RLS-authorized channel as the
+  // video signalling. The viewer confirms its own PIN locally; the camera PIN is
+  // never transmitted. Only these three actions exist: no remote siren or clips.
+  const remoteModes = { silent: "Silenciosa", deter: "Disuasoria", alarm: "Alarma" };
+  function cameraSnapshot() {
+    return {
+      camera: !!state.stream && !state.cameraMuted,
+      armed: !!state.armed,
+      mode: state.armed ? $("mode").value : "disarmed",
+      alarm: !!state.alarm,
+      recording: !!state.recording,
+      people: state.peopleError ? "error" : state.model ? "ok" : "loading",
+      detected: (state.persons || []).length,
+      at: Date.now(),
+    };
+  }
+  function pushState(s) {
+    if (current(s) && s.role === "camera" && s.connection) void send(s, { type: "state", state: cameraSnapshot() });
+  }
+  async function executeCommand(action, mode) {
+    if (action === "silence") { stopSounds(); log("alarma", "Silenciada desde el móvil vinculado"); return "Sonido silenciado en la cámara."; }
+    if (action === "disarm") {
+      if (state.armed) { $("mode").value = "disarmed"; setMode(); renderProtection(); }
+      log("modo", "Desarmado desde el móvil vinculado");
+      return "Vigilancia desarmada.";
+    }
+    if (action !== "arm" || !remoteModes[mode]) throw Error("Orden no válida.");
+    if (!state.stream) throw Error("La cámara está apagada en el iPhone cámara.");
+    if (protecting) throw Error("La cámara está ocupada armando. Inténtalo de nuevo.");
+    $("surveillanceMode").value = mode;
+    if (state.armed) { $("mode").value = mode; setMode(); renderProtection(); }
+    else await armProtection();
+    if (!state.armed) throw Error($("error").textContent || "La cámara no pudo armarse.");
+    log("modo", "Armado desde el móvil vinculado: " + remoteModes[mode]);
+    const audio = mode !== "silent" && !audioReady
+      ? " Aviso: el sonido no está habilitado en el iPhone cámara; toca Probar sonido allí para que suene." : "";
+    return "Armado en modo " + remoteModes[mode] + "." + audio;
+  }
+  function renderRemote() {
+    const panel = $("remoteControls");
+    const s = session, info = s?.remote;
+    panel.hidden = !s || s.role !== "viewer";
+    if (panel.hidden) return;
+    const fresh = info && Date.now() - info.received < 8000;
+    const text = !fresh ? "Esperando estado de la cámara…"
+      : !info.camera ? "Cámara apagada"
+      : (info.armed ? "ARMADA · " + (remoteModes[info.mode] || info.mode) : "DESARMADA") +
+        (info.alarm ? " · ALARMA SONANDO" : "") + (info.recording ? " · GRABANDO" : "") +
+        (info.people === "error" ? " · error de IA" : info.detected ? " · persona detectada" : "");
+    $("remoteState").textContent = text;
+    $("remoteState").className = "small-state" + (fresh && info.alarm ? " alert" : "");
+    const waiting = !fresh || !!s.pendingCommand;
+    $("remoteArm").disabled = waiting || !info.camera;
+    $("remoteArm").textContent = fresh && info.armed ? "Cambiar modo" : "Armar";
+    $("remoteDisarm").disabled = waiting || !info.armed;
+    $("remoteSilence").disabled = !fresh || !!s.pendingCommand;
+  }
+  function sendCommand(action) {
+    const s = session;
+    if (!s || s.role !== "viewer" || s.pendingCommand) return;
+    const id = crypto.randomUUID();
+    s.pendingCommand = { id, timer: setTimeout(() => {
+      if (current(s) && s.pendingCommand?.id === id) {
+        s.pendingCommand = null; status("La cámara no respondió a la orden. Comprueba que siga compartiendo."); renderRemote();
+      }
+    }, 15000) };
+    status("Enviando orden a la cámara…"); renderRemote();
+    void send(s, { type: "command", id, action, mode: $("remoteMode").value });
+  }
   async function handle(s, data) {
     if (!current(s) || !data || data.role === s.role || !["viewer", "camera"].includes(data.role)) return;
+    if (s.role === "viewer" && data.connection === s.connection) {
+      if (data.type === "state" && data.state && typeof data.state === "object") {
+        s.remote = { ...data.state, received: Date.now() }; renderRemote(); return;
+      }
+      if (data.type === "result" && s.pendingCommand?.id === data.id) {
+        clearTimeout(s.pendingCommand.timer); s.pendingCommand = null;
+        status((data.ok ? "" : "La cámara rechazó la orden: ") + String(data.message || "").slice(0, 300));
+        renderRemote(); return;
+      }
+    }
+    if (s.role === "camera" && data.type === "command") {
+      if (data.connection !== s.connection || typeof data.id !== "string" || data.id.length > 40) return;
+      let ok = true, message;
+      try { message = await executeCommand(data.action, data.mode); }
+      catch (e) { ok = false; message = e.message; }
+      if (!current(s)) return;
+      status("Orden remota: " + message);
+      await send(s, { type: "result", id: data.id, ok, message });
+      pushState(s);
+      return;
+    }
     if (s.role === "camera" && data.type === "ready") {
       if (typeof data.connection !== "string" || !/^[a-f0-9-]{36}$/i.test(data.connection)) return;
       s.connection = data.connection;
@@ -278,6 +370,7 @@
       const offer = await peer.createOffer();
       if (!current(s)) return;
       await peer.setLocalDescription(offer); await send(s, { type: "offer", sdp: offer.sdp });
+      pushState(s);
     } else {
       if (data.connection !== s.connection) return;
       const peer = s.peer;
@@ -350,6 +443,7 @@
           await refresh();
         } catch { if (current(s)) await stop("Se perdió el permiso o la conexión con Supabase. Vuelve a conectar."); }
       }, 12000);
+      s.stateTimer = setInterval(() => { pushState(s); if (current(s)) renderRemote(); }, 2000);
       s.watch = setInterval(() => {
         if (!current(s)) return;
         if (role === "camera" && (!state.stream || state.stream !== s.source || state.cameraMuted ||
@@ -396,7 +490,11 @@
   $("rejectInvite").onclick = () => { rememberPending(null); status("Invitación descartada."); render(); };
   $("cancelInvite").onclick = () => authorizeLocalAction("Cancelar invitación", () => run(() => revoke(invitation.id)));
   $("refreshPairs").onclick = () => run(refresh);
-  $("stopPair").onclick = () => authorizeLocalAction("Desconectar el directo", () => stop());
+  $("remoteArm").onclick = () => authorizeLocalAction("Armar la cámara vinculada", () => sendCommand("arm"));
+  $("remoteDisarm").onclick = () => authorizeLocalAction("Desarmar la cámara vinculada", () => sendCommand("disarm"));
+  // Like the local control, silencing never needs the PIN and never disarms.
+  $("remoteSilence").onclick = () => sendCommand("silence");
+  $("stopPair").onclick =() => authorizeLocalAction("Desconectar el directo", () => stop());
   $("copyInvite").onclick = async () => {
     try { await navigator.clipboard.writeText(invitation.url); status("Enlace copiado. Envíalo de forma privada al otro móvil."); }
     catch { $("inviteLink").select(); status("No se pudo copiar automáticamente. Mantén pulsado el enlace y elige Copiar."); }

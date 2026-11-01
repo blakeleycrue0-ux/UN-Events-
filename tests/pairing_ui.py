@@ -105,6 +105,23 @@ with sync_playwright() as p:
  assert any(e[1]=='signal' and e[2]=='answer' for e in events),events
  assert v.evaluate('cameraRequests===0 && !state.stream')
  assert v.locator('#pairedLive').inner_text()!='LIVE' # Never invent arriving video.
+ # Remote control over the same private channel: viewer PIN locally, camera executes.
+ v.wait_for_selector('#remoteControls:visible')
+ v.wait_for_function("document.getElementById('remoteState').textContent.includes('DESARMADA')",timeout=10000)
+ assert h.locator('#remoteControls').is_hidden()
+ v.select_option('#remoteMode','silent');v.click('#remoteArm');confirm_action(v)
+ h.wait_for_function('state.armed && document.getElementById("mode").value==="silent"',timeout=20000)
+ v.wait_for_function("document.getElementById('remoteState').textContent.includes('ARMADA · Silenciosa')",timeout=10000)
+ v.wait_for_function("document.getElementById('pairStatus').textContent.includes('Armado en modo Silenciosa')")
+ v.select_option('#remoteMode','deter');v.click('#remoteArm');confirm_action(v)
+ h.wait_for_function('state.armed && document.getElementById("mode").value==="deter"',timeout=10000)
+ h.evaluate('state.alarm=true');v.wait_for_function("document.getElementById('remoteState').textContent.includes('ALARMA SONANDO')",timeout=10000)
+ v.click('#remoteSilence');h.wait_for_function('!state.alarm && state.armed',timeout=10000)
+ v.wait_for_function("document.getElementById('pairStatus').textContent.includes('silenciado')")
+ v.click('#remoteDisarm');confirm_action(v);h.wait_for_function('!state.armed',timeout=10000)
+ v.wait_for_function("document.getElementById('remoteState').textContent.includes('DESARMADA')",timeout=10000)
+ assert any(e[1]=='signal' and e[2]=='command' for e in events) and any(e[1]=='signal' and e[2]=='result' for e in events)
+ assert v.evaluate('!state.armed && cameraRequests===0')
  v.screenshot(path='/tmp/security-camera-invitation.png',full_page=True)
  h.click('#unlock');h.wait_for_selector('#pinEntry:visible')
  v.wait_for_timeout(200);assert next(iter(links.values()))['lease'] is None
