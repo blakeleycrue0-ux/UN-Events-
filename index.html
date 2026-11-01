@@ -222,13 +222,14 @@
         min="30"
         max="95"
         value="45"
-      /></label><label>Intervalo de IA (segundos; mínimo 5 en ahorro)<input
+      /></label><label>Respuesta de personas<select id="responseMode"><option value="fast" selected>Rápida · mayor consumo</option><option value="balanced">Equilibrada</option></select></label><label>Intervalo IA equilibrado (segundos; mínimo 5 en ahorro)<input
         id="aiInterval"
         type="number"
-        min="1"
+        step="0.25"
+        min="0.25"
         max="30"
         value="2"
-      /></label><label class="checkbox-row"><input id="autoDetail" type="checkbox" checked>Detalle automático para personas pequeñas</label><p id="detectionReadout" role="status"></p><p class="fine-print">Alterna vista general y recortes a partir de la cámara original, sin cambiar el vídeo ni la zona. HD y detalle automático aumentan el consumo; activa ahorro si necesitas reducirlo. No mide metros ni garantiza detectar a 10 m. Prueba caminando a la distancia real, con luz suficiente.</p><p class="fine-print">Movimiento o persona confirmada inician el evento; si coinciden, se guarda un solo clip. La zona debe incluir el centro o los pies de la persona. La IA se carga solo al habilitarla y armar. Sombras, lluvia o luces pueden causar falsos positivos.</p><div class="button-grid"><button id="zone">Dibujar zona restringida</button
+      /></label><label class="checkbox-row"><input id="autoDetail" type="checkbox" checked>Detalle automático para personas pequeñas</label><p id="detectionReadout" role="status"></p><p class="fine-print">Alterna vista general y recortes a partir de la cámara original, sin cambiar el vídeo ni la zona. HD y detalle automático aumentan el consumo; activa ahorro si necesitas reducirlo. La rapidez depende del dispositivo: se muestra el tiempo medido, no se garantiza 1 ms. No mide metros ni garantiza detectar a 10 m. Prueba caminando a la distancia real, con luz suficiente.</p><p class="fine-print">Movimiento o persona confirmada inician el evento; si coinciden, se guarda un solo clip. La zona debe incluir el centro o los pies de la persona. La IA se carga solo al habilitarla y armar. Sombras, lluvia o luces pueden causar falsos positivos.</p><div class="button-grid"><button id="zone">Dibujar zona restringida</button
               ><button id="fullZone">
         Usar imagen completa
       </button><button id="mask">Dibujar máscara privada</button
