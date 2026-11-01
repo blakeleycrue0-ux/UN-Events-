@@ -92,3 +92,10 @@ Cambios verificados específicamente:
 - `supabase_ui.py`: SDK real con HTTP simulado, sin enviar credenciales de pruebas al proyecto del propietario. La URL/anon proporcionadas quedan precargadas para el cliente, sin iniciar conexiones automáticamente. No se han aplicado migraciones ni desplegado funciones con una clave anon. El dominio del proyecto no está incluido en la política de red de este entorno, por lo que no se verificó el servicio vivo.
 
 Se conservan los límites físicos y de Safari anteriores: sin pruebas de iPhone 14, termómetro, altavoz físico, exterior nocturno, lluvia ni sesiones prolongadas. Los recortes aprovechan la captura original y no crean detalle óptico ni garantizan un alcance de 10 m. No se afirma que el proyecto Supabase esté completamente desplegado o que funcione vídeo remoto.
+
+
+## Acceso local y azul suave — 2026-11-01
+
+Se retiran los formularios de cuenta y las entradas de vinculación/monitor que dependían de ese acceso. La app carga únicamente detección, motor, PIN y navegación local; los scripts Supabase y WebRTC preparados no se cargan. Se conserva perfil local, PIN, controles de vigilancia, clips y zonas. Las rutas antiguas de cuenta/monitor llevan a Inicio. El tema usa un fondo azul apagado con paneles azul oscuro y conserva los indicadores operativos verdes/rojos.
+
+`app_interface.py` verifica ausencia real de formularios de cuenta, redirección de ruta antigua, ausencia de solicitudes Supabase/WSS, edición/persistencia del perfil, cámara, clip real y navegación de Actividad. La suite `npm test` sigue cubriendo PIN, editor táctil, detección, clips, personas, alarmas, audio y fallos. Las pruebas históricas `supabase_ui.py` corresponden a la interfaz anterior y ya no se aplican a la app local actual. La revisión visual usa capturas móviles de Chromium, sin iPhone físico.

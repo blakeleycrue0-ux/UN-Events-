@@ -1,6 +1,6 @@
 # SECURITY CAM
 
-Aplicación local de vigilancia por eventos, orientada a Safari en un iPhone 14 fijo. Cámara nativa en directo, interfaz grafito, sin micrófono y sin grabación continua. Los clips y el historial permanecen en este navegador. No se necesita una base de datos remota para vigilar o guardar clips.
+Aplicación local de vigilancia por eventos, orientada a Safari en un iPhone 14 fijo. Cámara nativa en directo, interfaz azul suave, acceso por PIN local, sin micrófono y sin grabación continua. Se ha retirado el login con cuenta. Los clips y el historial permanecen en este navegador. No se necesita una base de datos remota para vigilar o guardar clips.
 
 ## Uso
 
@@ -64,7 +64,7 @@ npm start
 
 Servidor estático en puerto 8001. `src/app.js` contiene el motor; `src/security.js`, autorización local; `src/shell.js`, navegación y perfil. Compilados en la raíz para Netlify; `index.html` e `Index.html` deben coincidir. `netlify.toml` publica `.` con HTTPS de Netlify, CSP y micrófono deshabilitado; `.netlifyignore` excluye servidores, fuentes, pruebas y secretos. La web de eventos original sigue en `archive/eventos.html`.
 
-Cuenta/perfil y conexión opcionales se conservan: perfil editado solo local; La URL y clave anon públicas entregadas por el propietario están preconfiguradas en `supabase-config.js`; las preferencias guardadas del servicio prevalecen. El cliente solo se carga al iniciar sesión. No se guarda una clave administrativa. La clave anon no puede crear tablas ni desplegar servicios: sigue siendo necesario aplicar `supabase/migrations/202610310001_remote.sql`, crear usuarios y membresías autorizadas y desplegar la función TURN según `supabase/README.md`. Este entorno no permite acceder al dominio del proyecto para verificarlo: la configuración no equivale a un despliegue remoto comprobado. No se necesita ni se inicia ese servicio para vigilancia local. WebRTC remoto requiere señalización autenticada y normalmente TURN; Netlify estático no proporciona un servidor WSS ni TURN. Infraestructura preparada en `supabase/` y `server/`; no desplegada ni verificada como vídeo remoto fuera de casa. No se publican clips ni señal de cámara sin autenticación.
+El perfil se edita y guarda solo en este dispositivo. La interfaz ya no incluye login, formularios de email/contraseña, accesos a vincular cuentas ni monitor remoto dependiente de esa cuenta. Las rutas antiguas `#account` y `#remote` vuelven a Inicio. La app no carga los scripts de Supabase/WebRTC ni inicia conexiones a esos servicios. Conserva el PIN local y la autorización de vigilancia. El código preparatorio del servicio permanece en el repositorio, inactivo, para poder retomarlo más adelante sin publicar vídeo sin autenticación.
 
 ## Pruebas
 
