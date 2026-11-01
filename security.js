@@ -79,6 +79,7 @@ async function lockApplication() {
       el.inert = false;
     $("unlock").textContent = "Bloquear";
     if (typeof showPage === "function") showPage(location.hash.slice(1));
+    document.dispatchEvent(new Event("security:unlock"));
   } catch (e) {
     const panel = document.createElement("div");
     panel.className = "pin-screen";

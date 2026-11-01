@@ -18,7 +18,7 @@
     } catch {
     }
   }
-  const received = /^#invite=([a-f0-9]{64})$/i.exec(location.hash);
+  const received = /invite=([a-f0-9]{64})/i.exec(location.hash);
   if (received) {
     rememberPending(received[1].toLowerCase());
     history.replaceState(null, "", location.pathname + location.search + "#pairing");
@@ -122,7 +122,7 @@
     render();
   }
   function render() {
-    for (const id of ["createInvite", "acceptInvite", "refreshPairs", "cancelInvite"])
+    for (const id of ["createInvite", "acceptInvite", "refreshPairs", "cancelInvite", "usePastedInvite"])
       $(id).disabled = busy;
     $("acceptInvitePanel").hidden = !pendingToken;
     $("createInvitePanel").hidden = !!pendingToken;
@@ -627,13 +627,25 @@
     if (session) void stop();
   });
   window.addEventListener("hashchange", () => {
-    const match = /^#invite=([a-f0-9]{64})$/i.exec(location.hash);
+    const match = /invite=([a-f0-9]{64})/i.exec(location.hash);
     if (match) {
       rememberPending(match[1].toLowerCase());
       history.replaceState(null, "", "#pairing");
       if (securityUnlocked) void open();
     }
   });
+  document.addEventListener("security:unlock", () => {
+    if (pendingToken) void open();
+  });
+  $("usePastedInvite").onclick = () => {
+    const match = /invite=([a-f0-9]{64})/i.exec($("pasteInvite").value);
+    if (!match) return status("Ese texto no contiene una invitaci\xF3n v\xE1lida. Copia el enlace completo que te enviaron.");
+    $("pasteInvite").value = "";
+    rememberPending(match[1].toLowerCase());
+    render();
+    status("Invitaci\xF3n recibida. Pulsa Aceptar y vincular este iPhone.");
+    $("acceptInvitePanel").scrollIntoView({ block: "start" });
+  };
   window.securityReady.then(() => {
     render();
     if (pendingToken || location.hash === "#pairing") void open();

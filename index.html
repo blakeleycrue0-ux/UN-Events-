@@ -111,7 +111,7 @@
         <h2>Usar otro móvil como cámara</h2>
         <p>Crea una invitación aquí y ábrela en Safari en el iPhone que dejarás vigilando. No necesitas iniciar sesión con email.</p>
         <label>Nombre de la cámara<input id="pairName" maxlength="60" value="Entrada" autocomplete="off" /></label>
-        <button id="createInvite" class="primary">Crear invitación</button>
+        <button id="createInvite" class="primary">Crear invitación</button><div class="paste-invite"><label>¿Este es el iPhone cámara y te han enviado un enlace? Pégalo aquí<input id="pasteInvite" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://unevents.netlify.app/#invite=…" /></label><button id="usePastedInvite" class="small-button">Usar enlace</button></div>
         <div id="inviteResult" hidden><label>Enlace privado · un uso · 10 minutos<input id="inviteLink" readonly aria-label="Enlace de invitación" /></label><div class="pair-actions"><button id="copyInvite" class="small-button">Copiar enlace</button><button id="shareInvite" class="small-button">Compartir</button><button id="cancelInvite" class="text-button">Cancelar invitación</button></div><p id="inviteExpiry" class="fine-print"></p></div>
       </section>
       <section id="acceptInvitePanel" class="glass-panel pairing-panel" hidden><p class="kicker">INVITACIÓN RECIBIDA</p><h2>Este iPhone será la cámara</h2><p>Al aceptar, el móvil que creó el enlace podrá ver el vídeo cuando tú actives Compartir. Se comparte solo imagen, sin micrófono. Tu PIN sigue siendo local.</p><button id="acceptInvite" class="primary">Aceptar y vincular este iPhone</button><button id="rejectInvite" class="text-button">Descartar invitación</button></section>

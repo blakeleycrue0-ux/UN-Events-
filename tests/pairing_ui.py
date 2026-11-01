@@ -81,7 +81,10 @@ with sync_playwright() as p:
  assert v.evaluate('cameraRequests===0 && !state.stream')
  v.click('#copyInvite');assert v.evaluate('navigator.clipboard.readText()')==invitation
  camera=b.new_context(viewport={'width':390,'height':844},permissions=['camera']);h=camera.new_page();he=setup(h,HOST)
- h.goto(invitation);assert raw not in h.url;unlock_app(h);h.wait_for_selector('#acceptInvitePanel:visible')
+ # Real-world case: the app is already open (and locked) in Safari when the link arrives.
+ h.goto('http://127.0.0.1:8001/#home');unlock_app(h);h.click('#unlock');h.wait_for_selector('#pinEntry:visible')
+ h.evaluate('t=>{location.hash="invite="+t}',raw);h.wait_for_function("!location.hash.includes('invite')")
+ assert raw not in h.url;unlock_app(h);h.wait_for_selector('#acceptInvitePanel:visible')
  assert h.evaluate('cameraRequests===0 && !state.stream')
  h.click('#acceptInvite');confirm_action(h);h.wait_for_function("document.getElementById('pairStatus').textContent.includes('iPhone vinculado')")
  assert next(iter(links.values()))['camera_id']==HOST
@@ -130,6 +133,11 @@ with sync_playwright() as p:
  # Reloaded device keeps its installation identity; accepting a used link fails.
  h.goto(invitation);h.reload();unlock_app(h);h.wait_for_selector('#acceptInvitePanel:visible')
  h.click('#acceptInvite');confirm_action(h);h.wait_for_function("document.getElementById('pairStatus').textContent.includes('ya se usó')")
+ # Fallback: paste the link by hand.
+ h.click('#rejectInvite');h.wait_for_selector('#pasteInvite:visible');h.fill('#pasteInvite','hola');h.click('#usePastedInvite')
+ h.wait_for_function("document.getElementById('pairStatus').textContent.includes('no contiene')")
+ h.fill('#pasteInvite','Mira: '+invitation);h.click('#usePastedInvite');h.wait_for_selector('#acceptInvitePanel:visible')
+ h.click('#rejectInvite')
  v.get_by_role('button',name='Desvincular',exact=True).click();confirm_action(v)
  v.wait_for_function("document.getElementById('pairStatus').textContent.includes('Vínculo revocado')")
  assert next(iter(links.values()))['revoked']

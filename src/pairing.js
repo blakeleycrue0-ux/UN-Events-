@@ -18,7 +18,7 @@
       else sessionStorage.removeItem("security-pending-invite");
     } catch { /* Token remains in memory for this page only. */ }
   }
-  const received = /^#invite=([a-f0-9]{64})$/i.exec(location.hash);
+  const received = /invite=([a-f0-9]{64})/i.exec(location.hash);
   if (received) {
     rememberPending(received[1].toLowerCase());
     // Remove the capability from navigation history before shell routing starts.
@@ -105,7 +105,7 @@
     render();
   }
   function render() {
-    for (const id of ["createInvite", "acceptInvite", "refreshPairs", "cancelInvite"])
+    for (const id of ["createInvite", "acceptInvite", "refreshPairs", "cancelInvite", "usePastedInvite"])
       $(id).disabled = busy;
     $("acceptInvitePanel").hidden = !pendingToken;
     $("createInvitePanel").hidden = !!pendingToken;
@@ -508,12 +508,23 @@
   document.addEventListener("visibilitychange", () => { if (document.hidden && session) void stop("Safari dejó de estar visible. Vuelve a conectar el directo."); });
   window.addEventListener("pagehide", () => { if (session) void stop(); });
   window.addEventListener("hashchange", () => {
-    const match = /^#invite=([a-f0-9]{64})$/i.exec(location.hash);
+    const match = /invite=([a-f0-9]{64})/i.exec(location.hash);
     if (match) {
       rememberPending(match[1].toLowerCase()); history.replaceState(null, "", "#pairing");
       if (securityUnlocked) void open();
     }
   });
+  // A link opened in an already-open tab arrives while the PIN is shown: show it after unlocking.
+  document.addEventListener("security:unlock", () => { if (pendingToken) void open(); });
+  // Fallback when the link opened in another browser: paste it on this iPhone.
+  $("usePastedInvite").onclick = () => {
+    const match = /invite=([a-f0-9]{64})/i.exec($("pasteInvite").value);
+    if (!match) return status("Ese texto no contiene una invitación válida. Copia el enlace completo que te enviaron.");
+    $("pasteInvite").value = "";
+    rememberPending(match[1].toLowerCase()); render();
+    status("Invitación recibida. Pulsa Aceptar y vincular este iPhone.");
+    $("acceptInvitePanel").scrollIntoView({ block: "start" });
+  };
   window.securityReady.then(() => {
     render();
     if (pendingToken || location.hash === "#pairing") void open();
