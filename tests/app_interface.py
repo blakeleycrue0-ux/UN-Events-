@@ -1,6 +1,6 @@
 """New app navigation and actual local profile persistence; no mock account success."""
 from playwright.sync_api import sync_playwright
-from pin_helpers import unlock_app,confirm_action
+from pin_helpers import empty_people_model,unlock_app,confirm_action
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],viewport={'width':390,'height':844});page=c.new_page();errors=[];requests=[];page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:requests.append(r.url))
@@ -24,8 +24,8 @@ with sync_playwright() as p:
  assert page.locator('#homePreview').evaluate("async img=>{await img.decode();const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.drawImage(img,0,0);return Array.from(x.getImageData(5,5,1,1).data).slice(0,3).every(v=>v<10)}")
  page.evaluate('state.mask=null')
  page.click('#homeClips');page.wait_for_selector('#activityPage:visible');page.click('#showEvents');assert page.locator('#eventsGroup').is_visible()
- page.reload();unlock_app(page);page.click('#navSettings');assert page.locator('#profileDisplayName').inner_text()=='Alex'
- assert not any('supabase' in url or url.startswith('wss:') for url in requests),requests
+ page.reload();unlock_app(page);empty_people_model(page);page.click('#navSettings');assert page.locator('#profileDisplayName').inner_text()=='Alex'
+ assert not any('.supabase.co/' in url or '/vendor/supabase.js' in url or url.startswith('wss:') for url in requests),requests
  assert not errors,errors
  print('PASS app onboarding, local profile save/reload, removed account forms and legacy-route redirect, no cloud requests, camera list, add-device sheet, PIN-protected arming and activity navigation')
  b.close()

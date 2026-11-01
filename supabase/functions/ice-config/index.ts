@@ -36,16 +36,46 @@ Deno.serve(async (request: Request) => {
     const { id } = await userResponse.json();
     if (typeof id !== "string" || !/^[a-f0-9-]{36}$/i.test(id))
       return reply(401, { error: "Invalid user" });
+    let body: { pairId?: string } = {};
+    try { body = await request.json(); } catch { /* Legacy client sends no body. */ }
+    if (body.pairId !== undefined &&
+      (typeof body.pairId !== "string" || !/^[a-f0-9-]{36}$/i.test(body.pairId)))
+      return reply(400, { error: "Invalid paired camera" });
     const membership = await fetch(
       url +
-        "/rest/v1/remote_memberships?select=user_id&enabled=eq.true&user_id=eq." +
-        id,
+        (body.pairId
+          ? "/rest/v1/camera_links?select=id,camera_id,viewer_id&id=eq." + body.pairId + "&revoked=eq.false&camera_id=not.is.null"
+          : "/rest/v1/remote_memberships?select=user_id&enabled=eq.true&user_id=eq." + id),
       { headers: upstreamHeaders },
     );
     if (!membership.ok || (await membership.json()).length !== 1)
       return reply(403, {
-        error: "Remote access not enabled for this account",
+        error: "Remote access not enabled for this device or account",
       });
+    // Optional hosted TURN avoids having to run a Coturn server. Only ephemeral
+    // credentials reach the browser; the API token remains an Edge secret.
+    const turnKey = Deno.env.get("CLOUDFLARE_TURN_KEY_ID");
+    const turnToken = Deno.env.get("CLOUDFLARE_TURN_API_TOKEN");
+    if (turnKey || turnToken) {
+      if (!turnKey || !/^[a-zA-Z0-9_-]+$/.test(turnKey) || !turnToken)
+        return reply(428, { error: "Hosted TURN configuration is incomplete" });
+      const result = await fetch(
+        "https://rtc.live.cloudflare.com/v1/turn/keys/" + turnKey + "/credentials/generate",
+        { method: "POST", headers: { Authorization: "Bearer " + turnToken, "Content-Type": "application/json" },
+          body: JSON.stringify({ ttl: 3600 }), signal: AbortSignal.timeout(10000) },
+      );
+      if (!result.ok) return reply(503, { error: "Hosted TURN is unavailable" });
+      const payload = await result.json();
+      const servers = [].concat(payload.iceServers || []).map(server => ({
+        urls: [].concat(server.urls || []).filter(u => typeof u === "string" && /^turns?:/.test(u)),
+        username: server.username, credential: server.credential,
+      }));
+      if (!servers.length || !servers.every(server => server.urls.length &&
+          typeof server.username === "string" && typeof server.credential === "string" &&
+          server.username && server.credential))
+        return reply(503, { error: "Hosted TURN returned no usable relay" });
+      return reply(200, { iceServers: servers, expiresAt: Math.floor(Date.now() / 1000) + 3600 });
+    }
     const secret = Deno.env.get("TURN_SHARED_SECRET");
     const urls = JSON.parse(Deno.env.get("TURN_URLS_JSON") || "[]");
     if (

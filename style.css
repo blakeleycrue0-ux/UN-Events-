@@ -1860,3 +1860,8 @@ body[data-protection=armed] .camera-status .status-dot {
   padding-top:6px;
   padding-bottom:6px
 }
+.people-strip{display:flex;align-items:center;gap:8px;padding:13px 14px;border-top:1px solid #ffffff18;background:#ffffff04}.people-strip>div{flex:1;min-width:0}.people-state{font-size:11px;line-height:1.5;display:block;letter-spacing:.4px;color:#b6bdc9}.people-state.ready{color:#a5ebbb}.people-state.error{color:#ffb0b8}.people-strip p{font-size:10px;color:#acb5c1;line-height:1.55;margin-top:4px}.people-strip .small-button{min-height:40px;min-width:52px;font-size:10px;padding:7px 10px}body.drawing .people-strip{visibility:hidden}
+body.drawing #cameraMessage{display:none!important}body.drawing .badges,body.drawing #clock{pointer-events:none}
+
+/* Private device invitations share the application's glass surfaces. */
+.pairing-panel{padding:22px;margin:16px 0}.pairing-panel>p{color:var(--muted,#b1b4bb);line-height:1.6}.pairing-panel label{display:block;margin:16px 0}.pairing-panel input{display:block;width:100%;box-sizing:border-box;margin-top:8px}.pair-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.paired-device{padding:18px 0;border-bottom:1px solid #ffffff18}.paired-device p{font-size:13px;color:#b1b4bb;margin:8px 0 14px}.paired-list:empty{display:none}#pairStatus{padding:14px;border-radius:14px;background:#ffffff08;overflow-wrap:anywhere}#inviteResult{margin-top:22px}#inviteLink{font-size:12px}#pairedVideo{width:100%;aspect-ratio:16/9;object-fit:contain;border-radius:16px;background:#08090b}.pairing-panel .primary{max-width:100%}

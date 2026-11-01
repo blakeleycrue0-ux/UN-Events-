@@ -17,7 +17,7 @@ aiFrame.width = 512;
 aiFrame.height = 240;
 const aiCtx = aiFrame.getContext("2d");
 const motionDetector = new SecurityDetection.Motion();
-let personTimer = null, personRunning = false, detectionGeneration = 0;
+let personTimer = null, personRunning = false, detectionGeneration = 0, modelLoadPromise = null;
 let aiPass = 0, zoneDraft = null, editorScroll = 0;
 const analysis = document.createElement("canvas"),
   ax = analysis.getContext("2d", { willReadFrequently: true });
@@ -128,6 +128,8 @@ function save() {
     );
     s.eventSettingsVersion = 2;
     s.detectionVersion = 3;
+    s.peopleOnlyVersion = 1;
+    s.motion=false;s.alarmSource="person";
     s.zone = state.zone;
     s.mask = state.mask;
     localStorage.setItem("security-settings", JSON.stringify(s));
@@ -153,6 +155,7 @@ try {
     $("lowPower").checked = false;
     $("motionConfirm").value = "0.5";
   }
+  if (s.peopleOnlyVersion !== 1) $("recordMode").value="event";
   state.zone = s.zone || null;
   state.mask = s.mask || null;
   events = JSON.parse(localStorage.getItem("security-events") || "[]");
@@ -160,6 +163,9 @@ try {
 // Migrate legacy continuous/person-only preferences to event recording. Never re-arm on reload.
 if ($("recordMode").value !== "manual") $("recordMode").value = "event";
 $("mode").value = "disarmed";
+$("motion").checked=false;
+$("person").checked=true;
+$("alarmSource").value="person";
 renderEvents();
 let cameraGeneration = 0, analysisGeneration = 0;
 let configuredRecordQuality = $("recordQuality").value;
@@ -418,17 +424,20 @@ function draw() {
   }
   function rect(b, color, label) {
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.strokeRect(v.x + b.x * v.w, v.y + b.y * v.h, b.w * v.w, b.h * v.h);
     if (label) {
-      ctx.fillStyle = color;
-      ctx.font = "14px sans-serif";
-      ctx.fillText(label, v.x + b.x * v.w + 4, v.y + b.y * v.h + 18);
+      ctx.font = "600 13px -apple-system, sans-serif";
+      const width=Math.min(v.w,ctx.measureText(label).width+12);
+      const left=Math.max(v.x,Math.min(v.x+v.w-width,v.x+b.x*v.w));
+      const top=Math.max(v.y,Math.min(v.y+v.h-23,v.y+b.y*v.h));
+      ctx.fillStyle="rgba(9,24,17,.88)";ctx.fillRect(left,top,width,23);
+      ctx.fillStyle=color;ctx.fillText(label,left+6,top+16);
     }
   }
   if (state.zone && !drawMode) rect(state.zone, "#70d39a", "Zona de vigilancia");
-  for (const p of state.persons)
-    rect(p, "#fff", "Persona " + Math.round(p.score * 100) + "%" + (p.seen && Date.now()-p.seen>=2000 ? " · hace " + Math.floor((Date.now()-p.seen)/1000) + " s" : ""));
+  for (const p of state.persons.filter(p=>!p.seen || Date.now()-p.seen<Math.max(3000,personInterval()*3000)))
+    rect(p, "#85efa9", "Persona " + Math.round(p.score * 100) + "%" + (p.seen && Date.now()-p.seen>=2000 ? " · hace " + Math.floor((Date.now()-p.seen)/1000) + " s" : ""));
   if (drawMode && zoneDraft) {
     rect(zoneDraft, "#9ce6bd", "Zona pendiente · ajusta los tiradores");
     ctx.fillStyle = "#9ce6bd";
@@ -549,6 +558,7 @@ async function startCamera() {
     state.previous = null;
     state.storageFailed = false;
     $("cameraMessageDetail").textContent = "Cámara local · sin micrófono";
+    $("cameraMessage").hidden=true;
     $("live").textContent = "LIVE";
     $("live").className = "active";
     $("camera").textContent = "Detener cámara";
@@ -566,7 +576,7 @@ async function startCamera() {
       wakeLock = await navigator.wakeLock?.request("screen");
     } catch {}
     tick();
-    if (state.armed && $("person").checked) loadModel().then(() => ensurePersonAnalysis());
+    if ($("person").checked) loadModel().then(() => ensurePersonAnalysis());
   } catch (e) {
     if (generation !== cameraGeneration) return;
     error("No se puede iniciar la cámara: " + e.name + " · " + e.message);
@@ -598,6 +608,7 @@ async function stopCamera(invalidate = true) {
   $("live").className = "";
   $("camera").textContent = "Iniciar cámara";
   $("cameraMessageDetail").textContent = "Cámara detenida · sin captura";
+  $("cameraMessage").hidden=false;
   $("health").textContent = "";
   $("eventLight").disabled = true;
   $("alarmFlash").disabled = true;
@@ -910,15 +921,9 @@ async function alarm(reason, manual = false) {
   );
 }
 function threatActive() {
-  if (!state.stream || document.hidden || state.cameraMuted || !state.episode) return false;
-  if ($("alarmSource").value === "motion")
-    return $("motion").checked && Date.now() - (state.motionConfirmedAt || 0) < 2500;
-  return (
-    $("person").checked &&
-    state.persons.length > 0 &&
-    Date.now() - (state.personResultAt || 0) <
-      personInterval() * 2000
-  );
+  return !!state.stream && !document.hidden && !state.cameraMuted && !state.peopleError && $("person").checked &&
+    state.persons.some(p=>!p.seen || Date.now()-p.seen<Math.max(3000,personInterval()*3000)) &&
+    Date.now()-(state.personResultAt||0)<Math.max(3,personInterval()*2)*1000;
 }
 function considerThreat() {
   const allowed =
@@ -958,7 +963,7 @@ async function currentPersonVisible() {
   state.personVerificationRequested=true;
   const deadline = Date.now()+5000;
   while(state.busy && Date.now()<deadline) await new Promise(resolve => setTimeout(resolve,100));
-  if(state.busy || !state.model || !state.armed || !$("person").checked || drawMode || document.hidden || token!==soundGeneration || cameraID!==cameraGeneration) { state.personVerificationRequested=false; return false; }
+  if(state.busy || !state.model || state.peopleError || !state.armed || !$("person").checked || drawMode || document.hidden || token!==soundGeneration || cameraID!==cameraGeneration) { state.personVerificationRequested=false; return false; }
   state.busy=true;
   try {
     const region = SecurityDetection.expand(state.persons[0] || state.zone || {x:0,y:0,w:1,h:1},.15);
@@ -966,6 +971,7 @@ async function currentPersonVisible() {
     check.width=Math.round(ratio>=1?512:512*ratio);check.height=Math.round(ratio>=1?512/ratio:512);
     processed(check,check.getContext("2d"),region);
     const result=await state.model.detect(check,{object:{minConfidence:+$("confidence").value/100}});
+    checkPeopleResult(result);
     if(token!==soundGeneration || cameraID!==cameraGeneration || !state.armed || drawMode || document.hidden) return false;
     const fresh=(result.object||[]).filter(p=>p.label==="person" && p.score>=+$("confidence").value/100 && p.boxRaw)
       .map(p=>({...SecurityDetection.mapBox(p.boxRaw,region),score:p.score,seen:Date.now()}))
@@ -978,8 +984,8 @@ async function currentPersonVisible() {
 }
 async function confirmedAutoAlarm(reason, afterVoice = false) {
   const token=soundGeneration, episode=state.episode;
-  const present=$("alarmSource").value==="person" ? await currentPersonVisible() : threatActive();
-  if(token!==soundGeneration || !state.armed || $("mode").value!=="alarm" || !$("autoAlarm").checked || state.episode!==episode) return;
+  const present=await currentPersonVisible();
+  if(token!==soundGeneration || state.peopleError || !$("person").checked || !state.armed || $("mode").value!=="alarm" || !$("autoAlarm").checked || state.episode!==episode) return;
   if(afterVoice) state.warningPending=false;
   if(present && state.zone) alarm(reason,true);
   else {
@@ -1030,7 +1036,7 @@ function updateResponseControls() {
   $("aiInterval").title = $("aiInterval").disabled ? "El modo rápido ajusta la frecuencia al tiempo real de inferencia." : "Intervalo objetivo entre análisis.";
 }
 function personEligible() {
-  return state.armed && state.stream && state.stream.active !== false && !state.cameraMuted && !document.hidden && !drawMode && $("person").checked && state.model;
+  return state.stream && state.stream.active !== false && !state.cameraMuted && !document.hidden && !drawMode && $("person").checked && state.model && !state.peopleError;
 }
 function ensurePersonAnalysis(delay = 0) {
   if (!personEligible() || personRunning || personTimer !== null) return;
@@ -1048,31 +1054,14 @@ function recordEpisode(episode) {
   startRecording(episode.kind, episode);
 }
 function detected(type) {
-  if (!state.armed) return;
-  if (type === "persona" && state.episode) {
-    const episode = state.episode;
-    if (episode.kind !== "persona detectada") {
-      episode.kind = "persona detectada";
-      log("persona", "Persona confirmada en el evento de movimiento",{eventId:episode.started});
-      if (episode.clipID && !state.recording) {
-        store("clips", "get", episode.clipID).then(async clip => {
-          if (clip) { clip.reason = episode.kind; await store("clips", "put", clip); await renderClips(); }
-        }).catch(e => error("No se pudo actualizar la clasificación: " + e.message, "pérdida"));
-      }
-    }
-    return;
-  }
-  // A confirmed person can start an episode even if distant motion is too small.
-  // Existing motion episodes are enriched above; never create a duplicate clip.
-  if (state.episode) return;
-  const episode = state.episode = { started: Date.now(), kind:
-    type === "persona" || personFresh() ? "persona detectada" : "movimiento detectado" };
-  log(episode.kind.startsWith("persona") ? "persona" : "movimiento", episode.kind + " en zona de vigilancia",{eventId:episode.started});
-  if (Date.now() < (state.recordCooldownUntil || 0)) {
-    episode.recordAttempted = true;
-    log("grabación", "Evento registrado sin clip: cooldown activo");
+  // Movement is not an event source, including legacy stored settings and callers.
+  if(type!=="persona" || !state.armed || state.peopleError || !$("person").checked || state.episode) return;
+  const episode=state.episode={started:Date.now(),kind:"persona detectada"};
+  log("persona","Persona detectada en la zona de vigilancia",{eventId:episode.started});
+  if(Date.now()<(state.recordCooldownUntil||0)) {
+    episode.recordAttempted=true;log("grabación","Persona registrada sin clip: cooldown activo");
   } else recordEpisode(episode);
-  if (($("mode").value === "deter" || ($("mode").value === "alarm" && !$("autoAlarm").checked)) && $("autoVoice").checked) sound("warning");
+  if(($("mode").value==="deter" || ($("mode").value==="alarm" && !$("autoAlarm").checked)) && $("autoVoice").checked) sound("warning");
 }
 function updateEpisode() {
   const quiet = Date.now() - (state.lastMotionAt || 0) > 4000 && !personFresh();
@@ -1083,9 +1072,12 @@ function updateEpisode() {
     recordEpisode(state.episode);
   }
 }
-async function loadModel() {
-  if (state.model || state.busy || !$("person").checked) return;
-  state.busy = true;
+function loadModel() {
+  if(state.model) return Promise.resolve();
+  if(modelLoadPromise) return modelLoadPromise;
+  if(!$("person").checked) return Promise.resolve();
+  state.peopleError="";state.peopleLoading=true;state.busy=true;renderPeopleStatus();
+  modelLoadPromise=(async()=>{
   try {
     if (!window.Human) await loadScript("vendor/human.js");
     const detector = new Human.Human({
@@ -1112,20 +1104,35 @@ async function loadModel() {
       },
     });
     await detector.load();
-    if (!detector.models.loaded().length)
-      throw Error("No se han cargado pesos del modelo");
+    // loaded() lists cached names even if Human failed to fetch their weights.
+    const statistics=detector.models.stats();
+    const personModel=statistics.modelStats.find(m=>m.name==="centernet");
+    if(!personModel?.loaded || statistics.numLoadedModels<1 || personModel.sizeLoadedWeights<=0) {
+      // The public reset also invalidates Human's module-level partial-model cache.
+      // A later retry creates a fresh instance with our person-only configuration.
+      detector.reset();
+      throw Error("No se han cargado los pesos de reconocimiento de personas. Comprueba la conexión o los archivos locales del modelo.");
+    }
     state.model = detector;
     log("modo", "Modelo local CenterNet MobileNet cargado (4 MB de pesos)");
   } catch (e) {
-    $("person").checked = false;
-    save();
+    state.peopleError=e.name+": "+e.message;
+    state.persons=[];
     error(
-      "IA no disponible: " + e.message + ". Movimiento sigue disponible.",
+      "Detección de personas no disponible: " + e.message + ". No habrá clips ni alarmas automáticas. Pulsa Reintentar.",
       "cámara",
     );
   } finally {
-    state.busy = false;
+    state.busy=false;state.peopleLoading=false;Promise.resolve().then(()=>{modelLoadPromise=null;});
+    renderPeopleStatus();ensurePersonAnalysis();
   }
+  })();
+  return modelLoadPromise;
+}
+function checkPeopleResult(result) {
+  const issue=result?.error;
+  if(!result || (issue && (!Array.isArray(issue) || issue.length)))
+    throw Error("Fallo del modelo: "+(Array.isArray(issue)?issue.join("; "):issue||"resultado vacío"));
 }
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -1169,7 +1176,8 @@ async function analyzePeople() {
     const result = await state.model.detect(aiFrame, {
       object: { minConfidence: +$("confidence").value / 100 },
     });
-    if (session !== detectionGeneration || cameraID !== cameraGeneration || !state.armed || drawMode || !$("person").checked || document.hidden) return;
+    checkPeopleResult(result);
+    if (session !== detectionGeneration || cameraID !== cameraGeneration || drawMode || !$("person").checked || document.hidden) return;
     state.aiMS = performance.now()-aiStarted;
     state.aiRegion = region;
     state.aiDetail = detail;
@@ -1183,7 +1191,7 @@ async function analyzePeople() {
       .filter(p => SecurityDetection.personInside(p,state.zone) && !(state.mask && SecurityDetection.personInside(p,state.mask)));
     state.personResultAt = Date.now();
     if (state.persons.length) {
-      detected("persona");
+      if(found.length) detected("persona");
       state.personPresent = true;
       state.personMissing = 0;
     } else {
@@ -1193,13 +1201,13 @@ async function analyzePeople() {
     }
   } catch (e) {
     if (session !== detectionGeneration || cameraID !== cameraGeneration) return;
-    $("person").checked = false;
+    state.peopleError=e.name+": "+e.message;
     state.persons = [];
     state.confirmed = 0;
     error(
-      "IA detenida: " +
+      "Detección de personas detenida: " +
         e.message +
-        ". Se mantiene detección de movimiento.",
+        ". No habrá nuevos clips automáticos. Pulsa Reintentar.",
     );
     save();
   } finally {
@@ -1207,6 +1215,7 @@ async function analyzePeople() {
     personRunning = false;
     if (personEligible()) ensurePersonAnalysis(Math.max(80,personInterval()*1000-(performance.now()-started)));
   }
+  renderPeopleStatus();
   renderDetectionStatus();
   draw();
 }
@@ -1222,10 +1231,10 @@ async function tick() {
   }
   const started = performance.now();
   try {
-    if (!state.armed) {
-      state.previous = null; state.movingSince = 0; state.persons = []; state.episode = null;
-      draw();
-      $("health").textContent = "Desarmado · análisis y grabación automática detenidos";
+    if(!state.armed) state.episode=null;
+    if(!$("person").checked) {
+      state.previous=null;state.persons=[];draw();
+      $("health").textContent="Detección de personas pausada · sin clips automáticos";
       return;
     }
     const size = state.slow || $("lowPower").checked ? Math.min(128, +$("analysisSize").value) : +$("analysisSize").value;
@@ -1259,12 +1268,7 @@ async function tick() {
       Date.now(), +$("analysisInterval").value);
     state.motionSignal = signal;
     if (signal.moving) { state.lastVisualChange = Date.now(); state.motionBounds = signal.bounds; }
-    state.moving = signal.moving && $("motion").checked;
-    if (state.moving) {
-      state.lastMotionAt = Date.now();
-      state.motionBounds = signal.bounds;
-      if (signal.confirmed) { state.motionConfirmedAt = Date.now(); detected("movimiento"); }
-    }
+    state.moving=false;
     state.previous = grey;
     const motionMS = performance.now() - started;
     ensurePersonAnalysis();
@@ -1281,7 +1285,7 @@ async function tick() {
     error("Fallo de análisis: " + e.message);
   } finally {
     if (cycle === analysisGeneration && cameraID === cameraGeneration && state.stream && !document.hidden)
-      loopTimer = setTimeout(tick, !state.armed ? 1500 : Math.max($("lowPower").checked ? 500 : 200, +$("analysisInterval").value));
+      loopTimer = setTimeout(tick, !$("person").checked ? 1500 : Math.max($("lowPower").checked ? 500 : 200, +$("analysisInterval").value));
   }
 }
 function setMode() {
@@ -1303,7 +1307,7 @@ function setMode() {
   renderProtection();
   renderSurveillanceStatus();
   log("modo", $("status").textContent);
-  if (state.armed && $("person").checked) loadModel().then(() => ensurePersonAnalysis());
+  if ($("person").checked) loadModel().then(() => ensurePersonAnalysis());
   ensurePersonAnalysis();
   tick();
   save();
@@ -1524,6 +1528,7 @@ settingIds.forEach((id) =>
       detectionGeneration++; clearTimeout(personTimer); personTimer=null;
       updateResponseControls(); ensurePersonAnalysis();
     }
+    $("motion").checked=false;$("alarmSource").value="person";
     if (id === "mode") setMode();
     if (id === "person") state.persons = [];
     if (id === "motion") { state.movingSince = 0; state.lastMotionAt = 0; state.moving = false; }
@@ -1533,7 +1538,7 @@ settingIds.forEach((id) =>
     }
     if (["person", "autoAlarm", "confirmation"].includes(id))
       state.confirmed = 0;
-    if (id === "person" && state.armed) loadModel().then(() => ensurePersonAnalysis());
+    if (id === "person" && state.stream) loadModel().then(() => ensurePersonAnalysis());
     if (id === "recordQuality" && (state.recording || state.recordStarting)) {
       $(id).value = configuredRecordQuality;
       save();
@@ -1898,6 +1903,10 @@ function renderProtection() {
       "Aviso de voz · " +
       left +
       " s. Después, sirena si continúa la detección.";
+  } else if(state.peopleError) {
+    title.textContent="Detección de personas detenida";hint.textContent="No se generan clips nuevos. Pulsa Reintentar en el visor.";
+  } else if(state.stream && !$("person").checked) {
+    title.textContent="Personas en pausa";hint.textContent="Activa la detección en el visor para mostrar recuadros.";
   } else if (state.armed) {
     title.textContent = $("mode").selectedOptions[0].textContent;
     hint.textContent = $("recordMode").value === "event"
@@ -1905,9 +1914,7 @@ function renderProtection() {
       : "Detección activa · grabación automática deshabilitada";
   } else {
     title.textContent = "Sistema desarmado";
-    hint.textContent = state.persons.length
-      ? "Se ve una persona, pero la alarma está desactivada."
-      : "Arma el sistema para activar la detección y la respuesta.";
+    hint.textContent = state.stream ? "Recuadros de personas en directo. Arma para grabar y activar alertas." : "Enciende la cámara para ver la detección de personas.";
   }
   $("protect").disabled = protecting;
   $("protect").textContent = protecting
@@ -1933,7 +1940,10 @@ $("protect").onclick = async () => {
     if ($("surveillanceMode").value !== "silent" && ($("autoVoice").checked || $("autoAlarm").checked)) await enableAudio();
     if (!state.stream) await startCamera();
     if (!state.stream) throw Error("No se ha podido iniciar la cámara. Revisa el permiso.");
-    if (!$("motion").checked && !$("person").checked) throw Error("Activa al menos un detector.");
+    $("motion").checked=false;$("person").checked=true;$("alarmSource").value="person";
+    await loadModel();
+    if(!state.model || state.peopleError) throw Error("No se puede armar sin detección de personas: "+(state.peopleError||"modelo pendiente"));
+    if(!state.stream) throw Error("La cámara se ha detenido. Iníciala antes de armar.");
     state.zone ||= { x: 0, y: 0, w: 1, h: 1 };
     $("mode").value = $("surveillanceMode").value;
     state.threatSince = 0;
@@ -1992,8 +2002,9 @@ mediaAudio.addEventListener("error", () => {
 function renderSurveillanceStatus() {
   const cooldown = Math.max(0, Math.ceil(((state.recordCooldownUntil || 0) - Date.now()) / 1000));
   $("eventState").textContent = state.recording ? "REC · grabando clip" : cooldown ? "Cooldown · " + cooldown + " s" : state.episode ? "Episodio activo · sin repetir clip" : "Esperando evento";
-  $("motionBadge").hidden = !state.armed || !state.moving;
-  $("personBadge").hidden = !state.armed || !personFresh();
+  $("motionBadge").hidden = true;
+  $("personBadge").hidden = !personFresh();
+  renderPeopleStatus();
   $("audioBadge").textContent = audioReady ? "AUDIO READY" : "AUDIO · toca Probar sonido";
   renderDetectionStatus();
   $("powerBadge").textContent = $("lowPower").checked ? "LOW POWER" : state.slow ? "ANÁLISIS REDUCIDO" : "ESTÁNDAR";
@@ -2013,8 +2024,34 @@ function renderDetectionStatus() {
   const capture=state.stream?.getVideoTracks()[0]?.getSettings?.() || {};
   $("detectionReadout").textContent = !state.stream ? "Inicia la cámara para comprobar el encuadre." :
     `${capture.width || video.videoWidth} × ${capture.height || video.videoHeight} · movimiento ${signal ? (signal.ratio*100).toFixed(2) : "0"}% de la zona · ` +
-    (!state.armed ? "Desarmado: pulsa Armar sistema para detectar" : drawMode ? "Detección en pausa mientras ajustas la zona" : !$("person").checked ? "IA desactivada" : !state.model ? "IA pendiente: se carga al armar" :
+    (!$("person").checked ? "Personas pausadas" : state.peopleError ? "Error de IA: no hay clips automáticos" : drawMode ? "Detección en pausa mientras ajustas la zona" : !$("person").checked ? "IA desactivada" : !state.model ? "IA pendiente: se carga al armar" :
       (!state.personResultAt ? "IA preparada · primer análisis pendiente" : `IA ${state.aiDetail ? "detalle" : "general"} · análisis ${Math.round(state.aiMS||0)} ms · ${state.aiCadenceMS ? "ciclo " + Math.round(state.aiCadenceMS) + " ms" : "primer análisis"} · ${state.persons.length} recuadro(s)`) + (state.recordStartMS !== undefined ? ` · último clip: ${state.recordStartMS} ms tras el evento` : ""));
 }
 
 updateResponseControls();
+
+function renderPeopleStatus() {
+  if(!$("peopleStatus")) return;
+  const status=$("peopleStatus"),detail=$("peopleStatusDetail");
+  const live=!!state.stream&&!state.cameraMuted;
+  const observed=state.persons.filter(p=>!p.seen || Date.now()-p.seen<Math.max(3000,personInterval()*3000));
+  status.className="people-state";
+  $("retryPeople").hidden=!live || (!state.peopleError && $("person").checked);
+  $("retryPeople").textContent=state.peopleError?"Reintentar":"Activar personas";
+  $("retryPeople").disabled=state.peopleLoading||personRunning;
+  $("retryPeople").title=personRunning?"Espera al análisis en curso":"Volver a iniciar el reconocimiento de personas";
+  if(!state.stream) {status.textContent="DETECCIÓN DE PERSONAS";detail.textContent="Enciende la cámara: aparecerá un recuadro sobre cada persona reconocida.";}
+  else if(state.cameraMuted) {status.textContent="CÁMARA EN PAUSA";detail.textContent="No llegan imágenes. No se generan clips automáticos.";}
+  else if(drawMode) {status.textContent="AJUSTANDO ZONA";detail.textContent="La detección se reanuda al salir del editor.";}
+  else if(state.peopleError) {status.textContent="ERROR DE DETECCIÓN";status.classList.add("error");detail.textContent=state.peopleError+" · No se grabará por movimiento. Reintenta el detector.";}
+  else if(!$("person").checked) {status.textContent="PERSONAS EN PAUSA";detail.textContent="Activa la detección para mostrar recuadros. No hay clips automáticos.";}
+  else if(state.peopleLoading || !state.model) {status.textContent="CARGANDO DETECTOR DE PERSONAS…";detail.textContent="Preparando el modelo local. Todavía no hay reconocimiento activo.";}
+  else if(!state.personResultAt) {status.textContent="PREPARANDO PRIMER ANÁLISIS…";detail.textContent="La IA está preparando su primer fotograma. Aún no hay reconocimiento confirmado.";}
+  else {status.classList.add("ready");status.textContent=observed.length?"PERSONA DETECTADA · "+Math.round(Math.max(...observed.map(p=>p.score))*100)+"%":"BUSCANDO PERSONAS";detail.textContent=(state.zone?"Zona guardada":"Imagen completa")+" · "+(state.armed?($("recordMode").value==="event"?"Clips automáticos solo por personas.":"Recuadros activos · clips en modo manual."):"Recuadros activos. Arma para grabar automáticamente.");}
+}
+$("retryPeople").onclick=async()=>{
+  if(state.peopleLoading || personRunning) return;
+  $("person").checked=true;state.peopleError="";save();
+  await loadModel();ensurePersonAnalysis();renderPeopleStatus();
+};
+$("peopleZone").onclick=()=>$("zone").onclick();

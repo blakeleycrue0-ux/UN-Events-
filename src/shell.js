@@ -13,6 +13,7 @@ const pageIDs = {
   activity: "activityPage",
   profile: "profilePage",
   welcome: "welcomePage",
+  pairing: "pairingPage",
 };
 function showPage(name) {
   const requestedActivity=name==="events"?"events":name==="activity"?"clips":null;
@@ -36,7 +37,7 @@ function showPage(name) {
     button.classList.toggle(
       "active",
       button.dataset.tab ===
-        (name==="activity" && activityTab==="events" ? "events" : name === "camera" ? "cameras" : name),
+        (name==="activity" && activityTab==="events" ? "events" : ["camera","pairing"].includes(name) ? "cameras" : name),
     );
   if (livePage) requestAnimationFrame(draw);
   if(requestedActivity) selectActivity(requestedActivity);
@@ -201,8 +202,8 @@ function renderApp() {
   $("homeLocalDetail").textContent = state.recording
     ? "Grabación en curso en este dispositivo."
     : state.armed
-      ? "Detección y respuesta activadas."
-      : "La vigilancia se activa desde tu cámara.";
+      ? $("recordMode").value==="event"?"Solo personas · clips por detección.":"Solo personas · clips en modo manual."
+      : "Recuadros al encender. Arma para grabar personas.";
   $("homeStatusDot").classList.toggle("on", state.armed);
   const clips = $("clips").querySelectorAll(".clip").length;
   const pending = $("clips").querySelectorAll(".pending-evidence").length;
@@ -229,7 +230,7 @@ function renderApp() {
     }
   }
   renderHomeStatus(clips);
-  const entries=events.filter(e=>!e.message.includes("PIN")).slice(0,3);
+  const entries=events.filter(e=>e.type!=="movimiento"&&!e.message.includes("PIN")).slice(0,3);
   const activitySignature=JSON.stringify(entries);
   if(activitySignature!==lastActivitySignature) {
     lastActivitySignature=activitySignature;
@@ -332,10 +333,10 @@ function renderHomeStatus(clips) {
   $("record").disabled=!state.stream || !window.MediaRecorder || state.recordStarting || state.recordFinalizing;
   $("photo").disabled=!state.stream;
   $("fullscreen").disabled=!state.stream;
-  const status=state.alarm?"Alarma activa":state.warningPending?"Aviso de seguridad":state.storageFailed?"Revisar almacenamiento":state.cameraMuted?"Captura en pausa":!live?"Cámara apagada":state.armed?"Vigilancia activa":"Solo vista previa";
+  const status=state.alarm?"Alarma activa":state.warningPending?"Aviso de seguridad":state.storageFailed?"Revisar almacenamiento":state.peopleError?"Error de IA":(state.peopleLoading || (state.stream && $("person").checked && !state.personResultAt))?"Preparando personas":!$("person").checked?"Personas pausadas":state.cameraMuted?"Captura en pausa":!live?"Cámara apagada":state.armed?"Vigilancia activa":"Solo vista previa";
   $("homeSystemPill").textContent=status;
-  $("homeSystemPill").classList.toggle("online",live&&state.armed&&!state.storageFailed&&!state.alarm);
-  $("homeSystemPill").classList.toggle("alarm",state.alarm);
+  $("homeSystemPill").classList.toggle("online",live&&state.armed&&!state.storageFailed&&!state.alarm&&!state.peopleError&&!state.peopleLoading&&!!state.personResultAt&&$("person").checked);
+  $("homeSystemPill").classList.toggle("alarm",state.alarm||!!state.peopleError);
   const summary=state.clipSummary||[],bytes=summary.reduce((n,c)=>n+c.size,0),estimate=state.storageEstimate;
   $("homeStorageDetail").textContent=state.storageFailed?"Error local · revisa tus clips":estimate&&estimate.quota
     ? `${(estimate.usage/1048576).toFixed(1)} MB de ${(estimate.quota/1048576).toFixed(0)} MB · cuota estimada`
@@ -344,7 +345,7 @@ function renderHomeStatus(clips) {
   if(estimate?.quota) $("homeStorageProgress").value=Math.min(1,estimate.usage/estimate.quota);
 }
 function eventTitle(e) {
-  return ({persona:"Persona detectada",movimiento:"Movimiento detectado",alarma:"Alarma",audio:"Sonido",cámara:"Cámara",modo:"Vigilancia"})[e.type] || (e.type==="grabación" && e.message.includes("guardada")?"Clip guardado":e.type==="grabación"?"Grabación":"Evento del sistema");
+  return ({persona:"Persona detectada",movimiento:"Movimiento (histórico)",alarma:"Alarma",audio:"Sonido",cámara:"Cámara",modo:"Vigilancia"})[e.type] || (e.type==="grabación" && e.message.includes("guardada")?"Clip guardado":e.type==="grabación"?"Grabación":"Evento del sistema");
 }
 function highlightTarget(target) {
   if(!target) return;
