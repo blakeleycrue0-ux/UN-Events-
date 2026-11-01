@@ -1,5 +1,6 @@
 "use strict";
 let currentPage = "home", profileData = {}, lastActivitySignature = "";
+let activityTab = "clips", homeActionBusy = false, searchTimer;
 try {
   profileData = JSON.parse(localStorage.getItem("security-profile") || "{}");
 } catch {
@@ -13,25 +14,30 @@ const pageIDs = {
   welcome: "welcomePage"
 };
 function showPage(name) {
+  const requestedActivity = name === "events" ? "events" : name === "activity" ? "clips" : null;
+  if (name === "events") name = "activity";
+  if (document.body.classList.contains("video-expanded")) exitExpandedVideo();
   if (["account", "remote"].includes(name)) name = "home";
   if (!pageIDs[name])
     name = localStorage.getItem("security-app-started") ? "home" : "welcome";
   currentPage = name;
-  const viewport = $("videoViewport");
-  if ((name !== "camera" || document.body.classList.contains("auth-pending")) && state.stream)
-    $("captureDock").append(viewport);
-  else if (name === "camera") $("stage").insertBefore(viewport, $("overlay"));
+  const viewport = $("videoViewport"), livePage = name === "home" || name === "camera";
+  $(name === "home" ? "homeLiveHost" : "cameraLiveHost").append($("cameraLiveModule"));
+  if ((!livePage || document.body.classList.contains("auth-pending")) && state.stream) $("captureDock").append(viewport);
+  else if (livePage) $("stage").insertBefore(viewport, $("overlay"));
   for (const [key, id] of Object.entries(pageIDs)) $(id).hidden = key !== name;
   document.body.dataset.page = name;
   $("backHome").hidden = ["home", "welcome"].includes(name);
   $("unlock").hidden = name === "welcome";
+  $("profileOpen").hidden = name === "welcome";
   document.querySelector(".app-navigation").hidden = name === "welcome";
   for (const button of document.querySelectorAll("[data-tab]"))
     button.classList.toggle(
       "active",
-      button.dataset.tab === (name === "camera" ? "cameras" : name)
+      button.dataset.tab === (name === "activity" && activityTab === "events" ? "events" : name === "camera" ? "cameras" : name)
     );
-  if (name === "camera") requestAnimationFrame(draw);
+  if (livePage) requestAnimationFrame(draw);
+  if (requestedActivity) selectActivity(requestedActivity);
   window.scrollTo(0, 0);
   renderApp();
 }
@@ -60,20 +66,53 @@ $("navClips").onclick = () => {
   selectActivity("clips");
 };
 $("navSettings").onclick = () => goPage("profile");
-$("homeClips").onclick = $("navClips").onclick;
-$("viewEvents").onclick = () => {
-  goPage("activity");
-  selectActivity("events");
+$("profileOpen").onclick = () => goPage("profile");
+$("navEvents").onclick = () => goPage("events");
+$("homeStorage").onclick = () => $("navClips").click();
+$("configureCamera").onclick = () => {
+  openLocalCamera();
+  const panel = document.querySelector(".surveillance-panel");
+  panel.open = true;
+  panel.scrollIntoView({ block: "start" });
 };
+async function homeCameraAction() {
+  if (homeActionBusy) return;
+  homeActionBusy = true;
+  renderApp();
+  try {
+    await $("camera").onclick();
+  } finally {
+    homeActionBusy = false;
+    renderApp();
+  }
+}
+$("cameraPower").onclick = homeCameraAction;
+$("homeStartCamera").onclick = homeCameraAction;
+$("homeProtect").onclick = async () => {
+  if (homeActionBusy) return;
+  homeActionBusy = true;
+  renderApp();
+  try {
+    await $("protect").onclick();
+  } finally {
+    homeActionBusy = false;
+    renderApp();
+  }
+};
+$("homeClips").onclick = $("navClips").onclick;
+$("viewEvents").onclick = () => goPage("events");
 $("seeDevices").onclick = () => goPage("cameras");
 function selectActivity(tab) {
+  activityTab = tab;
+  $("activityTitle").textContent = tab === "events" ? "Eventos" : "Grabaciones";
+  for (const button of document.querySelectorAll("[data-tab]")) button.classList.toggle("active", currentPage === "activity" && button.dataset.tab === (tab === "events" ? "events" : "activity"));
   document.querySelector(".evidence").hidden = tab !== "clips";
   $("eventsGroup").hidden = tab !== "events";
   $("showClips").classList.toggle("selected", tab === "clips");
   $("showEvents").classList.toggle("selected", tab === "events");
 }
-$("showClips").onclick = () => selectActivity("clips");
-$("showEvents").onclick = () => selectActivity("events");
+$("showClips").onclick = () => goPage("activity");
+$("showEvents").onclick = () => goPage("events");
 $("profileLock").onclick = lockApplication;
 function openAdd() {
   $("addSheet").hidden = false;
@@ -145,6 +184,7 @@ function renderApp() {
   $("profileAvatar").textContent = Array.from(name)[0].toUpperCase();
   $("profileAccountLabel").textContent = "Perfil de este dispositivo";
   $("deviceCardName").textContent = $("cameraTitle").textContent = profileData.camera || "Entrada";
+  $("heroCameraName").textContent = profileData.camera || "Entrada";
   const status = state.stream ? state.armed ? "Vigilancia activa" : "C\xE1mara encendida" : "Sin c\xE1mara activa";
   $("deviceCardState").textContent = state.stream ? status : "Preparar como c\xE1mara";
   $("cameraStateBadge").textContent = state.recording ? "GRABANDO" : state.stream ? "EN DIRECTO" : "SIN C\xC1MARA";
@@ -168,32 +208,33 @@ function renderApp() {
       $("cameraList").dataset.signature = signature;
     }
   }
-  const activitySignature = JSON.stringify(events.slice(0, 3));
+  renderHomeStatus(clips);
+  const entries = events.filter((e) => !e.message.includes("PIN")).slice(0, 3);
+  const activitySignature = JSON.stringify(entries);
   if (activitySignature !== lastActivitySignature) {
     lastActivitySignature = activitySignature;
-    const entries = events.filter((e) => !e.message.includes("PIN")).slice(0, 3);
     $("recentActivity").replaceChildren();
-    if (!entries.length)
-      emptyState(
-        $("recentActivity"),
-        "Sin actividad todav\xEDa",
-        "Aqu\xED aparecer\xE1n los eventos de tus c\xE1maras."
-      );
+    if (!entries.length) emptyState($("recentActivity"), "Sin eventos todav\xEDa", "Las detecciones y grabaciones aparecer\xE1n aqu\xED.");
     for (const e of entries) {
-      const row = document.createElement("div");
+      const clip = (state.clipSummary || []).find((c) => e.clipId ? c.id === e.clipId : e.eventId && c.eventId === e.eventId);
+      const row = document.createElement("button");
       row.className = "activity-row";
-      const dot = document.createElement("span");
-      dot.className = "activity-dot";
-      const copy = document.createElement("div"), title = document.createElement("strong"), time = document.createElement("small");
-      title.textContent = e.message;
-      time.textContent = new Date(e.time).toLocaleString("es-ES", {
-        hour: "2-digit",
-        minute: "2-digit",
-        day: "2-digit",
-        month: "short"
-      });
-      copy.append(title, time);
-      row.append(dot, copy);
+      const media = document.createElement("div");
+      media.className = "activity-media";
+      if (clip == null ? void 0 : clip.thumbnail) {
+        const img = document.createElement("img");
+        img.src = clip.thumbnail;
+        img.alt = "Miniatura del clip guardado";
+        media.append(img);
+      } else media.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v5c0 5-4 7-8 10-4-3-8-5-8-10V6Z"/></svg>';
+      const copy = document.createElement("div"), title = document.createElement("strong"), detail = document.createElement("p"), time = document.createElement("time");
+      title.textContent = eventTitle(e);
+      detail.textContent = e.message;
+      time.textContent = new Date(e.time).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+      time.dateTime = new Date(e.time).toISOString();
+      copy.append(title, detail);
+      row.append(media, copy, time);
+      row.onclick = () => clip ? openClipResult(clip.id) : openEventResult(e);
       $("recentActivity").append(row);
     }
   }
@@ -249,3 +290,107 @@ function updateDevicePreview() {
   }
 }
 setInterval(updateDevicePreview, 1e3);
+function renderHomeStatus(clips) {
+  const live = !!state.stream && !state.cameraMuted;
+  $("cameraMessage").hidden = !!state.stream;
+  $("homeCameraCount").textContent = live ? "1 activa" : "0 activas";
+  $("homeCameraCount").classList.toggle("online", live);
+  $("homeCameraStatus").textContent = state.cameraMuted ? "C\xE1mara en pausa" : live ? "1 c\xE1mara en directo" : "C\xE1mara apagada";
+  $("homeProtect").textContent = homeActionBusy ? "Espera\u2026" : state.armed ? "Desarmar" : "Armar";
+  $("homeProtect").disabled = homeActionBusy;
+  $("cameraPower").textContent = state.stream ? "Detener" : "Encender";
+  $("cameraPower").setAttribute("aria-label", state.stream ? "Detener c\xE1mara" : "Iniciar c\xE1mara");
+  $("cameraPower").disabled = $("homeStartCamera").disabled = homeActionBusy;
+  $("record").classList.toggle("is-recording", state.recording);
+  $("record").setAttribute("aria-label", state.recording ? "Detener grabaci\xF3n" : "Grabar clip manual");
+  $("record").title = state.recording ? "Detener grabaci\xF3n" : "Grabar clip manual";
+  $("photo").setAttribute("aria-label", "Capturar fotograf\xEDa");
+  $("photo").title = "Capturar fotograf\xEDa";
+  $("fullscreen").setAttribute("aria-label", "Ampliar v\xEDdeo");
+  $("fullscreen").title = "Ampliar v\xEDdeo";
+  $("clock").hidden = !state.stream;
+  $("record").disabled = !state.stream || !window.MediaRecorder || state.recordStarting || state.recordFinalizing;
+  $("photo").disabled = !state.stream;
+  $("fullscreen").disabled = !state.stream;
+  const status = state.alarm ? "Alarma activa" : state.warningPending ? "Aviso de seguridad" : state.storageFailed ? "Revisar almacenamiento" : state.cameraMuted ? "Captura en pausa" : !live ? "C\xE1mara apagada" : state.armed ? "Vigilancia activa" : "Solo vista previa";
+  $("homeSystemPill").textContent = status;
+  $("homeSystemPill").classList.toggle("online", live && state.armed && !state.storageFailed && !state.alarm);
+  $("homeSystemPill").classList.toggle("alarm", state.alarm);
+  const summary = state.clipSummary || [], bytes = summary.reduce((n, c) => n + c.size, 0), estimate = state.storageEstimate;
+  $("homeStorageDetail").textContent = state.storageFailed ? "Error local \xB7 revisa tus clips" : estimate && estimate.quota ? "".concat((estimate.usage / 1048576).toFixed(1), " MB de ").concat((estimate.quota / 1048576).toFixed(0), " MB \xB7 cuota estimada") : "".concat(clips, " clips \xB7 ").concat((bytes / 1048576).toFixed(1), " MB guardados \xB7 cuota no disponible");
+  $("homeStorageProgress").hidden = !(estimate && estimate.quota);
+  if (estimate == null ? void 0 : estimate.quota) $("homeStorageProgress").value = Math.min(1, estimate.usage / estimate.quota);
+}
+function eventTitle(e) {
+  return { persona: "Persona detectada", movimiento: "Movimiento detectado", alarma: "Alarma", audio: "Sonido", c\u00E1mara: "C\xE1mara", modo: "Vigilancia" }[e.type] || (e.type === "grabaci\xF3n" && e.message.includes("guardada") ? "Clip guardado" : e.type === "grabaci\xF3n" ? "Grabaci\xF3n" : "Evento del sistema");
+}
+function highlightTarget(target) {
+  if (!target) return;
+  target.scrollIntoView({ block: "center" });
+  target.classList.add("search-highlight");
+  setTimeout(() => target.classList.remove("search-highlight"), 3e3);
+}
+function openClipResult(id) {
+  goPage("activity");
+  selectActivity("clips");
+  highlightTarget([...$("clips").children].find((c) => c.dataset.clipId === String(id)));
+}
+function openEventResult(e) {
+  goPage("events");
+  $("filter").value = e.type;
+  renderEvents(500);
+  highlightTarget([...$("events").children].find((row) => row.dataset.eventTime === String(e.time)));
+}
+function searchText(value) {
+  return String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
+}
+function renderSearch() {
+  const query = searchText($("globalSearch").value.trim());
+  const target = $("searchResults");
+  target.hidden = !query;
+  target.replaceChildren();
+  if (!query) return;
+  const results = [], cameraName = profileData.camera || "Entrada";
+  if (searchText(cameraName + " c\xE1mara este tel\xE9fono").includes(query)) results.push({ title: cameraName, detail: "C\xE1mara de este dispositivo", action: openLocalCamera });
+  for (const clip of (state.clipSummary || []).slice().sort((a, b) => b.id - a.id)) {
+    if (searchText(clip.reason + " grabaci\xF3n clip " + new Date(clip.id).toLocaleString("es-ES")).includes(query)) results.push({ title: clip.reason, detail: new Date(clip.id).toLocaleString("es-ES") + " \xB7 clip guardado", action: () => openClipResult(clip.id) });
+    if (results.length >= 6) break;
+  }
+  for (const e of events) {
+    if (searchText(e.type + " " + e.message + " " + new Date(e.time).toLocaleString("es-ES")).includes(query)) results.push({ title: eventTitle(e), detail: e.message, action: () => openEventResult(e) });
+    if (results.length >= 6) break;
+  }
+  if (!results.length) {
+    const p = document.createElement("p");
+    p.className = "empty-state";
+    p.textContent = "No hay resultados en este dispositivo.";
+    target.append(p);
+    return;
+  }
+  for (const result of results.slice(0, 6)) {
+    const button = document.createElement("button"), copy = document.createElement("span"), title = document.createElement("strong"), detail = document.createElement("small");
+    button.className = "search-result";
+    title.textContent = result.title;
+    detail.textContent = result.detail;
+    copy.append(title, detail);
+    button.append(copy);
+    button.onclick = () => {
+      $("globalSearch").value = "";
+      target.hidden = true;
+      result.action();
+    };
+    target.append(button);
+  }
+}
+$("globalSearch").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(renderSearch, 120);
+});
+document.addEventListener("security:clips", () => {
+  lastActivitySignature = "";
+  renderApp();
+  if ($("globalSearch").value) renderSearch();
+});
+setInterval(() => {
+  if (currentPage === "home" && state.stream) storage();
+}, 3e4);

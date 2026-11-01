@@ -13,7 +13,7 @@ with sync_playwright() as p:
  assert page.locator('#accountPage,#supabaseEmail,#supabasePassword,#accountOpen').count()==0
  page.evaluate("location.hash='account'");page.wait_for_function("currentPage==='home'");assert page.locator('#landingPage').is_visible();assert page.locator('#homeTitle').inner_text()=='Casa Mallorca';page.screenshot(path='/tmp/security-soft-blue-home.png',full_page=True)
  page.click('#navCameras');page.wait_for_selector('#camerasPage:visible');assert 'Puerta principal' in page.locator('#cameraList').inner_text();assert page.locator('#cloudCameraCards,#linkOtherPhone').count()==0
- page.click('#addFromCameras');page.wait_for_selector('#addSheet:visible');page.click('#useThisPhone');page.wait_for_selector('#cameraPage:visible');page.uncheck('#person');page.click('#protect');confirm_action(page);page.wait_for_function('state.armed && !protecting',timeout=30000)
+ page.click('#addFromCameras');page.wait_for_selector('#addSheet:visible');page.click('#useThisPhone');page.wait_for_selector('#cameraPage:visible');page.uncheck('#person');page.select_option('#recordMode','manual');page.click('#protect');confirm_action(page);page.wait_for_function('state.armed && !protecting',timeout=30000)
  page.screenshot(path='/workspace/security-setup/app-camera.png',full_page=True)
  page.click('#record');page.wait_for_function('state.recording');page.wait_for_timeout(1800);page.click('#record');page.wait_for_function("document.querySelectorAll('.clip').length===1")
  page.click('#navClips');page.wait_for_selector('#activityPage:visible');page.get_by_role('button',name='Eliminar',exact=True).click();page.wait_for_selector('#pinEntry:visible');page.get_by_role('button',name='Cancelar',exact=True).click();assert page.locator('.clip').count()==1
