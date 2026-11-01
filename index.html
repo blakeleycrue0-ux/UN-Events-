@@ -99,9 +99,25 @@
         </button>
       </div>
       <div id="cameraList" class="list-card"></div>
+      <div id="remoteCameraList" class="paired-list"></div>
+      <button id="managePairing" class="sheet-option"><strong>Conectar otro móvil</strong><span>Invitación privada para usar otro iPhone como cámara</span></button>
       <p class="fine-print">La cámara y las grabaciones se gestionan en este dispositivo, con tu PIN local.</p>
 
 
+    </section>
+    <section id="pairingPage" class="page" hidden>
+      <div class="page-heading"><div><p class="kicker">CONEXIÓN PRIVADA</p><h1>Dos móviles. Un espacio.</h1></div></div>
+      <section id="createInvitePanel" class="glass-panel pairing-panel">
+        <h2>Usar otro móvil como cámara</h2>
+        <p>Crea una invitación aquí y ábrela en Safari en el iPhone que dejarás vigilando. No necesitas iniciar sesión con email.</p>
+        <label>Nombre de la cámara<input id="pairName" maxlength="60" value="Entrada" autocomplete="off" /></label>
+        <button id="createInvite" class="primary">Crear invitación</button>
+        <div id="inviteResult" hidden><label>Enlace privado · un uso · 10 minutos<input id="inviteLink" readonly aria-label="Enlace de invitación" /></label><div class="pair-actions"><button id="copyInvite" class="small-button">Copiar enlace</button><button id="shareInvite" class="small-button">Compartir</button><button id="cancelInvite" class="text-button">Cancelar invitación</button></div><p id="inviteExpiry" class="fine-print"></p></div>
+      </section>
+      <section id="acceptInvitePanel" class="glass-panel pairing-panel" hidden><p class="kicker">INVITACIÓN RECIBIDA</p><h2>Este iPhone será la cámara</h2><p>Al aceptar, el móvil que creó el enlace podrá ver el vídeo cuando tú actives Compartir. Se comparte solo imagen, sin micrófono. Tu PIN sigue siendo local.</p><button id="acceptInvite" class="primary">Aceptar y vincular este iPhone</button><button id="rejectInvite" class="text-button">Descartar invitación</button></section>
+      <section class="glass-panel pairing-panel"><h2>Tus conexiones</h2><div id="pairedDevices"></div><button id="refreshPairs" class="text-button">Actualizar conexiones</button><p id="pairStatus" role="status" aria-live="polite">Crea una invitación o abre la que te hayan enviado.</p></section>
+      <section id="pairedVideoPanel" class="glass-panel pairing-panel" hidden><div class="section-title"><h2 id="pairedVideoTitle">Cámara remota</h2><span id="pairedLive" class="small-state">CONECTANDO</span></div><video id="pairedVideo" autoplay muted playsinline controls></video><button id="stopPair" class="small-button">Desconectar directo</button><p class="fine-print">Los clips y la detección se ejecutan en el teléfono cámara. Aquí se muestra solo el directo; no se controlan su sirena ni sus grabaciones.</p></section>
+      <section class="pairing-panel"><h2>Antes de dejar la cámara</h2><p>La pantalla debe permanecer encendida y Safari visible. El iPhone bloqueado no mantiene la cámara de forma fiable. Una carcasa cerrada puede provocar calor.</p><p class="fine-print">La conexión entre redes necesita el servicio remoto configurado. Si falta, se mostrará el error; no se indicará que el vídeo está conectado hasta que lleguen fotogramas. Vuelve a conectar al regresar a Safari o, como máximo, tras 55 minutos para renovar la autorización.</p></section>
     </section>
     <main id="cameraPage" class="page camera-page" hidden="">
       <div class="page-heading compact">
@@ -323,6 +339,7 @@
         <button id="closeAdd" class="sheet-close" aria-label="Cerrar">×</button>
         <p class="kicker">AÑADIR DISPOSITIVO</p>
         <h2>Una nueva mirada.</h2>
+        <button id="useOtherPhone" class="sheet-option"><strong>Usar otro móvil</strong><span>Crear un enlace de invitación privado</span></button>
         <button id="useThisPhone" class="sheet-option">
           <strong>Usar este teléfono</strong
           ><span>Convertir este dispositivo en cámara</span></button
@@ -405,6 +422,8 @@
     <script src="detection.js"></script>
     <script src="app.js"></script>
     <script src="security.js"></script>
+    <script src="supabase-config.js"></script>
+    <script src="pairing.js"></script>
     <script src="shell.js"></script>
   </body>
 </html>

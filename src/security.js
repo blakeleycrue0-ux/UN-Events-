@@ -68,10 +68,11 @@ async function lockApplication() {
   if (pinPromptOpen) return;
   pinPromptOpen = true;
   securityUnlocked = false;
+  document.dispatchEvent(new Event("security:lock"));
   document.body.classList.add("auth-pending");
   if (state.stream) $("captureDock").append($("videoViewport"));
   for (const el of document.querySelectorAll(
-    ".app-header,#landingPage,#cameraPage,#profilePage,#activityPage,#camerasPage,#welcomePage",
+    ".app-header,#landingPage,#cameraPage,#profilePage,#activityPage,#camerasPage,#welcomePage,#pairingPage",
   ))
     el.inert = true;
   try {
@@ -82,7 +83,7 @@ async function lockApplication() {
     securityUnlocked = true;
     document.body.classList.remove("auth-pending", "locked", "hidden-controls");
     for (const el of document.querySelectorAll(
-      ".app-header,#landingPage,#cameraPage,#profilePage,#activityPage,#camerasPage,#welcomePage",
+      ".app-header,#landingPage,#cameraPage,#profilePage,#activityPage,#camerasPage,#welcomePage,#pairingPage",
     ))
       el.inert = false;
     $("unlock").textContent = "Bloquear";

@@ -25,7 +25,7 @@ with sync_playwright() as p:
  page.evaluate('state.mask=null')
  page.click('#homeClips');page.wait_for_selector('#activityPage:visible');page.click('#showEvents');assert page.locator('#eventsGroup').is_visible()
  page.reload();unlock_app(page);empty_people_model(page);page.click('#navSettings');assert page.locator('#profileDisplayName').inner_text()=='Alex'
- assert not any('supabase' in url or url.startswith('wss:') for url in requests),requests
+ assert not any('.supabase.co/' in url or '/vendor/supabase.js' in url or url.startswith('wss:') for url in requests),requests
  assert not errors,errors
  print('PASS app onboarding, local profile save/reload, removed account forms and legacy-route redirect, no cloud requests, camera list, add-device sheet, PIN-protected arming and activity navigation')
  b.close()

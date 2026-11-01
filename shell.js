@@ -11,7 +11,8 @@ const pageIDs = {
   camera: "cameraPage",
   activity: "activityPage",
   profile: "profilePage",
-  welcome: "welcomePage"
+  welcome: "welcomePage",
+  pairing: "pairingPage"
 };
 function showPage(name) {
   const requestedActivity = name === "events" ? "events" : name === "activity" ? "clips" : null;
@@ -34,7 +35,7 @@ function showPage(name) {
   for (const button of document.querySelectorAll("[data-tab]"))
     button.classList.toggle(
       "active",
-      button.dataset.tab === (name === "activity" && activityTab === "events" ? "events" : name === "camera" ? "cameras" : name)
+      button.dataset.tab === (name === "activity" && activityTab === "events" ? "events" : ["camera", "pairing"].includes(name) ? "cameras" : name)
     );
   if (livePage) requestAnimationFrame(draw);
   if (requestedActivity) selectActivity(requestedActivity);

@@ -1,5 +1,7 @@
 # SECURITY CAM con Supabase
 
+**Actualización — conexión sin login por invitación:** consulta [PAIRING_SETUP.md](PAIRING_SETUP.md). La interfaz actual usa Anonymous Auth por dispositivo, enlaces de un solo uso y `202611010001_pairing.sql`. No hace falta instalar el registro de cuentas descrito más abajo. Estas notas históricas describen la implementación anterior con email y contraseña, que ya no se carga en la app.
+
 Supabase sustituye el servidor WSS propio: Auth controla cuentas, PostgreSQL guarda solo el registro de cámaras y Realtime Broadcast privado transporta SDP/ICE. El vídeo usa WebRTC por TURN y los clips siguen en el teléfono cámara. No se sube vídeo ni MP3 a Supabase Storage. No hay servicio desplegado ni proyecto conectado todavía.
 
 Crear el proyecto puede ser rápido; completar y verificar acceso exterior necesita además el relay y probar dos redes reales. Supabase **no proporciona TURN**. Sin TURN configurado la app bloquea la conexión y lo explica.

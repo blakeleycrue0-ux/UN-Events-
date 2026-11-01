@@ -29,7 +29,7 @@ with sync_playwright() as p:
  page.click('#cameraPower');confirm_action(page);page.wait_for_function('!state.stream && !homeActionBusy');assert page.locator('#homeStartCamera').is_visible();assert page.locator('#homeCameraCount').inner_text()=='0 activas'
  page.fill('#globalSearch','sin-coincidencia-xyz');page.wait_for_selector('#searchResults:visible');assert 'No hay resultados' in page.locator('#searchResults').inner_text();page.fill('#globalSearch','camara');page.locator('#searchResults button').first.click();assert page.locator('#cameraPage').is_visible();assert not page.evaluate('state.stream')
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'No mobile horizontal overflow'
- assert not any('supabase' in r for r in requests);assert not errors,errors
+ assert not any('.supabase.co/' in r or '/vendor/supabase.js' in r for r in requests);assert not errors,errors
  desktop=b.new_context(viewport={'width':1280,'height':900});d=desktop.new_page();d.goto('http://127.0.0.1:8001');unlock_app(d);d.click('#welcomeLocal');d.screenshot(path='/tmp/security-glass-desktop.png',full_page=True);assert d.evaluate('document.documentElement.scrollWidth<=innerWidth')
  print('PASS glass PIN; honest idle/live status; one native stream shared across Home/camera; actual JPEG download, real home clip and exact event thumbnail; local search and navigation; PIN arm/disarm; storage route; Safari-style fullscreen fallback; stop camera; mobile/desktop layout; no account/network calls')
  b.close()
