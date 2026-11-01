@@ -1,18 +1,19 @@
+from pin_helpers import unlock_app, confirm_action
 """Failure/permission guards. AI predictions and quota failures are injected fixtures."""
 from playwright.sync_api import sync_playwright
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'])
  c=b.new_context(permissions=['camera'],accept_downloads=True,viewport={'width':390,'height':844})
  page=c.new_page();page.add_init_script("document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('details').forEach(d=>d.open=true))");errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('http://127.0.0.1:8001/#camera');page.wait_for_function('!!db');page.click('#camera');page.wait_for_function('!!state.stream')
- page.click('#enableAudio');page.select_option('#mode','alarm')
+ page.goto('http://127.0.0.1:8001/#camera');unlock_app(page);page.wait_for_function('!!db');page.click('#camera');page.wait_for_function('!!state.stream')
+ page.click('#testSpeaker');page.wait_for_function('audioReady && !!activeAudio');page.locator('#mode').evaluate("e=>{e.value='alarm';e.dispatchEvent(new Event('change'))}")
  page.evaluate("""()=>{state.model={detect:async()=>({object:[{label:'person',score:.99,boxRaw:[.4,.4,.2,.2]}]})};document.getElementById('person').checked=true;document.getElementById('aiInterval').value='1';document.getElementById('confirmation').value='1';state.lastAlarm=0;state.zone={x:.1,y:.1,w:.8,h:.8};}""")
  page.wait_for_timeout(3500);assert not page.evaluate('state.alarm')
  page.evaluate("state.zone=null");page.evaluate("document.getElementById('autoAlarm').checked=true;document.getElementById('autoAlarm').dispatchEvent(new Event('change'))");page.wait_for_timeout(3500);assert not page.evaluate('state.alarm')
  page.evaluate("state.zone={x:.1,y:.1,w:.8,h:.8}");page.wait_for_function('state.warningPending',timeout=12000)
- page.select_option('#mode','silent');page.wait_for_function('!state.alarm && !siren')
+ page.locator('#mode').evaluate("e=>{e.value='silent';e.dispatchEvent(new Event('change'))}");page.wait_for_function('!state.alarm && !siren')
  print('PASS automatic siren requires explicit opt-in, zone, confirmed person and ALARMA; SILENCIOSO stops sound')
- page.uncheck('#person')
+ page.locator('#person').evaluate("e=>{e.checked=false;e.dispatchEvent(new Event('change'))}")
  page.evaluate("state.mask={x:0,y:0,w:.3,h:.3};processed()")
  assert page.evaluate('Array.from(fx.getImageData(5,5,1,1).data).slice(0,3).every(x=>x===0)')
  page.click('#photo')
@@ -25,7 +26,7 @@ with sync_playwright() as p:
  assert page.locator('#rec').is_hidden()
  print('PASS simulated quota failure: REC off, automatic recording halted, emergency download offered')
  page.evaluate('()=>{store=originalStore}')
- page.click('#camera');page.wait_for_function('!state.stream')
+ page.click('#camera');confirm_action(page);page.wait_for_function('!state.stream')
  page.screenshot(path='/workspace/security-setup/mobile.png',full_page=True)
  assert not errors,errors
  b.close()

@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body>
+  <body class="auth-pending">
     <header class="app-header">
       <button id="backHome" aria-label="Volver al inicio">←</button>
       <div class="brand-mark">S</div>
@@ -53,13 +53,72 @@
         remoto configurado; no se conecta por el mero hecho de abrir esta web.
       </p>
     </section>
-    <section id="remotePage" class="remote-page" hidden>
+    <section id="remotePage" class="remote-page" hidden="">
       <div class="remote-title">
         <span class="eyebrow">TUS DISPOSITIVOS</span>
         <h1>Conecta con tu hogar.</h1>
         <p>Un móvil vigila. El otro te permite mirar.</p>
       </div>
       <div class="glass remote-card">
+        <label
+          >Conexión<select id="remoteProvider">
+            <option value="supabase">Mi cuenta de Supabase</option>
+            <option value="server">Servidor WSS propio</option>
+          </select></label
+        >
+        <div id="supabasePanel">
+          <details id="supabaseSetup" open>
+            <summary>Configurar mi proyecto (una vez)</summary>
+            <label
+              >URL pública de Supabase<input
+                id="supabaseUrl"
+                type="url"
+                placeholder="https://tu-proyecto.supabase.co" /></label
+            ><label
+              >Clave pública publishable / anon<input
+                id="supabasePublicKey"
+                type="text"
+                autocomplete="off"
+                placeholder="sb_publishable_…"
+            /></label>
+            <p>Solo la clave pública. Nunca uses secret ni service_role.</p>
+          </details>
+          <div id="supabaseLoginFields">
+            <label
+              >Email de tu cuenta<input
+                id="supabaseEmail"
+                type="email"
+                autocomplete="username" /></label
+            ><label
+              >Contraseña de tu cuenta<input
+                id="supabasePassword"
+                type="password"
+                autocomplete="current-password" /></label
+            ><button id="supabaseLogin">Iniciar sesión</button>
+          </div>
+          <div id="supabaseAccount" hidden>
+            <p id="supabaseAccountStatus"></p>
+            <button id="supabaseLogout">Cerrar sesión</button>
+            <div id="supabaseCameraFields">
+              <label
+                >Nombre de esta cámara<input
+                  id="supabaseCameraName"
+                  maxlength="60"
+                  value="Entrada"
+              /></label>
+            </div>
+            <div id="supabaseViewerFields">
+              <label
+                >Cámara de mi cuenta<select id="supabaseCameraList">
+                  <option value="">Busca tus cámaras</option>
+                </select></label
+              ><button id="supabaseRefresh">Buscar cámaras</button>
+            </div>
+          </div>
+          <p id="supabaseStatus" role="status">
+            Sin sesión. Usa la misma cuenta en tus dos móviles.
+          </p>
+        </div>
         <label
           >Papel de este móvil<select id="remoteRole">
             <option value="viewer">Ver la cámara de casa</option>
@@ -97,11 +156,11 @@
         <p id="remoteStatus" role="status">
           Sin conexión remota. No se está publicando vídeo.
         </p>
-        <div id="pairingResult" hidden>
+        <div id="pairingResult" hidden="">
           <label
             >Clave privada para el otro móvil<input
               id="createdPair"
-              readonly
+              readonly=""
               type="password" /></label
           ><button id="copyPair">Copiar clave</button>
           <p>
@@ -110,8 +169,14 @@
           </p>
         </div>
       </div>
-      <div id="remoteVideoBox" class="remote-video-box" hidden>
-        <video id="remoteVideo" autoplay muted playsinline controls></video>
+      <div id="remoteVideoBox" class="remote-video-box" hidden="">
+        <video
+          id="remoteVideo"
+          autoplay=""
+          muted=""
+          playsinline=""
+          controls=""
+        ></video>
         <p>
           Solo vídeo. Las grabaciones continúan guardándose en el móvil cámara.
         </p>
@@ -119,22 +184,22 @@
       <details class="glass remote-info">
         <summary>Preparar la conexión desde fuera</summary>
         <p>
-          Netlify aloja esta interfaz. Hace falta desplegar el servicio
-          autenticado incluido y configurar un relay TURN para redes móviles o
-          routers que bloquean conexiones directas. Hasta hacerlo no se puede
-          prometer acceso desde fuera de casa.
+          Con Supabase, usa la misma cuenta en los dos móviles. El proyecto debe
+          tener configurados los permisos de cámaras, Realtime privado y la
+          función de conexión. Necesitas también un relay TURN para que el vídeo
+          atraviese redes distintas.
         </p>
         <p>
-          En el móvil cámara inicia primero la vigilancia. Mantén Safari visible
-          y el móvil desbloqueado. El PIN local no es la clave de acceso remoto.
+          Los clips siguen guardándose en el móvil cámara. Mantén Safari visible
+          y el móvil desbloqueado. El PIN local no sustituye tu cuenta remota.
         </p>
       </details>
     </section>
-    <main id="cameraPage" hidden>
+    <main id="cameraPage" hidden="">
       <section class="home-card">
         <div class="home-top">
           <span>MI SISTEMA</span><span id="status">DESARMADO</span
-          ><span id="alarmStatus" hidden>ALARMA ACTIVA</span>
+          ><span id="alarmStatus" hidden="">ALARMA ACTIVA</span>
         </div>
         <div class="shield-mark">
           <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
@@ -142,12 +207,12 @@
               d="M24 5 40 11v12c0 10-8 17-16 21C16 40 8 33 8 23V11Z"
               stroke="currentColor"
               stroke-width="2.5"
-            />
+            ></path>
             <path
               d="m16 24 6 6 11-13"
               stroke="currentColor"
               stroke-width="2.5"
-            />
+            ></path>
           </svg>
         </div>
         <h1 id="protectionTitle">Tu hogar, bajo control</h1>
@@ -186,11 +251,11 @@
       <section class="monitor">
         <div id="stage">
           <div id="videoViewport">
-            <video id="video" autoplay muted playsinline></video>
+            <video id="video" autoplay="" muted="" playsinline=""></video>
           </div>
           <canvas id="overlay"></canvas>
           <div class="badges">
-            <span id="live">SIN CÁMARA</span><span id="rec" hidden>REC</span>
+            <span id="live">SIN CÁMARA</span><span id="rec" hidden="">REC</span>
           </div>
           <div id="cameraMessage">
             La cámara se inicia al proteger esta imagen. Sin micrófono.
@@ -198,37 +263,22 @@
         </div>
         <input id="nightMode" type="hidden" value="auto" />
         <p id="nightHint"></p>
-        <div hidden>
+        <div hidden="">
           <input id="autoAlarm" type="checkbox" /><button id="fullZone">
             Usar imagen completa
           </button>
-        </div>
-        <div class="quick-mode controls">
-          <label
-            >Modo
-            <select id="mode">
-              <option value="disarmed">DESARMADO</option>
-              <option value="silent">SILENCIOSO</option>
-              <option value="deter">DISUASORIO</option>
-              <option value="alarm">ALARMA</option>
-            </select></label
-          >
         </div>
 
         <details class="controls extra-tools">
           <summary>Controles de cámara</summary>
           <div class="toolbar controls primary">
-            <button id="camera">Iniciar cámara</button
-            ><button id="arm">ACTIVAR VIGILANCIA</button>
-            <button id="record">Grabar manual</button
-            ><button id="nightToggle" aria-pressed="false">Noche: AUTO</button>
+            <button id="camera">Iniciar cámara</button>
+            <button id="record">Grabar manual</button>
           </div>
           <div id="extraToolsModeAnchor"></div>
           <div class="toolbar">
-            <button id="enableAudio">Habilitar sonido</button
-            ><button id="photo">Fotografía</button>
-            <button id="fullscreen">Pantalla completa</button
-            ><button id="hide">Ocultar controles</button>
+            <button id="photo">Fotografía</button>
+            <button id="fullscreen">Pantalla completa</button>
             <button id="alarm" class="danger">Alarma manual</button>
           </div>
         </details>
@@ -236,56 +286,25 @@
         <p id="error" role="alert"></p>
       </section>
       <details class="controls settings">
-        <summary>Ajustes de vigilancia</summary>
+        <summary>Preferencias</summary>
         <section class="panels">
           <article>
-            <h2>Vigilancia</h2>
+            <h2>Cámara y privacidad</h2>
             <label
               >Cámara
               <select id="device">
                 <option value="">Trasera automática</option>
               </select></label
-            ><button id="restart">Reiniciar cámara</button
-            ><label
-              ><input id="motion" type="checkbox" checked /> Detectar
-              movimiento</label
-            ><label
-              >Sensibilidad
-              <input
-                id="sensitivity"
-                type="range"
-                min="1"
-                max="100"
-                value="60" /></label
-            ><label
-              ><input id="person" type="checkbox" /> Detectar personas (cargar
-              IA local)</label
-            ><label
-              >Confianza persona
-              <input
-                id="confidence"
-                type="range"
-                min="30"
-                max="95"
-                value="60" /></label
-            ><label
-              >Intervalo IA (segundos)<input
-                id="aiInterval"
-                type="number"
-                min="1"
-                max="30"
-                value="3" /></label
             ><button id="zone">Dibujar zona restringida</button
             ><button id="mask">Dibujar máscara privada</button
             ><button id="clearZones">Borrar zonas</button>
             <p>
-              Arrastra sobre el vídeo. La zona verde limita ambos detectores; la
-              máscara negra también oculta esa región en fotos y grabaciones
-              procesadas.
+              Encuadra solo tu propiedad. El brillo, la noche y el consumo se
+              ajustan automáticamente.
             </p>
           </article>
           <article>
-            <h2>Grabación y almacenamiento</h2>
+            <h2>Grabaciones</h2>
             <label
               >Modo
               <select id="recordMode">
@@ -298,7 +317,7 @@
               >Duración
               <select id="clip">
                 <option>10</option>
-                <option selected>20</option>
+                <option selected="">20</option>
                 <option>30</option>
                 <option>60</option>
               </select>
@@ -308,148 +327,33 @@
               no importantes al superar el 80% de cuota</label
             >
             <p id="storage">Comprobando almacenamiento…</p>
-            <p>
-              Safari puede eliminar datos locales. Descarga las evidencias
-              importantes. Si no puede guardar un clip, se ofrecerá su descarga
-              y se detendrá la grabación automática.
-            </p>
           </article>
           <article>
-            <h2>Audio y alarma</h2>
-            <button id="enableAudio">Habilitar sonido</button
-            ><label
+            <h2>Sonido e iluminación</h2>
+            <label
               >Volumen general<input
                 id="volume"
                 type="range"
                 min="0"
                 max="100"
-                value="70"
-            /></label>
-            <div hidden>
-              <label
-                ><input id="autoVoice" type="checkbox" /> Avisos automáticos
-                (modo disuasorio)</label
-              >
-            </div>
-            <div hidden>
-              <label
-                ><input id="autoNotice" type="checkbox" /> Incluir aviso de zona
-                videovigilada</label
-              >
-            </div>
-            <div hidden>
-              <label
-                ><input id="autoWarning" type="checkbox" checked /> Incluir
-                advertencia de propiedad</label
-              >
-            </div>
-            <div id="sounds"></div>
-            <label
-              >Confirmación (segundos)<input
-                id="confirmation"
-                type="number"
-                min="1"
-                max="60"
-                value="3" /></label
+                value="70" /></label
             ><label
-              >Intervalo mínimo (segundos)<input
-                id="cooldown"
-                type="number"
-                min="10"
-                max="3600"
-                value="60" /></label
-            ><label
-              >Duración sirena<select id="alarmDuration">
-                <option>5</option>
-                <option selected>10</option>
-                <option>15</option>
-                <option>30</option>
-              </select></label
-            >
-            <p>
-              La alarma automática requiere permiso explícito y una zona de tu
-              propiedad. La sirena solo empieza si continúa la detección después
-              del aviso.
-            </p>
-          </article>
-          <article>
-            <h2>Dispositivo y privacidad</h2>
-            <div hidden>
-              <label
-                >Brillo<input
-                  id="brightness"
-                  type="range"
-                  min="50"
-                  max="200"
-                  value="100"
-              /></label>
-            </div>
-            <div hidden>
-              <label
-                >Contraste<input
-                  id="contrast"
-                  type="range"
-                  min="50"
-                  max="200"
-                  value="100"
-              /></label>
-            </div>
-            <div hidden>
-              <label
-                >Gamma (fotos y clips procesados)<input
-                  id="gamma"
-                  type="range"
-                  min="50"
-                  max="200"
-                  value="100"
-              /></label>
-            </div>
-            <div hidden>
-              <label
-                >Sensibilidad nocturna<input
-                  id="nightSensitivity"
-                  type="range"
-                  min="1"
-                  max="100"
-                  value="75"
-              /></label>
-            </div>
-            <label
-              >Zoom digital<input
-                id="zoom"
-                type="range"
-                min="100"
-                max="250"
-                value="100" /></label
-            ><label
-              ><input id="lowPower" type="checkbox" checked /> Bajo consumo
-              (análisis reducido)</label
-            ><label
-              ><input id="eventLight" type="checkbox" disabled /> Iluminar al
-              detectar (DISUASORIO, si hay linterna)</label
-            ><label
-              ><input id="torch" type="checkbox" disabled /> Linterna
+              ><input id="torch" type="checkbox" disabled="" /> Linterna
               continua</label
             ><label
-              ><input id="alarmFlash" type="checkbox" disabled /> Luz lenta
+              ><input id="alarmFlash" type="checkbox" disabled="" /> Luz lenta
               durante alarma (cada 2 segundos)</label
-            ><label
-              >Límite linterna (segundos)<input
-                id="torchLimit"
-                type="number"
-                min="5"
-                max="120"
-                value="30"
-            /></label>
+            >
             <p id="torchInfo">
               Se comprobará la capacidad real al iniciar la cámara.
             </p>
-            <button id="diagnose">Diagnóstico y prueba integral</button>
-            <pre id="diagnostics"></pre>
-            <button id="pin">Establecer PIN local</button>
+          </article>
+          <article>
+            <h2>Seguridad</h2>
+            <button id="pin">Cambiar mi PIN</button>
             <p>
-              El PIN solo bloquea estos controles; no cifra evidencias ni
-              protege frente a alguien con acceso al navegador.
+              El PIN es local. No cifra grabaciones ni sustituye el acceso
+              remoto.
             </p>
           </article>
         </section>
@@ -492,8 +396,87 @@
       </details>
     </main>
     <div id="captureDock" aria-hidden="true"></div>
+    <div id="engineSettings" hidden="">
+      <button id="restart">Reiniciar cámara</button
+      ><input id="motion" type="checkbox" checked="" /><input
+        id="sensitivity"
+        type="range"
+        min="1"
+        max="100"
+        value="60"
+      /><input id="person" type="checkbox" /><input
+        id="confidence"
+        type="range"
+        min="30"
+        max="95"
+        value="60"
+      /><input
+        id="aiInterval"
+        type="number"
+        min="1"
+        max="30"
+        value="3"
+      /><button id="enableAudio">Habilitar sonido</button
+      ><input id="autoVoice" type="checkbox" /><input
+        id="autoNotice"
+        type="checkbox"
+      /><input id="autoWarning" type="checkbox" checked="" />
+      <div id="sounds"></div>
+      <input id="confirmation" type="number" min="1" max="60" value="3" /><input
+        id="cooldown"
+        type="number"
+        min="10"
+        max="3600"
+        value="60"
+      /><select id="alarmDuration">
+        <option>5</option>
+        <option selected="">10</option>
+        <option>15</option>
+        <option>30</option></select
+      ><input
+        id="brightness"
+        type="range"
+        min="50"
+        max="200"
+        value="100"
+      /><input
+        id="contrast"
+        type="range"
+        min="50"
+        max="200"
+        value="100"
+      /><input id="gamma" type="range" min="50" max="200" value="100" /><input
+        id="nightSensitivity"
+        type="range"
+        min="1"
+        max="100"
+        value="75"
+      /><input id="zoom" type="range" min="100" max="250" value="100" /><input
+        id="lowPower"
+        type="checkbox"
+        checked=""
+      /><input id="eventLight" type="checkbox" disabled="" /><input
+        id="torchLimit"
+        type="number"
+        min="5"
+        max="120"
+        value="30"
+      /><button id="diagnose">Diagnóstico y prueba integral</button>
+      <pre id="diagnostics"></pre>
+      <button id="arm">ACTIVAR VIGILANCIA</button
+      ><button id="nightToggle" aria-pressed="false">Noche: AUTO</button
+      ><button id="hide">Ocultar controles</button
+      ><select id="mode">
+        <option value="disarmed">DESARMADO</option>
+        <option value="silent">SILENCIOSO</option>
+        <option value="deter">DISUASORIO</option>
+        <option value="alarm">ALARMA</option>
+      </select>
+    </div>
     <script src="app.js"></script>
     <script src="remote.js"></script>
+    <script src="supabase-remote.js"></script>
+    <script src="security.js"></script>
     <script src="shell.js"></script>
   </body>
 </html>

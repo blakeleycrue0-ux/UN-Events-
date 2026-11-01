@@ -99,3 +99,17 @@ La ruta principal abre el nuevo Inicio con el fondo proporcionado por el usuario
 Se incluye un servicio WebSocket autenticado para preparar WebRTC, separado de Netlify. **No está desplegado ni hay acceso desde fuera de casa activado.** Lee [server/README.md](server/README.md) para infraestructura, secretos seguros, TURN, claves temporales y pruebas pendientes. La grabación principal continúa siendo local en el móvil cámara; no hay sincronización de clips entre dispositivos ni grabación en la nube. Las afirmaciones anteriores de que no existe transporte remoto describen la versión local anterior: ahora existe implementación opcional, sin servicio de producción configurado.
 
 Para validar el Inicio: `python3 tests/shell.py`. Para la autorización del servicio: `node --test tests/signaling.test.mjs`. El test opcional `tests/remote.py` sigue sin completar vídeo en este entorno y requiere validación con ICE/TURN operativo.
+
+## PIN obligatorio y diseño unificado
+
+Todas las pantallas usan el fondo azul y tarjetas de cristal. Al abrir o recargar se exige desbloqueo: si no hay PIN local, se crea uno de 6 a 12 cifras y se repite para confirmar. Un PIN existente de versiones anteriores se conserva. No se guarda una sesión que omita el PIN en futuras cargas. Bloquear desde la cabecera vuelve a pedirlo sin desarmar la vigilancia.
+
+Activar/desactivar vigilancia, detener la cámara, reiniciarla durante vigilancia, cambiar el detector o la zona durante vigilancia, sirena manual, compartir la cámara y cambiar el PIN requieren verificación local. Cancelar o equivocarse no ejecuta la acción. Cambiar el PIN exige conocer el anterior y confirmar dos veces el nuevo. Silenciar permanece inmediato —también desde el teclado de PIN cuando hay vigilancia— y no desarma el sistema. Las interrupciones reales de cámara o sistema se siguen gestionando automáticamente sin exigir un PIN para detener una captura fallida.
+
+El PIN es una barrera local de interfaz con comprobación en el navegador: no cifra los clips ni impide manipular el sitio desde herramientas de desarrollo, borrar almacenamiento o reinstalar la web. No sustituye el token/clave del servicio remoto. Cinco intentos fallidos provocan una espera local de 30 segundos; esa espera tampoco es autenticación de servidor. Si se borran los datos del sitio se pierden el PIN y potencialmente las evidencias guardadas. Si no se puede guardar/comprobar el PIN, se bloquea el acceso con explicación.
+
+Las Preferencias visibles se reducen a cámara, zona/máscara, modo y duración de grabación, gestión de espacio, volumen, iluminación compatible y cambio de PIN. Brillo, contraste, gamma, umbrales y frecuencia de análisis se ajustan automáticamente; sus controles ya no se ofrecen al usuario. `tests/security.py` comprueba los flujos con formularios reales y `tests/pin_helpers.py` introduce un PIN real en las regresiones, sin bypass en producción.
+
+## Supabase opcional para los dos móviles
+
+Se añade autenticación con cuenta, registro de cámaras con RLS y señalización privada Realtime. El SDK se incluye localmente (~225 KB) y solo se carga al iniciar sesión remota. El funcionamiento principal no depende de Supabase. No hay proyecto ni relay de producción conectados. Sigue [supabase/README.md](supabase/README.md): crear proyecto, aplicar SQL, habilitar tu usuario y configurar la función de credenciales TURN. No se prometen vídeo exterior ni almacenamiento en la nube antes de completar y verificar esos pasos.

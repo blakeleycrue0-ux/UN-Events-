@@ -959,3 +959,279 @@ body.locked #unlock {
     width: 100%;
   }
 }
+/* One visual system for Home, camera, evidence, settings and authentication. */
+body {
+  min-height: 100vh;
+  background: #167ef7 url("assets/home-background.jpg") center/cover scroll;
+  color: #fff;
+}
+.app-header {
+  color: #fff;
+}
+.brand-subtitle {
+  color: #d8e9ff;
+}
+.brand-mark {
+  background: #ffffff24;
+  border: 1px solid #ffffff4d;
+  color: #fff;
+}
+#unlock {
+  color: #fff;
+  border-color: #ffffff60;
+  background: #ffffff14;
+}
+#cameraPage .home-card,
+#cameraPage details,
+#cameraPage .panels article {
+  background: #ffffff18;
+  border: 1px solid #ffffff60;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 12px 35px #003b8b14;
+}
+#cameraPage .home-top,
+#cameraPage label,
+#cameraPage summary,
+#cameraPage h1,
+#cameraPage h2,
+#cameraPage .section-heading,
+#cameraPage .section-heading time {
+  color: #fff;
+}
+#cameraPage p,
+#cameraPage .consent-note,
+#cameraPage #protectionHint,
+#cameraPage #health,
+#cameraPage #nightHint,
+#cameraPage footer {
+  color: #deedff;
+}
+#cameraPage button,
+#cameraPage select {
+  background: #ffffffed;
+  color: #1457ab;
+  border-color: transparent;
+}
+#cameraPage .protect-button {
+  background: #fff;
+  color: #1257b2;
+  box-shadow: 0 10px 28px #003a8a1a;
+}
+#cameraPage .silence-action {
+  background: transparent;
+  color: #fff;
+}
+#cameraPage .audio-actions #testSpeaker {
+  background: #ffffff24;
+  color: #fff;
+  border-color: #ffffff66;
+}
+#cameraPage #status {
+  background: #ffffff24;
+  color: #fff;
+}
+#cameraPage .shield-mark {
+  background: #ffffff18;
+  border-color: #ffffff16;
+  color: #fff;
+}
+body[data-protection="armed"] #cameraPage .shield-mark {
+  background: #42d5a329;
+  color: #d3ffed;
+}
+body[data-protection="warning"] #cameraPage .shield-mark {
+  background: #ffdf7933;
+  color: #fff0b1;
+}
+body[data-protection="alarm"] #cameraPage .shield-mark {
+  background: #ff779c33;
+  color: #ffe2e8;
+}
+#cameraPage #alarmStatus {
+  color: #ffe0e9;
+}
+#cameraPage #error {
+  color: #ffe5e8;
+  background: #8f244a35;
+  border-radius: 12px;
+  padding: 10px;
+}
+#cameraPage #error:empty {
+  display: none;
+}
+#cameraPage #sequenceStatus {
+  color: #fff3ba;
+}
+#cameraPage pre {
+  color: #e4f1ff;
+}
+#cameraPage .app-navigation button {
+  background: #ffffff20;
+  color: #fff;
+}
+#cameraPage .app-navigation button:first-child {
+  background: #fff;
+  color: #1257b2;
+}
+#cameraPage .clip {
+  background: #ffffff1c;
+}
+#cameraPage .clip a,
+#cameraPage a {
+  color: #fff;
+}
+#cameraPage #events li {
+  color: #e3f0ff;
+  border-color: #ffffff30;
+}
+#cameraPage input[type="range"] {
+  accent-color: #fff;
+}
+#cameraPage input[type="checkbox"] {
+  accent-color: #1758c1;
+}
+body.auth-pending > :not(.pin-screen) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+.pin-screen {
+  background: #167ef7 url("assets/home-background.jpg") center/cover;
+  color: #fff;
+  overflow: auto;
+  backdrop-filter: none;
+  align-items: safe center;
+}
+.pin-card {
+  background: #ffffff1c;
+  border: 1px solid #ffffff77;
+  border-radius: 32px;
+  padding: 25px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 16px 50px #003c8720;
+}
+.pin-card h2 {
+  color: #fff;
+  font-size: 25px;
+  margin-top: 5px;
+}
+.pin-card p {
+  color: #e3efff;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.pin-card input {
+  background: #ffffffeb;
+  color: #1455a8;
+  border: 0;
+  margin: 12px 0 18px;
+  min-height: 54px;
+  font-size: 25px;
+}
+.pin-keys button {
+  background: #ffffff26;
+  border: 1px solid #ffffff55;
+  color: #fff;
+  height: 58px;
+  font-size: 23px;
+}
+.pin-keys button:hover {
+  background: #ffffff45;
+}
+.pin-keys button:disabled {
+  opacity: 0.22;
+  cursor: default;
+}
+.pin-accept {
+  background: #fff;
+  color: #1257b2;
+  border-radius: 28px;
+  min-height: 50px;
+}
+@media (max-height: 720px) {
+  .pin-screen {
+    align-items: flex-start;
+    padding: 16px;
+  }
+  .pin-card {
+    padding: 18px;
+    max-width: 310px;
+  }
+  .pin-card h2 {
+    font-size: 22px;
+  }
+  .pin-keys {
+    gap: 8px;
+  }
+  .pin-keys button {
+    height: 48px;
+  }
+  .pin-card input {
+    margin: 8px 0 12px;
+    padding: 10px;
+  }
+  .pin-accept {
+    margin-top: 12px;
+  }
+}
+
+body.auth-pending {
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
+}
+body.auth-pending > :not(.pin-screen):not(#captureDock) {
+  display: none !important;
+}
+body.auth-pending > #captureDock {
+  visibility: visible !important;
+  display: block !important;
+}
+#pinSilence {
+  margin-top: 12px;
+  background: transparent;
+  color: white;
+  border: 0;
+  font-size: 12px;
+}
+
+.pin-screen > p {
+  color: white;
+  max-width: 360px;
+  padding: 24px;
+  font-size: 14px;
+}
+
+#cameraPage #health {
+  display: none;
+}
+
+#supabaseSetup {
+  background: #ffffff12;
+  border-color: #ffffff55;
+  padding: 0 15px 12px;
+}
+#supabaseSetup summary {
+  color: white;
+  padding: 15px 0;
+  font-size: 12px;
+}
+#supabaseAccount {
+  margin-top: 16px;
+}
+#supabaseStatus {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #f0f6ff;
+}
+#supabasePanel button {
+  margin: 4px 4px 12px 0;
+}
+#supabaseLogin {
+  background: white;
+  color: #1454ab;
+}
+#supabaseSetup input {
+  font-size: 12px;
+}

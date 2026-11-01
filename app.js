@@ -1,5 +1,4 @@
 "use strict";
-var _a;
 if (!Element.prototype.replaceChildren)
   Element.prototype.replaceChildren = function(...nodes) {
     while (this.firstChild) this.removeChild(this.firstChild);
@@ -147,9 +146,9 @@ function store(name, method, value) {
   });
 }
 async function storage() {
-  var _a2;
+  var _a;
   try {
-    if ((_a2 = navigator.storage) == null ? void 0 : _a2.estimate) {
+    if ((_a = navigator.storage) == null ? void 0 : _a.estimate) {
       const e = await navigator.storage.estimate();
       $("storage").textContent = "Uso del origen: ".concat((e.usage / 1048576).toFixed(1), " MB / ").concat((e.quota / 1048576).toFixed(0), " MB (cuota estimada, no garant\xEDa)");
       return e;
@@ -300,8 +299,9 @@ function viewRect() {
   return { x: (r.width - w) / 2, y: (r.height - h) / 2, w, h };
 }
 function draw() {
-  var _a2;
-  if ((_a2 = document.getElementById("cameraPage")) == null ? void 0 : _a2.hidden) return;
+  var _a;
+  if (document.body.classList.contains("auth-pending")) return;
+  if ((_a = document.getElementById("cameraPage")) == null ? void 0 : _a.hidden) return;
   const r = overlay.getBoundingClientRect();
   if (overlay.width !== Math.round(r.width) || overlay.height !== Math.round(r.height)) {
     overlay.width = r.width;
@@ -337,8 +337,8 @@ function draw() {
     rect(drag.rect, drawMode === "mask" ? "#ff9c9c" : "#70d39a", "Selecci\xF3n");
 }
 async function torch(on) {
-  var _a2, _b;
-  const track = (_a2 = state.stream) == null ? void 0 : _a2.getVideoTracks()[0];
+  var _a, _b;
+  const track = (_a = state.stream) == null ? void 0 : _a.getVideoTracks()[0];
   if (!((_b = track == null ? void 0 : track.getCapabilities) == null ? void 0 : _b.call(track).torch)) {
     $("torch").checked = false;
     return;
@@ -369,12 +369,12 @@ async function torch(on) {
   }
 }
 async function startCamera() {
-  var _a2, _b, _c;
+  var _a, _b, _c;
   const generation = ++cameraGeneration;
   await stopCamera(false);
   if (generation !== cameraGeneration) return;
   $("error").textContent = "";
-  if (!window.isSecureContext || !((_a2 = navigator.mediaDevices) == null ? void 0 : _a2.getUserMedia)) {
+  if (!window.isSecureContext || !((_a = navigator.mediaDevices) == null ? void 0 : _a.getUserMedia)) {
     error(
       "Se requiere HTTPS (o localhost) y un navegador con acceso a c\xE1mara."
     );
@@ -469,7 +469,7 @@ async function startCamera() {
   }
 }
 async function stopCamera(invalidate = true) {
-  var _a2;
+  var _a;
   if (invalidate) cameraGeneration++;
   clearTimeout(loopTimer);
   await stopRecording();
@@ -479,7 +479,7 @@ async function stopCamera(invalidate = true) {
   clearTimeout(torchTimer);
   torchTimer = null;
   await torch(false);
-  (_a2 = state.stream) == null ? void 0 : _a2.getTracks().forEach((t) => t.stop());
+  (_a = state.stream) == null ? void 0 : _a.getTracks().forEach((t) => t.stop());
   state.stream = null;
   video.srcObject = null;
   $("videoViewport").style.opacity = "0";
@@ -571,10 +571,10 @@ async function startRecording(reason) {
       if (e.data.size) chunks.push(e.data);
     };
     current.onerror = (e) => {
-      var _a2;
+      var _a;
       state.storageFailed = true;
       error(
-        "Fallo de grabaci\xF3n: " + (((_a2 = e.error) == null ? void 0 : _a2.message) || "error del codificador"),
+        "Fallo de grabaci\xF3n: " + (((_a = e.error) == null ? void 0 : _a.message) || "error del codificador"),
         "p\xE9rdida"
       );
       stopRecording();
@@ -656,6 +656,7 @@ function playbackSession() {
   }
 }
 async function enableAudio() {
+  if (audioReady) return true;
   playbackSession();
   try {
     if (!activeAudio && !siren) {
@@ -1105,7 +1106,7 @@ $("unlock").onclick = async () => {
   }
   $("unlock").textContent = document.body.classList.contains("locked") ? "Desbloquear" : "Bloquear controles";
 };
-function requestPin(title) {
+function requestPin(title, options = {}) {
   return new Promise((resolve) => {
     const panel = document.createElement("div");
     panel.className = "pin-screen";
@@ -1117,11 +1118,11 @@ function requestPin(title) {
     const heading = document.createElement("h2");
     heading.textContent = title;
     const hint = document.createElement("p");
-    hint.textContent = "PIN local de 6 a 12 cifras. Protege los controles, no cifra las grabaciones.";
+    hint.textContent = options.hint || "PIN local de 6 a 12 cifras. Protege los controles, no cifra las grabaciones.";
     const input = document.createElement("input");
     input.id = "pinEntry";
     input.type = "password";
-    input.inputMode = "numeric";
+    input.inputMode = "none";
     input.maxLength = 12;
     input.autocomplete = "off";
     input.setAttribute("aria-label", "PIN");
@@ -1144,6 +1145,7 @@ function requestPin(title) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = digit;
+      if (digit === "Cancelar" && options.required) button.disabled = true;
       button.onclick = () => {
         if (digit === "Cancelar") {
           panel.remove();
@@ -1165,13 +1167,44 @@ function requestPin(title) {
         hint.textContent = "Introduce de 6 a 12 cifras.";
         return;
       }
+      if (options.onGesture) options.onGesture();
       const value = input.value;
       panel.remove();
       resolve(value);
     };
     input.oninput = () => input.value = input.value.replace(/\D/g, "").slice(0, 12);
     card.append(heading, hint, input, keys, accept);
+    if (state.armed) {
+      const silence = document.createElement("button");
+      silence.type = "button";
+      silence.id = "pinSilence";
+      silence.textContent = "Silenciar sonidos";
+      silence.onclick = stopSounds;
+      card.append(silence);
+    }
     panel.append(card);
+    panel.onkeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (!options.required) {
+          panel.remove();
+          resolve(null);
+        }
+      }
+      if (event.key === "Tab") {
+        const nodes = [...panel.querySelectorAll("input,button")].filter(
+          (el) => !el.disabled
+        );
+        const first = nodes[0], last = nodes[nodes.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
     document.body.append(panel);
     input.focus();
   });
@@ -1321,10 +1354,10 @@ for (const [id, label] of [
   $("sounds").append(button);
 }
 $("diagnose").onclick = async () => {
-  var _a2, _b, _c, _d, _e, _f;
+  var _a, _b, _c, _d, _e, _f;
   const results = {
     HTTPS: isSecureContext,
-    c\u00E1maraAPI: !!((_a2 = navigator.mediaDevices) == null ? void 0 : _a2.getUserMedia),
+    c\u00E1maraAPI: !!((_a = navigator.mediaDevices) == null ? void 0 : _a.getUserMedia),
     c\u00E1maraActiva: !!state.stream,
     grabaci\u00F3nAPI: !!window.MediaRecorder,
     formato: mime(),
@@ -1394,9 +1427,9 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("pagehide", () => {
-  var _a2;
+  var _a;
   stopSounds();
-  (_a2 = state.stream) == null ? void 0 : _a2.getTracks().forEach((t) => t.stop());
+  (_a = state.stream) == null ? void 0 : _a.getTracks().forEach((t) => t.stop());
 });
 setInterval(
   () => $("clock").textContent = (/* @__PURE__ */ new Date()).toLocaleString("es-ES"),
@@ -1476,7 +1509,6 @@ function prepareDetection() {
 $("autoAlarm").addEventListener("change", prepareDetection);
 $("alarmSource").addEventListener("change", prepareDetection);
 loadSounds().catch((e) => error(e.message, "audio"));
-(_a = $("extraToolsModeAnchor")) == null ? void 0 : _a.append($("mode").closest("label"));
 let protecting = false;
 function renderProtection() {
   const title = $("protectionTitle"), hint = $("protectionHint");
@@ -1563,6 +1595,12 @@ $("protect").onclick = async () => {
     $("contrast").value = "100";
     $("gamma").value = "100";
     $("confirmation").value = "1";
+    $("confidence").value = "60";
+    $("aiInterval").value = "3";
+    $("sensitivity").value = "60";
+    $("nightSensitivity").value = "75";
+    $("lowPower").checked = true;
+    $("torchLimit").value = "30";
     state.threatSince = 0;
     state.lastAlarm = 0;
     setMode();
@@ -1600,12 +1638,12 @@ $("testSpeaker").onclick = async () => {
     $("speakerStatus").textContent = "Safari ha bloqueado la prueba. Toca otra vez para autorizarla.";
 };
 mediaAudio.addEventListener("error", () => {
-  var _a2;
+  var _a;
   if (activeAudio || siren) {
     audioReady = false;
     stopSounds();
     error(
-      "Error multimedia " + (((_a2 = mediaAudio.error) == null ? void 0 : _a2.code) || "desconocido") + ". Toca Probar sonido.",
+      "Error multimedia " + (((_a = mediaAudio.error) == null ? void 0 : _a.code) || "desconocido") + ". Toca Probar sonido.",
       "audio"
     );
   }
