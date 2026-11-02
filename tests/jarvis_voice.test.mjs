@@ -58,3 +58,14 @@ test('ElevenLabs out of credit → Gemini free voice as WAV; model ladder on 429
  const all429=async()=>new Response('{}',{status:429});let h2;new Function('Deno','fetch',code)({env:{get:n=>env[n]},serve:h=>h2=h},all429);
  assert.equal((await (await h2(req())).json()).error,'Gemini voice unavailable');
 });
+
+test('once ElevenLabs says out of credit, later replies go straight to Gemini',async()=>{
+ let handler;const calls=[];
+ const env={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',ELEVENLABS_API_KEY:'private-elevenlabs-fixture',GEMINI_API_KEY:'gem-fixture'};
+ const fetch=async(url)=>{url=String(url);calls.push(url);
+  if(url.includes('elevenlabs'))return Response.json({detail:{status:'quota_exceeded'}},{status:401});
+  return Response.json({candidates:[{content:{parts:[{inlineData:{mimeType:'audio/L16;rate=24000',data:btoa('ab')}}]}}]})};
+ new Function('Deno','fetch',code)({env:{get:n=>env[n]},serve:h=>handler=h},fetch);
+ assert.equal((await handler(req())).status,200);assert.equal((await handler(req({text:'Otra'}))).status,200);
+ assert.equal(calls.filter(u=>u.includes('elevenlabs')).length,1);assert.equal(calls.filter(u=>u.includes('generativelanguage')).length,2);
+});

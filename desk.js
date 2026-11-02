@@ -266,7 +266,7 @@
     const audio = new Audio();
     audio.preload = "auto";
     let id = 0, finish = null, ctx = null, analyser = null, data = null;
-    const voice2 = { speaking: false, error: "", volume: 1, local: false };
+    const voice2 = { speaking: false, error: "", volume: 1, local: false, maxWaitMS: 6e3 };
     let cloudDownUntil = 0;
     try {
       window.speechSynthesis?.getVoices?.();
@@ -387,10 +387,12 @@
       let url;
       try {
         if (Date.now() < cloudDownUntil && !voice2.forceCloud) throw Error("cloud voice resting");
-        url = URL.createObjectURL(await blob(text, lang));
+        const slow = new Promise((_, reject) => setTimeout(() => reject(Error("cloud voice slow")), voice2.maxWaitMS));
+        url = URL.createObjectURL(await Promise.race([blob(text, lang), slow]));
         voice2.error = "";
       } catch (e) {
-        if (e.message !== "cloud voice resting") {
+        if (e.message === "cloud voice slow") cloudDownUntil = Date.now() + 2 * 6e4;
+        else if (e.message !== "cloud voice resting") {
           voice2.error = e.message;
           cloudDownUntil = Date.now() + 10 * 6e4;
         }

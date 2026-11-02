@@ -386,6 +386,12 @@ with sync_playwright() as p:
     assert page.evaluate("desk.voice.speak('Prueba 1, todo bien.','es')") is True
     assert page.evaluate("speechSynthesis.spoken") == [['Prueba 1, todo bien.', 'es-ES', 'Jorge']]
     assert page.evaluate("desk.voice.speak('Prueba 2','es')") is True and len(page.evaluate("speechSynthesis.spoken")) == 2, 'goes straight to the built-in voice while the cloud rests'
+    # A slow cloud voice (over 6 s) doesn't keep the room waiting.
+    page.evaluate("desk.voice.forceCloud=true; desk.voice.maxWaitMS=300")
+    page.unroute('https://*.supabase.co/functions/v1/jarvis-voice')
+    page.route('https://*.supabase.co/functions/v1/jarvis-voice', lambda r: (time.sleep(1.5), r.fulfill(status=200, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'audio/wav'}, body=b'RIFF')))
+    assert page.evaluate("desk.voice.speak('Prueba 3','es')") is True and page.evaluate("speechSynthesis.spoken.at(-1)[0]") == 'Prueba 3'
+    page.evaluate("desk.voice.forceCloud=false; desk.voice.maxWaitMS=6000")
     # The wall can't transcribe: this computer listens again.
     home({'action': 'ears', 'on': True}); page.wait_for_function("desk.wallListening()")
     home({'action': 'ears', 'on': False}); page.wait_for_function("!desk.wallListening()")

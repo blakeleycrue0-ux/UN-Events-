@@ -23,7 +23,7 @@ export function createVoice({ settings, onState = () => {} }) {
   const audio = new Audio();
   audio.preload = "auto";
   let id = 0, finish = null, ctx = null, analyser = null, data = null;
-  const voice = { speaking: false, error: "", volume: 1, local: false };
+  const voice = { speaking: false, error: "", volume: 1, local: false, maxWaitMS: 6000 };
   let cloudDownUntil = 0;   // after a cloud failure, use the built-in voice for a while (no waiting)
   try { window.speechSynthesis?.getVoices?.(); } catch {}
 
@@ -92,9 +92,12 @@ export function createVoice({ settings, onState = () => {} }) {
     let url;
     try {
       if (Date.now() < cloudDownUntil && !voice.forceCloud) throw Error("cloud voice resting");
-      url = URL.createObjectURL(await blob(text, lang)); voice.error = "";
+      // Don't keep the room waiting: if the cloud voice is slow, the computer speaks.
+      const slow = new Promise((_, reject) => setTimeout(() => reject(Error("cloud voice slow")), voice.maxWaitMS));
+      url = URL.createObjectURL(await Promise.race([blob(text, lang), slow])); voice.error = "";
     } catch (e) {
-      if (e.message !== "cloud voice resting") { voice.error = e.message; cloudDownUntil = Date.now() + 10 * 60000; }
+      if (e.message === "cloud voice slow") cloudDownUntil = Date.now() + 2 * 60000;
+      else if (e.message !== "cloud voice resting") { voice.error = e.message; cloudDownUntil = Date.now() + 10 * 60000; }
       // Never silent: say it with the computer's own voice.
       const spoken = await speakLocal(text, lang, mine);
       if (mine === id) { voice.speaking = false; onState("idle", text); }

@@ -37,6 +37,9 @@ async function geminiVoice(key: string, text: string, lang: string) {
   throw Error("gemini: " + last);
 }
 
+// While ElevenLabs is out of credit, don't ask it on every reply (saves time).
+let elevenDownUntil = 0;
+
 Deno.serve(async (request: Request) => {
   const normalize = (x: string) => x.trim().replace(/^["']+|["']+$/g, "").replace(/\/+$/, "").toLowerCase();
   const origin = normalize(request.headers.get("origin") || "");
@@ -76,6 +79,7 @@ Deno.serve(async (request: Request) => {
     catch (error) { console.log("jarvis-voice Gemini failed:", String((error as Error).message).slice(0, 120)); return reply(502, why === "ElevenLabs not set" ? "Gemini voice unavailable" : why); }
   };
   if (!apiKey) return await viaGemini("ElevenLabs not set");
+  if (geminiKey && Date.now() < elevenDownUntil) return await viaGemini("ElevenLabs quota reached");
   const voice = Deno.env.get("ELEVENLABS_VOICE_ID") || "onwK4e9ZLuTAKqWW03F9"; // "Daniel": calm, deep, British.
   if (!/^[a-zA-Z0-9]{10,40}$/.test(voice)) return await viaGemini("Invalid voice id");
   try {
@@ -102,6 +106,7 @@ Deno.serve(async (request: Request) => {
         : /missing_permissions/.test(reason) ? "ElevenLabs key lacks text to speech permission"
         : upstream.status === 402 || upstream.status === 429 || /quota/.test(reason) ? "ElevenLabs quota reached"
         : upstream.status === 401 ? "ElevenLabs key rejected" : "ElevenLabs unavailable";
+      if (message === "ElevenLabs quota reached" || message === "ElevenLabs blocked free tier") elevenDownUntil = Date.now() + 60 * 60000;
       return await viaGemini(message);
     }
     return new Response(upstream.body, { status: 200, headers: { ...cors, "Content-Type": "audio/mpeg" } });
