@@ -7,6 +7,7 @@ import { createVoice } from "./jarvis/voice.js";
 import { createEars, afterWake } from "./jarvis/ears.js";
 import { createGestureReader, createHandDetector } from "./jarvis/hands.js";
 import { createOrb } from "./jarvis/orb.js";
+import { ICONS, weatherKind } from "./jarvis/icons.js";
 
 // Old pairing links pointed at the home page; the camera app lives at /camara.
 const toCamera = () => { if (/invite=[a-f0-9]{64}/i.test(location.hash)) location.replace("camara.html" + location.hash); };
@@ -17,7 +18,7 @@ const settings = loadSettings();
 const t = () => T[settings.lang] || T.en;
 const desk = window.desk = {
   started: false, state: "off", history: [], lastTalk: 0, memory: store.get("jarvis-memory", []),
-  arrivals: store.get("jarvis-arrivals", []), timers: [], weather: null, wallSeen: 0,
+  arrivals: store.get("jarvis-arrivals", []), timers: [], weather: null, wallSeen: 0, activeAt: Date.now(),
   extension: false, music: store.get("jarvis-music", null), gestures: [], settings, log: [],
 };
 const log = (m) => {
@@ -28,10 +29,30 @@ const log = (m) => {
 
 // ---------- Estado visual ----------
 const orb = createOrb($("orb"));
+const STATE_LABEL = { off: "OFFLINE", idle: "STANDBY", listening: "LISTENING", thinking: "THINKING", speaking: "SPEAKING", blocked: "MIC BLOCKED" };
 function setState(state, text) {
   desk.state = state; document.body.dataset.state = state; orb.setState(state);
+  $("stateLabel").textContent = STATE_LABEL[state] || "STANDBY";
+  if (state !== "idle") wakeUp();
   if (state === "listening") $("heard").textContent = text || "";
 }
+function wakeUp() { desk.activeAt = Date.now(); document.body.classList.remove("ambient"); }
+document.addEventListener("pointermove", wakeUp); document.addEventListener("keydown", wakeUp);
+// A soft two-note chime the instant someone comes in (before any voice).
+function chime(kind = "arrival") {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext; desk.chimeCtx ||= new Ctx();
+    const ctx = desk.chimeCtx, t0 = ctx.currentTime;
+    const notes = kind === "alert" ? [523.25, 415.3] : [659.25, 987.77];
+    notes.forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+      const t = t0 + i * 0.16; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.08, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+      o.start(t); o.stop(t + 1);
+    });
+  } catch { /* sound is optional */ }
+}
+desk.chime = chime;
 function say(text) { $("say").textContent = text; $("say").classList.remove("pop"); void $("say").offsetWidth; $("say").classList.add("pop"); }
 function toast(text) {
   const el = document.createElement("div"); el.className = "toast"; el.textContent = text;
@@ -44,67 +65,81 @@ function quietNow(h = new Date().getHours()) {
 desk.quietNow = quietNow;
 
 // ---------- Reloj, tiempo y paneles ----------
-const WMO = { 0: ["Clear", "Despejado", "☀️"], 1: ["Mostly clear", "Casi despejado", "🌤️"], 2: ["Partly cloudy", "Parcialmente nublado", "⛅"], 3: ["Cloudy", "Nublado", "☁️"],
-  45: ["Fog", "Niebla", "🌫️"], 48: ["Fog", "Niebla", "🌫️"], 51: ["Drizzle", "Llovizna", "🌦️"], 53: ["Drizzle", "Llovizna", "🌦️"], 55: ["Drizzle", "Llovizna", "🌦️"],
-  61: ["Light rain", "Lluvia débil", "🌧️"], 63: ["Rain", "Lluvia", "🌧️"], 65: ["Heavy rain", "Lluvia fuerte", "🌧️"], 80: ["Showers", "Chubascos", "🌦️"], 81: ["Showers", "Chubascos", "🌦️"],
-  82: ["Heavy showers", "Chubascos fuertes", "⛈️"], 95: ["Thunderstorm", "Tormenta", "⛈️"], 96: ["Thunderstorm", "Tormenta", "⛈️"], 99: ["Thunderstorm", "Tormenta", "⛈️"] };
-const wmo = (code) => WMO[code] || WMO[Math.floor(code / 10) * 10] || ["", "", "🌡️"];
+for (const el of document.querySelectorAll("[data-icon]")) el.innerHTML = ICONS[el.dataset.icon] || "";
+const isNight = (h = new Date().getHours()) => h < 7 || h >= 21;
 function weatherText() {
   const w = desk.weather; if (!w) return "";
-  const [en, es] = wmo(w.code);
-  return `${settings.city}: ${Math.round(w.temp)}°C, ${settings.lang === "es" ? es : en}, high ${Math.round(w.max)}°, low ${Math.round(w.min)}°${w.rain ? `, ${w.rain}% chance of rain` : ""}`;
+  const [en] = weatherKind(w.code);
+  return `${settings.city}: ${Math.round(w.temp)}°C, ${en.toLowerCase()}, high ${Math.round(w.max)}°, low ${Math.round(w.min)}°${w.rain ? `, ${w.rain}% chance of rain` : ""}`;
 }
 desk.weatherText = weatherText;
 async function loadWeather() {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${settings.lat}&longitude=${settings.lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=1`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${settings.lat}&longitude=${settings.lon}&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=2`;
     const data = await (await fetch(url)).json();
-    desk.weather = { temp: data.current.temperature_2m, code: data.current.weather_code, max: data.daily.temperature_2m_max[0], min: data.daily.temperature_2m_min[0], rain: data.daily.precipitation_probability_max?.[0] || 0 };
+    const now = Date.now(), times = (data.hourly?.time || []).map((t) => new Date(t).getTime());
+    const start = Math.max(0, times.findIndex((t) => t > now));
+    const hours = times.slice(start, start + 5).map((t, i) => ({ t, temp: data.hourly.temperature_2m[start + i], code: data.hourly.weather_code[start + i] }));
+    desk.weather = { temp: data.current.temperature_2m, code: data.current.weather_code, max: data.daily.temperature_2m_max[0], min: data.daily.temperature_2m_min[0], rain: data.daily.precipitation_probability_max?.[0] || 0, hours };
   } catch { log("tiempo: sin conexión"); }
-  render();
+  renderWeather(); render();
 }
 desk.loadWeather = loadWeather;
+function renderWeather() {
+  const w = desk.weather; if (!w) return;
+  const [en, es, kind] = weatherKind(w.code, isNight());
+  $("wxIcon").innerHTML = ICONS[kind]; $("wxTemp").textContent = Math.round(w.temp) + "°";
+  $("wxText").textContent = `${settings.lang === "es" ? es : en} · H ${Math.round(w.max)}°  L ${Math.round(w.min)}°${w.rain ? ` · ${w.rain}% rain` : ""}`;
+  $("wxCity").textContent = settings.city;
+  $("wxHours").replaceChildren(...(w.hours || []).map((h) => {
+    const li = document.createElement("li"), d = new Date(h.t);
+    const time = document.createElement("span"); time.textContent = String(d.getHours()).padStart(2, "0");
+    const icon = document.createElement("span"); icon.className = "ico"; icon.innerHTML = ICONS[weatherKind(h.code, isNight(d.getHours()))[2]];
+    const temp = document.createElement("b"); temp.textContent = Math.round(h.temp) + "°";
+    li.append(time, icon, temp); return li;
+  }));
+}
 function ago(ms) {
   const m = Math.round((Date.now() - ms) / 60000), es = settings.lang === "es";
-  return m < 1 ? (es ? "ahora" : "now") : m < 60 ? (es ? `hace ${m} min` : `${m} min ago`) : new Date(ms).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  return m < 1 ? (es ? "ahora" : "now") : m < 60 ? `${m} min` : new Date(ms).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
-const ROLE_ICON = { me: "★", mom: "♥", dad: "◆", other: "●", unknown: "?" };
+const ROLE_LABEL = { me: ["You", "Tú"], mom: ["Mother", "Madre"], dad: ["Father", "Padre"], other: ["Guest", "Invitado"], unknown: ["Unrecognised", "Desconocido"] };
+const initials = (name) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?";
 function render() {
   const { time, date } = clockParts(settings.lang);
   $("clock").textContent = time; $("date").textContent = date;
   document.body.classList.toggle("night", quietNow());
   $("quiet").hidden = !quietNow();
-  const w = desk.weather;
-  if (w) {
-    const [en, es, icon] = wmo(w.code);
-    $("wxIcon").textContent = icon; $("wxTemp").textContent = Math.round(w.temp) + "°";
-    $("wxText").textContent = `${settings.lang === "es" ? es : en} · ${Math.round(w.max)}° / ${Math.round(w.min)}°`;
-    $("wxCity").textContent = settings.city + (w.rain ? ` · ☂ ${w.rain}%` : "");
-  }
-  const online = Date.now() - desk.wallSeen < 6 * 60000;
+  const online = Date.now() - desk.wallSeen < 6 * 60000, es = settings.lang === "es";
   $("wallDot").classList.toggle("on", online);
-  $("wallText").textContent = online ? (settings.lang === "es" ? "Cámara de la puerta en línea" : "Door camera online") : (settings.lang === "es" ? "Cámara de la puerta sin señal" : "Door camera offline");
-  const list = $("arrivals"), shown = desk.arrivals.slice(-6).reverse();
-  // Rebuild only when someone new came in (keeps the entrance animation clean);
-  // otherwise just refresh the "x min ago" labels.
+  $("wallText").textContent = online ? (es ? "cámara en línea" : "camera online") : (es ? "cámara sin señal" : "camera offline");
+  const list = $("arrivals"), shown = desk.arrivals.slice(-5).reverse();
+  // Rebuild only when someone new came in; otherwise just refresh the times.
   const signature = settings.lang + shown.map((a) => a.at).join(",");
-  if (list.dataset.sig === signature) { list.querySelectorAll("time").forEach((el, i) => { el.textContent = ago(shown[i].at); }); }
-  else { list.dataset.sig = signature; list.replaceChildren();
-  for (const a of shown) {
-    const li = document.createElement("li"); li.className = "arrival " + a.role;
-    const icon = document.createElement("span"); icon.className = "badge"; icon.textContent = ROLE_ICON[a.role] || "●";
-    const name = document.createElement("strong"); name.textContent = a.name;
-    const when = document.createElement("time"); when.textContent = ago(a.at);
-    li.append(icon, name, when); list.append(li);
+  if (list.dataset.sig === signature) list.querySelectorAll("time").forEach((el, i) => { el.textContent = ago(shown[i].at); });
+  else {
+    list.dataset.sig = signature; list.replaceChildren();
+    for (const a of shown) {
+      const li = document.createElement("li"); li.className = "arrival " + a.role;
+      const av = document.createElement("span"); av.className = "avatar"; av.textContent = a.role === "unknown" ? "?" : initials(a.name);
+      const who = document.createElement("span"); who.className = "who";
+      const name = document.createElement("strong"); name.textContent = a.name;
+      const role = document.createElement("span"); role.textContent = (ROLE_LABEL[a.role] || ROLE_LABEL.other)[es ? 1 : 0];
+      who.append(name, role);
+      const when = document.createElement("time"); when.textContent = ago(a.at);
+      li.append(av, who, when); list.append(li);
+    }
+    if (!shown.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = es ? "Nadie ha entrado todavía" : "No one has come in yet"; list.append(li); }
   }
-  if (!desk.arrivals.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = settings.lang === "es" ? "Nadie ha entrado todavía" : "Nobody yet today"; list.append(li); } }
-  $("musicNow").textContent = desk.music ? desk.music.query : (settings.lang === "es" ? "Di «Jarvis, pon música»" : "Say “Jarvis, play some music”");
+  $("musicNow").textContent = desk.music ? desk.music.query : (es ? "Di «Jarvis, pon música»" : "Say “Jarvis, play some music”");
+  $("musicNow").classList.toggle("idle", !desk.music);
   $("musicSvc").textContent = desk.music ? (desk.music.service === "spotify" ? "Spotify" : "YouTube") : "";
   const timers = $("timers"); timers.replaceChildren();
   for (const tm of desk.timers) {
-    const li = document.createElement("li"); const left = Math.max(0, tm.end - Date.now());
-    li.innerHTML = `<span></span><b></b>`; li.firstChild.textContent = tm.label;
-    li.lastChild.textContent = `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}`; timers.append(li);
+    const li = document.createElement("li"), left = Math.max(0, tm.end - Date.now());
+    const label = document.createElement("span"); label.textContent = tm.label;
+    const rest = document.createElement("b"); rest.textContent = `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}`;
+    li.append(label, rest); timers.append(li);
   }
   $("timersCard").hidden = !desk.timers.length;
   const mem = $("memory"); mem.replaceChildren();
@@ -113,6 +148,8 @@ function render() {
   $("extDot").classList.toggle("on", desk.extension);
   $("handDot").classList.toggle("on", !!desk.handsOn);
   $("earDot").classList.toggle("on", settings.wake && !ears.blocked && desk.started);
+  // Ambient: after a few quiet minutes the side panels step back.
+  document.body.classList.toggle("ambient", desk.started && Date.now() - desk.activeAt > 180000);
 }
 desk.render = render;
 setInterval(render, 1000);
@@ -213,8 +250,9 @@ async function onHome(event) {
       while (desk.arrivals.length > 50) desk.arrivals.shift();
       store.set("jarvis-arrivals", desk.arrivals);
     }
-    render();
+    render(); wakeUp();
     orb.flash(event.action === "unknown" ? "alert" : "arrival");
+    if (!quietNow()) chime(event.action === "unknown" ? "alert" : "arrival");
     if (quietNow()) { toast((settings.lang === "es" ? "Ha entrado: " : "Came in: ") + p.name); return; }
     if (!settings.greet && event.action !== "test") return;
     const line = await greetingFor(p, event.action);
@@ -229,16 +267,15 @@ async function greetingFor(p, action) {
   if (p.greeting) return { text: p.greeting, lang: p.role === "me" ? settings.lang : "en" };
   if (FAMILY[p.role]) return { text: pick(FAMILY[p.role]), lang: "en" };
   if (p.role !== "me") return { text: `Hello, ${p.name}. Welcome.`, lang: "en" };
-  // You: a short briefing the first time today, a quick hello otherwise.
+  // You: a briefing from Claude the first time today; afterwards an instant hello.
   const today = new Date().toDateString(), first = store.get("jarvis-briefing", "") !== today;
+  if (!first) return { text: pick([greeting(settings.lang, settings.name), settings.lang === "es" ? `Bienvenido de nuevo, ${settings.name}.` : `Welcome back, ${settings.name}.`]), lang: settings.lang };
   if (settings.key) {
     setState("thinking");
     const hm = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-    const prompt = first
-      ? `[Event] ${settings.name} just walked into the room at ${hm}, for the first time today. Welcome him with a short briefing: greeting, the weather, and anything you remember that matters today. Two or three sentences.`
-      : `[Event] ${settings.name} just came back into the room at ${hm}. Welcome him back in one short, witty sentence.`;
+    const prompt = `[Event] ${settings.name} just walked into the room at ${hm}, for the first time today. Welcome him with a short briefing: greeting, the weather, and anything you remember that matters today. Two or three sentences.`;
     const reply = await think(prompt, { remember: false, event: true });
-    if (first) store.set("jarvis-briefing", today);
+    store.set("jarvis-briefing", today);
     if (reply && reply !== t().thinkDown) return { text: reply, lang: settings.lang };
   }
   return { text: greeting(settings.lang, settings.name), lang: settings.lang };
@@ -264,6 +301,7 @@ let playing = true;
 async function media(action) {
   if (action === "toggle") action = playing ? "pause" : "resume";
   if (action === "pause") playing = false; if (action === "resume") playing = true;
+  $("mPlayIcon").innerHTML = ICONS[playing ? "pause" : "play"];
   const ok = await extension(action);
   toast(ok ? t().gesture[action] || action : (settings.lang === "es" ? "Instala la extensión de Jarvis en este Chromebook" : "Install the Jarvis extension on this Chromebook"));
   return ok;
@@ -318,6 +356,9 @@ async function start() {
   try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch {}
   if (!settings.key) { say(t().needKey); setState("idle"); ears.background(); return; }
   await talk(t().online(settings.name)); ears.resume();
+  // Warm the voice cache so greetings play instantly later (fixed lines only).
+  const lines = [...FAMILY.mom, ...FAMILY.dad, settings.lang === "es" ? `Bienvenido de nuevo, ${settings.name}.` : `Welcome back, ${settings.name}.`, t().stranger];
+  for (const line of lines) { await voice.prefetch(line, FAMILY.mom.includes(line) || FAMILY.dad.includes(line) ? "en" : settings.lang); }
 }
 desk.start = start;
 function chooseRole(role) {

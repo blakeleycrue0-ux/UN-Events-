@@ -3,89 +3,95 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#030405" />
     <title>Jarvis</title>
     <link rel="icon" href="data:," />
+    <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="desk.css" />
   </head>
   <body data-state="off">
-    <div class="grid" aria-hidden="true"></div>
-    <div class="aurora" aria-hidden="true"></div>
+    <div class="backdrop" aria-hidden="true"><div class="glow"></div><div class="grain"></div></div>
 
-    <div class="hud">
-      <!-- Left: time and weather -->
-      <section class="col left">
-        <div class="panel time-panel">
+    <header class="topbar">
+      <div class="brand"><span class="mark"></span>JARVIS<span id="stateLabel" class="state-label">STANDBY</span></div>
+      <div class="status">
+        <span class="stat" title="Cámara de la puerta"><span id="wallDot" class="dot"></span><span class="ico" data-icon="door"></span><span>Door</span></span>
+        <span class="stat" title="Escuchar «Jarvis…»"><span id="earDot" class="dot"></span><span class="ico" data-icon="mic"></span><span>Voice</span></span>
+        <span class="stat" title="Gestos con la webcam"><span id="handDot" class="dot"></span><span class="ico" data-icon="hand"></span><span>Gestures</span></span>
+        <span class="stat" title="Extensión del Chromebook"><span id="extDot" class="dot"></span><span class="ico" data-icon="laptop"></span><span>Chromebook</span></span>
+        <button id="openSettings" class="icon-btn" aria-label="Ajustes"><span class="ico" data-icon="gear"></span></button>
+      </div>
+    </header>
+
+    <div class="stage">
+      <!-- Left: time & weather -->
+      <section class="side left">
+        <div class="time">
           <time id="clock" class="clock">--:--</time>
           <div id="date" class="date"></div>
-          <div id="quiet" class="quiet" hidden>☾ Modo noche · saludos en silencio</div>
+          <div id="quiet" class="quiet" hidden><span class="ico" data-icon="moon"></span>Night mode · silent greetings</div>
         </div>
-        <div class="panel weather">
-          <div class="wx-top"><span id="wxIcon" class="wx-icon">·</span><span id="wxTemp" class="wx-temp">--°</span></div>
+        <div class="weather">
+          <div class="label">Weather <span id="wxCity" class="sub"></span></div>
+          <div class="wx-now"><span id="wxIcon" class="wx-icon"></span><span id="wxTemp" class="wx-temp">—</span></div>
           <div id="wxText" class="wx-text"></div>
-          <div id="wxCity" class="wx-city"></div>
+          <ol id="wxHours" class="wx-hours"></ol>
         </div>
-        <div id="timersCard" class="panel" hidden>
-          <h3>Temporizadores</h3>
+        <div id="timersCard" class="block" hidden>
+          <div class="label">Timers</div>
           <ul id="timers" class="timers"></ul>
         </div>
       </section>
 
       <!-- Centre: the orb -->
       <main class="core">
-        <canvas id="orb" class="orb" aria-label="Jarvis: haz clic o pulsa Espacio para hablar"></canvas>
+        <canvas id="orb" class="orb" aria-label="Jarvis: clic o Espacio para hablar"></canvas>
         <p id="say" class="say" aria-live="polite"></p>
         <p id="heard" class="heard"></p>
       </main>
 
       <!-- Right: door, music, memory -->
-      <section class="col right">
-        <div class="panel">
-          <h3>Puerta</h3>
-          <div class="wall-line"><span id="wallDot" class="dot"></span><span id="wallText"></span></div>
+      <section class="side right">
+        <div class="block">
+          <div class="label">Door <span id="wallText" class="sub"></span></div>
           <ul id="arrivals" class="arrivals"></ul>
         </div>
-        <div class="panel music">
-          <h3>Música <span id="musicSvc" class="svc"></span></h3>
+        <div class="block music">
+          <div class="label">Now playing <span id="musicSvc" class="sub"></span></div>
           <div id="musicNow" class="music-now"></div>
-          <div class="music-buttons">
-            <button id="mPrev" aria-label="Anterior">⏮</button><button id="mPlay" aria-label="Pausa o reproducir">⏯</button><button id="mNext" aria-label="Siguiente">⏭</button>
+          <div class="controls">
+            <button id="mPrev" class="ctl" aria-label="Anterior"><span class="ico" data-icon="prev"></span></button>
+            <button id="mPlay" class="ctl main" aria-label="Pausa o reproducir"><span id="mPlayIcon" class="ico" data-icon="pause"></span></button>
+            <button id="mNext" class="ctl" aria-label="Siguiente"><span class="ico" data-icon="next"></span></button>
           </div>
         </div>
-        <div id="memoryCard" class="panel" hidden>
-          <h3>Memoria</h3>
+        <div id="memoryCard" class="block" hidden>
+          <div class="label">Memory</div>
           <ul id="memory" class="memory"></ul>
         </div>
       </section>
     </div>
 
-    <footer class="bar">
-      <span class="chip"><span id="earDot" class="dot"></span>Di «Jarvis…» · Espacio</span>
-      <span class="chip"><span id="handDot" class="dot"></span>✋ pausa · 👉 siguiente · 👍 volumen · ☝️ hablar</span>
-      <span class="chip"><span id="extDot" class="dot"></span>Chromebook</span>
-      <button id="openSettings" class="gear" aria-label="Ajustes">⚙︎</button>
-    </footer>
-
-    <form id="typeForm" class="type-form" hidden><input id="typeInput" autocomplete="off" placeholder="Escríbele a Jarvis…" /></form>
+    <form id="typeForm" class="type-form" hidden><input id="typeInput" autocomplete="off" placeholder="Type to Jarvis…" /></form>
     <div id="toasts" class="toasts"></div>
     <div id="hand" class="hand" hidden></div>
     <video id="handVideo" class="hand-video" autoplay muted playsinline></video>
 
-    <!-- First run: what is this device? -->
     <div id="chooser" class="overlay" hidden>
       <div class="choose">
-        <h1>Jarvis</h1>
+        <div class="mark big"></div>
+        <h1>JARVIS</h1>
         <p>¿Qué hace este dispositivo?</p>
         <div class="choices">
-          <button id="asDesk" class="choice"><b>💻 Escritorio</b><span>El Chromebook: habla, escucha, pone música y saluda.</span></button>
-          <button id="asWall" class="choice"><b>📱 Pared</b><span>El móvil de la pared: solo mira quién entra por la puerta.</span></button>
+          <button id="asDesk" class="choice"><b>Escritorio</b><span>El Chromebook: habla, escucha, pone música y saluda a quien entra.</span></button>
+          <button id="asWall" class="choice"><b>Pared</b><span>El móvil de la pared: solo mira quién entra por la puerta.</span></button>
         </div>
       </div>
     </div>
-    <button id="wake" class="overlay wake" hidden><span class="wake-ring"></span><span>Haz clic para despertar a Jarvis</span></button>
+    <button id="wake" class="overlay wake" hidden><span class="wake-ring"><span></span></span><span class="wake-text">Click to wake Jarvis</span></button>
 
     <aside id="settings" class="drawer" hidden>
-      <div class="drawer-head"><h2>Ajustes</h2><button id="closeSettings" class="close" aria-label="Cerrar">✕</button></div>
+      <div class="drawer-head"><h2>Ajustes</h2><button id="closeSettings" class="icon-btn" aria-label="Cerrar">✕</button></div>
       <label>Tu nombre<input id="name" maxlength="30" autocomplete="off" /></label>
       <label>Clave de Jarvis<input id="voiceKey" type="password" autocomplete="off" placeholder="La que pusiste en Supabase" /></label>
       <div class="row"><button id="testVoice" class="pill">Probar voz</button></div>
@@ -101,6 +107,14 @@
       <div class="two"><label>Modo noche desde<input id="quietFrom" type="number" min="0" max="23" /></label><label>hasta<input id="quietTo" type="number" min="0" max="23" /></label></div>
       <label>Ciudad del tiempo<input id="city" autocomplete="off" /></label>
 
+      <h3>Gestos</h3>
+      <ul class="gestures">
+        <li><b>Mano abierta</b> quieta un segundo<span>Pausa / reproducir</span></li>
+        <li><b>Deslizar la mano</b> a un lado<span>Siguiente / anterior</span></li>
+        <li><b>Pulgar arriba / abajo</b><span>Volumen</span></li>
+        <li><b>Índice hacia arriba</b><span>Hablar sin decir «Jarvis»</span></li>
+      </ul>
+
       <h3>Memoria</h3>
       <ul id="memoryList" class="memory-list"></ul>
 
@@ -108,7 +122,7 @@
       <ol class="steps">
         <li>Descarga <a href="/jarvis-chromebook.zip" download>jarvis-chromebook.zip</a>, ábrelo y copia la carpeta <b>jarvis-chromebook</b> a Descargas.</li>
         <li>En <b>chrome://extensions</b> activa <b>Modo de desarrollador</b> → <b>Cargar descomprimida</b> → esa carpeta.</li>
-        <li>Pulsa el icono de Jarvis 🧩 y escribe tu clave. Si ya la tenías, pulsa ↻ en la extensión para actualizarla.</li>
+        <li>Pulsa el icono de Jarvis y escribe tu clave. Si ya la tenías, pulsa ↻ en la extensión para actualizarla.</li>
       </ol>
 
       <h3>Diagnóstico</h3>

@@ -36,15 +36,15 @@ export function createVoice({ settings, onState = () => {} }) {
     return Math.min(1, sum / data.length / 110);
   };
 
-  async function blob(text, lang) {
-    const cacheable = !/\d/.test(text) && "caches" in window;
+  async function blob(text, lang, extra = {}) {
+    const cacheable = !/\d/.test(text) && !!window.caches;
     const keyUrl = location.origin + "/__jarvis-voice?" + lang + "&" + encodeURIComponent(text);
     let cache;
     if (cacheable) {
       try { cache = await caches.open("jarvis-voice-v2"); const hit = await cache.match(keyUrl); if (hit) return await hit.blob(); } catch {}
     }
     if (!settings.key) throw Error("Falta la clave de Jarvis en ajustes.");
-    const response = await call("jarvis-voice", { text, lang }, settings.key);
+    const response = await call("jarvis-voice", { text, lang, ...extra }, settings.key);
     if (!response.ok) {
       let error = ""; try { error = (await response.json()).error || ""; } catch {}
       throw Error(MESSAGES[response.status] || MESSAGES[error] || "La voz no está disponible ahora.");
@@ -54,6 +54,8 @@ export function createVoice({ settings, onState = () => {} }) {
     return result;
   }
 
+  // Fetch and cache a fixed line without playing it (greetings then start instantly).
+  voice.prefetch = async (text, lang = settings.lang) => { try { if (!/\d/.test(text) && !!window.caches) await blob(text, lang, { prefetch: true }); } catch {} };
   voice.stop = () => { id++; audio.pause(); finish?.(); voice.speaking = false; };
   voice.speak = async (text, lang = settings.lang) => {
     const mine = ++id;

@@ -7,7 +7,8 @@ from playwright.sync_api import sync_playwright
 URL = 'http://127.0.0.1:8001/'
 MP3 = (pathlib.Path(__file__).parent / 'fixtures' / 'tone.mp3').read_bytes()
 CORS = {'Access-Control-Allow-Origin': 'http://127.0.0.1:8001', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS'}
-INIT = """
+INIT = """Object.defineProperty(window,'caches',{value:undefined,configurable:true});
+
 window.said=[];
 document.addEventListener('DOMContentLoaded',()=>{const say=document.getElementById('say');if(!say)return;
   new MutationObserver(()=>said.push(say.textContent)).observe(say,{subtree:true,childList:true,characterData:true});});
@@ -51,7 +52,7 @@ def think(route):
 
 def weather(route):
     route.fulfill(status=200, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'},
-                  body=json.dumps({'current': {'temperature_2m': 21.4, 'weather_code': 1}, 'daily': {'temperature_2m_max': [24], 'temperature_2m_min': [15], 'precipitation_probability_max': [10]}}))
+                  body=json.dumps({'hourly': {'time': [time.strftime('%Y-%m-%dT%H:00', time.localtime(time.time() + 3600 * h)) for h in range(-1, 8)], 'temperature_2m': [20, 21, 22, 22, 21, 19, 18, 17, 16], 'weather_code': [1, 1, 2, 3, 61, 61, 3, 0, 0]}, 'current': {'temperature_2m': 21.4, 'weather_code': 1}, 'daily': {'temperature_2m_max': [24], 'temperature_2m_min': [15], 'precipitation_probability_max': [10]}}))
 
 def realtime(ws):
     entry = {'ws': ws, 'topic': None}; sockets.append(entry)
@@ -103,6 +104,7 @@ with sync_playwright() as p:
     page.click('#wake')
     wait_voice(page, '(?i)online')
     page.wait_for_function("document.getElementById('wxTemp').textContent==='21°'", timeout=8000)
+    assert page.locator('#wxHours li').count() == 5 and page.locator('#wxHours li svg').count() == 5
     assert 'Calvià' in page.locator('#wxCity').inner_text()
     page.wait_for_function("recLog.length>=1", timeout=8000)
     for _ in range(50):
@@ -159,18 +161,19 @@ with sync_playwright() as p:
     wait_voice(page, "don't recognise"); calm(page)
     # You: a briefing from Claude the first time today, a short welcome back later.
     brain_replies['first time today'] = {'reply': 'Morning, Crew. 21 degrees and sunny. Maths exam on Friday.', 'actions': []}
-    brain_replies['came back'] = {'reply': 'Welcome back, Crew.', 'actions': []}
     home({'action': 'arrival', 'person': {'name': 'Crew', 'role': 'me', 'greeting': ''}})
     wait_voice(page, 'Morning, Crew')
     assert brain[-1]['messages'][-1]['content'].startswith('[Event] Crew just walked into the room') and len(brain[-1]['messages']) == 1
     calm(page)
     home({'action': 'arrival', 'person': {'name': 'Crew', 'role': 'me', 'greeting': ''}})
-    wait_voice(page, 'Welcome back'); calm(page)
+    n_brain = len(brain)
+    wait_voice(page, 'Crew'); calm(page)
+    assert len(brain) == n_brain, 'repeat arrivals greet instantly, without Claude'
     assert not any(m['content'].startswith('[Event]') for m in page.evaluate("desk.history")), 'sensor events stay out of the conversation'
     # Night mode: arrivals are logged silently.
     page.evaluate("()=>{const h=new Date().getHours();desk.settings.quietFrom=h;desk.settings.quietTo=(h+1)%24}")
     n = len(voice); home({'action': 'arrival', 'person': {'name': 'Mamá', 'role': 'mom', 'greeting': ''}})
-    page.wait_for_function("document.querySelectorAll('#arrivals li').length>=6", timeout=5000); page.wait_for_timeout(1200)
+    page.wait_for_function("document.querySelectorAll('#arrivals li.arrival').length===5", timeout=5000); page.wait_for_timeout(1200)
     assert len(voice) == n and page.locator('#quiet').is_visible()
     page.evaluate("()=>{desk.settings.quietFrom=3;desk.settings.quietTo=3}")
 

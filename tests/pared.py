@@ -11,7 +11,7 @@ if(!localStorage.getItem('jarvis-settings'))localStorage.setItem('jarvis-setting
 """
 FAKE = """(vec)=>{
   window.nextFace=vec; window.inputs=[];
-  wall.detector={detect:async(i)=>{inputs.push([i.width||i.videoWidth,i.tagName]);return window.nextFace?[{embedding:window.nextFace,score:0.95}]:[]},
+  wall.detector={detect:async(i)=>{inputs.push([i.width||i.videoWidth,i.tagName]);return window.nextFace?[{embedding:window.nextFace,score:0.95,box:[0.4,0.3,0.2,0.3]}]:[]},
     similarity:(a,b)=>{let d=0,x=0,y=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];x+=a[i]*a[i];y+=b[i]*b[i]}return d/Math.sqrt(x*y)}};
 }"""
 A, B, C, D = [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]
@@ -69,6 +69,9 @@ with sync_playwright() as p:
     page.select_option('#personRole', 'dad'); page.fill('#personName', 'Papá'); page.fill('#personGreeting', 'Hello Dad, the AC is off.'); page.click('#addPerson')
     page.wait_for_function("wall.people.find(p=>p.role==='dad')?.samples.length===5", timeout=10000)
     assert page.locator('#people').inner_text().count('cara registrada') == 3
+    # Enrolling no longer blocks the greeting: Dad is welcomed straight away.
+    assert wait_event(page, 'arrival')['person']['name'] == 'Papá'
+    page.evaluate('()=>{window.nextFace=null}'); page.wait_for_timeout(400); events.clear()
     page.screenshot(path='/tmp/pared-settings.png', full_page=True)
 
     # Door framing: zoom and drag, saved; the face model sees only the enlarged crop.
@@ -88,17 +91,20 @@ with sync_playwright() as p:
     page.click('#closeSettings')
     page.wait_for_function("inputs.length>1 && inputs[inputs.length-1][1]==='CANVAS'")
     w, vw = page.evaluate("[inputs[inputs.length-1][0], document.getElementById('video').videoWidth]")
-    assert abs(w - min(1280, vw / 3)) <= 2, (w, vw)
+    assert abs(w - min(960, vw / 3)) <= 2, (w, vw)
 
     # Arrivals → events for the desk; no repeats while someone stays; strangers rate-limited.
     page.evaluate('v=>{window.nextFace=v; for (const k in wall.seen) wall.seen[k]=0}', A)
     assert wait_event(page, 'arrival')['person'] == {'name': 'Crew', 'role': 'me', 'greeting': ''}
+    # Live preview pops up with a green, named box around the face.
+    page.wait_for_function("document.querySelector('#preview.spot .face-box.known span')?.textContent==='Crew'", timeout=3000)
+    page.screenshot(path='/tmp/pared-box.png')
     page.wait_for_timeout(2500); assert len([e for e in events if e['kind'] == 'arrival']) == 1, 'no repeat while you stay'
     page.evaluate('v=>{window.nextFace=v; for (const k in wall.seen) wall.seen[k]=0}', B)
     assert wait_event(page, 'arrival', 2)['person'] == {'name': 'Mamá', 'role': 'mom', 'greeting': ''}
     page.evaluate('v=>{window.nextFace=v; for (const k in wall.seen) wall.seen[k]=0}', C)
     assert wait_event(page, 'arrival', 3)['person']['greeting'] == 'Hello Dad, the AC is off.'
-    page.evaluate('v=>{window.nextFace=v}', D)
+    page.evaluate('v=>{window.nextFace=v; wall.lastUnknown=0}', D)
     assert wait_event(page, 'unknown')['count'] == 1
     page.wait_for_timeout(2500); assert len([e for e in events if e['kind'] == 'unknown']) == 1, 'strangers reported at most every 2 minutes'
     assert 'Papá' in page.locator('#wallSeen').inner_text()

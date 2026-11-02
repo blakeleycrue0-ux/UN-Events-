@@ -5,7 +5,7 @@ import { $, store, loadSettings, loadScript, call, clockParts } from "./jarvis/c
 const settings = loadSettings();
 const wall = window.wall = {
   started: false, stream: null, detector: null, busy: false, enrolling: null, loop: null,
-  threshold: 0.55, absenceMS: 5 * 60000, seen: {}, lastUnknown: 0, sent: [], settings,
+  threshold: 0.55, absenceMS: 90000, seen: {}, lastUnknown: 0, sent: [], settings,
 };
 store.set("jarvis-role", "wall");
 
@@ -44,8 +44,9 @@ async function realDetector() {
     filter: { enabled: false, return: false },
     face: {
       enabled: true,
-      detector: { rotation: false, maxDetected: 3, minConfidence: 0.5, return: false },
-      mesh: { enabled: true }, iris: { enabled: false }, description: { enabled: true },
+      // skipFrames/skipTime 0: Human otherwise reuses old results for 2–3 s.
+      detector: { rotation: false, maxDetected: 3, minConfidence: 0.5, return: false, skipFrames: 0, skipTime: 0 },
+      mesh: { enabled: true, skipFrames: 0, skipTime: 0 }, iris: { enabled: false }, description: { enabled: true, skipFrames: 0, skipTime: 0 },
       emotion: { enabled: false }, antispoof: { enabled: false }, liveness: { enabled: false }, attention: { enabled: false },
     },
     body: { enabled: false }, hand: { enabled: false }, object: { enabled: false },
@@ -64,7 +65,7 @@ async function realDetector() {
       const issue = result?.error;
       if (!result || (issue && (!Array.isArray(issue) || issue.length))) throw Error("Fallo del modelo de caras.");
       return (result.face || []).filter((f) => f.embedding?.length)
-        .map((f) => ({ embedding: Array.from(f.embedding), score: f.faceScore ?? f.score ?? 0 }));
+        .map((f) => ({ embedding: Array.from(f.embedding), score: f.faceScore ?? f.score ?? 0, box: f.boxRaw ? Array.from(f.boxRaw) : null }));
     },
     similarity: (a, b) => human.match.similarity(a, b),
   };
@@ -114,7 +115,7 @@ function cropRect(video) {
 }
 function frameInput(video) {
   if ((settings.crop?.zoom || 1) <= 1.01) return video;
-  const r = cropRect(video), scale = Math.min(1, 1280 / r.sw);
+  const r = cropRect(video), scale = Math.min(1, 960 / r.sw);
   cropCanvas.width = Math.round(r.sw * scale); cropCanvas.height = Math.round(r.sh * scale);
   cropCtx.drawImage(video, r.sx, r.sy, r.sw, r.sh, 0, 0, cropCanvas.width, cropCanvas.height);
   return cropCanvas;
@@ -139,13 +140,39 @@ async function scan() {
   const video = $("video");
   if (!wall.busy && video.readyState >= 2) {
     wall.busy = true;
-    try { onFaces(await wall.detector.detect(frameInput(video))); }
+    try { const found = await wall.detector.detect(frameInput(video)); drawBoxes(found); onFaces(found); }
     catch (e) { $("faceState").textContent = "Error: " + e.message; }
     finally { wall.busy = false; }
   }
-  wall.loop = setTimeout(scan, wall.enrolling ? 250 : 1000);
+  wall.loop = setTimeout(scan, wall.enrolling ? 200 : 120);
 }
 wall.scan = scan;
+// ---------- Recuadro verde ----------
+// Face boxes come relative to the analysed area; map them back onto the preview.
+function drawBoxes(found) {
+  const layer = $("faceBoxes"), video = $("video");
+  if (!layer || !video.videoWidth) return;
+  const zoomed = (settings.crop?.zoom || 1) > 1.01, r = zoomed ? cropRect(video) : { x: 0, y: 0, w: 1, h: 1 };
+  const mirror = settings.facing === "user", known = wall.people.some((p) => p.samples?.length);
+  const boxes = found.filter((f) => f.box).map((f) => {
+    const m = wall.enrolling || !known ? {} : identify(f.embedding);
+    const x = r.x + f.box[0] * r.w, y = r.y + f.box[1] * r.h, w = f.box[2] * r.w, h = f.box[3] * r.h;
+    const el = document.createElement("div");
+    el.className = "face-box " + (m.person || wall.enrolling ? "known" : "unknown");
+    Object.assign(el.style, { left: ((mirror ? 1 - x - w : x) * 100) + "%", top: (y * 100) + "%", width: (w * 100) + "%", height: (h * 100) + "%" });
+    const tag = document.createElement("span"); tag.textContent = m.person ? displayName(m.person) : wall.enrolling ? "…" : "?";
+    el.append(tag); return el;
+  });
+  layer.replaceChildren(...boxes);
+  // On the black wall screen, show the camera for a few seconds when someone is there.
+  if (boxes.length && !wall.enrolling && !framing) {
+    clearTimeout(wall.spotTimer);
+    const preview = $("preview");
+    if (preview.classList.contains("stash")) { preview.classList.remove("stash"); preview.classList.add("spot"); }
+    wall.spotTimer = setTimeout(() => { if (preview.classList.contains("spot")) { preview.classList.remove("spot"); preview.classList.add("stash"); layer.replaceChildren(); } }, 4000);
+  }
+}
+wall.drawBoxes = drawBoxes;
 function onFaces(found) {
   if (wall.enrolling) return enrollStep(found);
   const known = wall.people.some((p) => p.samples?.length);
@@ -181,7 +208,6 @@ function enrollStep(found) {
   if (e.samples.length >= 5) {
     person.samples = e.samples; endEnroll();
     if (!savePeople()) { $("faceInfo").textContent = "No se pudo guardar en este navegador."; return; }
-    wall.seen[person.id] = Date.now();
     renderPeople();
     $("faceInfo").textContent = `Listo: ya reconozco a ${displayName(person)}.`;
   }
@@ -191,7 +217,7 @@ function startEnroll(person) {
   if (framing) setFraming(false);
   if (!wall.started) { $("faceInfo").textContent = "Primero pulsa «Empezar a vigilar»."; return; }
   wall.enrolling = { personId: person.id, samples: [] };
-  $("enrollSlot").append($("preview")); $("preview").classList.remove("stash");
+  $("enrollSlot").append($("preview")); $("preview").classList.remove("stash", "spot");
   $("faceInfo").textContent = person.role === "me" ? "Ponte delante de la cámara…" : `Que ${displayName(person)} se ponga delante de la cámara…`;
   void scan();
 }
@@ -225,7 +251,7 @@ function setFraming(on) {
   if (on && !wall.started) { $("frameInfo").textContent = "Primero pulsa «Empezar a vigilar»."; return; }
   if (framing) {
     if (wall.enrolling) endEnroll();
-    $("frameSlot").append($("preview")); $("preview").classList.remove("stash"); $("preview").classList.add("framing"); drawFrame();
+    $("frameSlot").append($("preview")); $("preview").classList.remove("stash", "spot"); $("preview").classList.add("framing"); drawFrame();
   } else if (!wall.enrolling) { $("preview").classList.add("stash"); $("preview").classList.remove("framing"); document.body.append($("preview")); }
 }
 $("frameToggle").onclick = () => setFraming(!framing);
