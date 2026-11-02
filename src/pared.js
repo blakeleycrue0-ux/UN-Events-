@@ -244,7 +244,11 @@ wall.ears = createWallEars({
   },
   onStatus: (s, detail) => {
     $("earDot").classList.toggle("on", s === "listening" || (s === "error" && wall.ears.on));
-    if (s === "error") $("earInfo").textContent = "Error al transcribir: " + detail;
+    if (s === "error") {
+      $("earInfo").textContent = "Error al transcribir: " + detail;
+      // Two failures in a row: hand listening back to the computer until it works again.
+      if (wall.ears.failures >= 2) wall.home?.send({ action: "ears", on: false });
+    }
   },
 });
 async function startEars() {
@@ -254,7 +258,7 @@ async function startEars() {
 }
 wall.startEars = startEars;
 setInterval(() => {
-  if (wall.ears.on) wall.home?.send({ action: "ears", on: true });
+  if (wall.ears.on) wall.home?.send({ action: "ears", on: !(wall.ears.failures >= 2) });
   if ($("settings").hidden === false && wall.ears.on) $("earInfo").textContent = `Escuchando · ${wall.ears.heardToday} frases hoy` + (wall.ears.last ? ` · última: «${wall.ears.last}»` : "");
 }, 30000);
 function listenToDesk() {

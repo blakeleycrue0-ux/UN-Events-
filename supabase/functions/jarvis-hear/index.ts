@@ -1,6 +1,36 @@
-// Supabase Edge Function: turns a short recording of what you said into text
-// with ElevenLabs Speech to Text. Safari's own recognizer gets no audio on
+// Supabase Edge Function: turns a short recording of what you said into text.
+// Gemini (free tier) first when GEMINI_API_KEY is set, ElevenLabs Speech to Text
+// as the backup (or the other way round if only one key exists). Safari's own recognizer gets no audio on
 // iPhone while the camera is in use, so Jarvis records and sends the clip here.
+// deno-lint-ignore no-explicit-any
+async function geminiHear(key: string, audio: ArrayBuffer, type: string): Promise<any> {
+  const models = (Deno.env.get("GEMINI_HEAR_MODEL") || "gemini-flash-lite-latest,gemini-2.5-flash-lite,gemini-flash-latest,gemini-2.5-flash").split(",").map((m) => m.trim()).filter(Boolean);
+  const bytes = new Uint8Array(audio); let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  const body = JSON.stringify({
+    contents: [{ role: "user", parts: [
+      { inlineData: { mimeType: type === "audio/x-m4a" ? "audio/mp4" : type, data: btoa(bin) } },
+      { text: "Transcribe exactly what the person says in this recording (usually Spanish from Spain, sometimes English), word for word, in the language spoken. The assistant's name is Jarvis. If there is no clear human speech (silence, noise, music, TV), return an empty text. Never translate, summarise or add anything." },
+    ] }],
+    generationConfig: { temperature: 0, maxOutputTokens: 400, responseMimeType: "application/json",
+      responseSchema: { type: "OBJECT", properties: { text: { type: "STRING" }, language: { type: "STRING" } }, required: ["text"] } },
+  });
+  let last = "no model";
+  for (const model of models) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body, signal: AbortSignal.timeout(20000),
+    });
+    // Each model has its own free quota: a 429 or 404 just moves to the next one.
+    if (r.status === 404 || r.status === 429 || r.status >= 500) { last = model + " " + r.status; continue; }
+    if (!r.ok) throw Error("gemini " + r.status);
+    const data = await r.json();
+    const raw = (data?.candidates?.[0]?.content?.parts || []).map((p: { text?: string }) => p.text || "").join("");
+    try { const out = JSON.parse(raw); return { text: String(out?.text || ""), language: String(out?.language || "") }; }
+    catch { return { text: raw, language: "" }; }
+  }
+  throw Error("gemini: " + last);
+}
+
 Deno.serve(async (request: Request) => {
   const normalize = (x: string) => x.trim().replace(/^["']+|["']+$/g, "").replace(/\/+$/, "").toLowerCase();
   const origin = normalize(request.headers.get("origin") || "");
@@ -20,7 +50,8 @@ Deno.serve(async (request: Request) => {
 
   const expected = (Deno.env.get("JARVIS_KEY") || "").trim();
   const apiKey = (Deno.env.get("ELEVENLABS_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
-  if (expected.length < 6 || !apiKey) return json(428, { error: "Hearing not configured" });
+  const geminiKey = (Deno.env.get("GEMINI_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
+  if (expected.length < 6 || (!apiKey && !geminiKey)) return json(428, { error: "Hearing not configured" });
   const given = (request.headers.get("x-jarvis-key") || "").trim();
   const a = new TextEncoder().encode(given), b = new TextEncoder().encode(expected);
   let diff = a.length ^ b.length;
@@ -32,6 +63,11 @@ Deno.serve(async (request: Request) => {
   const audio = await request.arrayBuffer();
   if (audio.byteLength < 200 || audio.byteLength > 5_000_000) return json(400, { error: "Audio size out of range" });
   const ext = type.split("/")[1].replace("x-", "");
+  const clean = (t: string) => t.replace(/\s+/g, " ").trim().replace(/^["'«]+|["'»]+$/g, "").slice(0, 1000);
+  if (geminiKey) {
+    try { const r = await geminiHear(geminiKey, audio, type); return json(200, { text: clean(r.text), language: r.language, via: "gemini" }); }
+    catch (error) { console.log("jarvis-hear Gemini fallback:", String((error as Error).message).slice(0, 120)); if (!apiKey) return json(502, { error: "Gemini unavailable" }); }
+  }
 
   const form = new FormData();
   form.append("model_id", Deno.env.get("ELEVENLABS_STT_MODEL") || "scribe_v1");
@@ -47,8 +83,8 @@ Deno.serve(async (request: Request) => {
       console.log("jarvis-hear ElevenLabs status", upstream.status, reason);
       const error = /missing_permissions/.test(reason) ? "ElevenLabs key lacks speech to text permission"
         : /unusual_activity/.test(reason) ? "ElevenLabs blocked free tier"
-        : upstream.status === 401 ? "ElevenLabs key rejected"
-        : upstream.status === 402 || upstream.status === 429 || /quota/.test(reason) ? "ElevenLabs quota reached" : "ElevenLabs unavailable";
+        : upstream.status === 402 || upstream.status === 429 || /quota/.test(reason) ? "ElevenLabs quota reached"
+        : upstream.status === 401 ? "ElevenLabs key rejected" : "ElevenLabs unavailable";
       return json(502, { error });
     }
     const result = await upstream.json();

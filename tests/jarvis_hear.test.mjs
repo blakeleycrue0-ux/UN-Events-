@@ -32,3 +32,18 @@ test('the clip is sent to ElevenLabs Speech to Text and the text comes back',asy
  assert.equal((await (await setup({},401).handler(req())).json()).error,'ElevenLabs key lacks speech to text permission');
  assert.equal((await setup({},500).handler(req())).status,502);
 });
+
+test('Gemini transcribes for free first; ElevenLabs is only the backup',async()=>{
+ let handler;const calls=[];
+ const env={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',ELEVENLABS_API_KEY:'private-elevenlabs-fixture',GEMINI_API_KEY:'gem-fixture'};
+ let gem=(url)=>url.includes('gemini-flash-lite-latest')?new Response('{}',{status:429}):Response.json({candidates:[{content:{parts:[{text:'{"text":" «Jarvis, pon música» ","language":"es"}'}]}}]});
+ const fetch=async(url,opts)=>{url=String(url);calls.push({url,opts});return url.includes('generativelanguage')?gem(url):new Response(JSON.stringify({text:'from eleven',language_code:'spa'}),{status:200})};
+ new Function('Deno','fetch',code)({env:{get:n=>env[n]},serve:h=>handler=h},fetch);
+ const r=await handler(req({type:'audio/wav'}));
+ assert.deepEqual(await r.json(),{text:'Jarvis, pon música',language:'es',via:'gemini'});
+ assert.equal(calls.length,2);assert.match(calls[1].url,/gemini-2\.5-flash-lite:generateContent/);assert.equal(calls[1].opts.headers['x-goog-api-key'],'gem-fixture');
+ const part=JSON.parse(calls[1].opts.body).contents[0].parts[0].inlineData;assert.equal(part.mimeType,'audio/wav');assert.equal(atob(part.data).length,4000);
+ gem=()=>new Response('{}',{status:429});calls.length=0;
+ assert.equal((await (await handler(req())).json()).text,'from eleven');assert.ok(calls.some(c=>c.url.includes('elevenlabs')));
+ delete env.ELEVENLABS_API_KEY;assert.equal((await handler(req())).status,502);
+});

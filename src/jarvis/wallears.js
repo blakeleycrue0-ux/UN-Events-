@@ -25,7 +25,7 @@ export function createWallEars({ settings, onCommand, onStatus = () => {}, store
   const e = {
     on: false, muted: false, mutedUntil: 0, followUntil: 0, busy: false, level: 0,
     limits: { minMS: 350, endMS: 800, maxMS: 7000, preMS: 600, perDay: 400, gapMS: 1200 },
-    heardToday: 0, day: "", last: "",
+    heardToday: 0, day: "", last: "", failures: 0,
   };
   let ctx = null, stream = null, proc = null, ring = [], seg = null, floor = 0.008, lastLoud = 0, segStart = 0, coolUntil = 0;
   const today = () => new Date().toDateString();
@@ -92,9 +92,10 @@ export function createWallEars({ settings, onCommand, onStatus = () => {}, store
       const clip = encodeWav(samples);
       const response = await call("jarvis-hear", null, settings.key, { raw: clip, headers: { "Content-Type": "audio/wav" } });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) { onStatus("error", data.error || "hear " + response.status); return; }
+      if (!response.ok) { e.failures++; onStatus("error", data.error || "hear " + response.status); return; }
+      e.failures = 0;
       e.handle(String(data.text || ""));
-    } catch { onStatus("error", "sin conexión"); }
+    } catch { e.failures++; onStatus("error", "sin conexión"); }
     finally { e.busy = false; coolUntil = Date.now() + e.limits.gapMS / 4; }
   };
   // What to do with a transcribed phrase.

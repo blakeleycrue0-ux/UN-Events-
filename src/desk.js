@@ -840,6 +840,11 @@ async function onHome(event) {
   if (event.action === "guard-ask") { guardSend(); return; }
   // The wall phone is listening for "Jarvis…" (it hears you better than this computer).
   if (event.action === "ears") {
+    // The wall can't transcribe right now: this computer listens again.
+    if (event.on === false) {
+      if (wallListening()) { desk.wallEarsAt = 0; if (desk.started && settings.wake) ears.resume(); log("la pared no puede escuchar: escucha el ordenador"); render(); }
+      return;
+    }
     const was = wallListening(); desk.wallEarsAt = Date.now();
     // The wall phone is the microphone now: switch this computer's off.
     if (!was && desk.started && !ears.mode?.match?.(/direct|follow/)) { ears.pause(); log("micro del ordenador apagado: escucha la pared"); render(); }
@@ -1088,7 +1093,7 @@ $("city").onchange = async () => {
     Object.assign(settings, { city: place.name, lat: place.latitude, lon: place.longitude }); settings.save(); $("city").value = place.name; void loadWeather();
   } catch { toast("Sin conexión"); }
 };
-$("testVoice").onclick = async () => { voice.unlock(); await talk(t().online(settings.name)); $("voiceInfo").textContent = voice.error || "Voz funcionando."; ears.resume(); };
+$("testVoice").onclick = async () => { voice.unlock(); voice.forceCloud = true; await talk(t().online(settings.name)); voice.forceCloud = false; $("voiceInfo").textContent = voice.error ? voice.error + " Mientras tanto hablo con la voz del ordenador." : "Voz funcionando."; ears.resume(); };
 $("showType").onchange = () => { $("typeForm").hidden = !$("showType").checked; };
 $("toWall").onclick = (e) => { e.preventDefault(); chooseRole("wall"); };
 render();

@@ -379,6 +379,17 @@ with sync_playwright() as p:
     assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == []
     page.click('#closeSettings')
 
+    # Cloud voice out of credit: Jarvis still talks with the computer's own voice.
+    page.unroute('https://*.supabase.co/functions/v1/jarvis-voice')
+    page.route('https://*.supabase.co/functions/v1/jarvis-voice', lambda r: r.fulfill(status=502, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, body='{"error":"ElevenLabs quota reached"}'))
+    page.evaluate("""window.SpeechSynthesisUtterance=class{constructor(t){this.text=t}};Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{spoken:[],getVoices:()=>[{name:'Jorge',lang:'es-ES'}],cancel(){},speak(u){this.spoken.push([u.text,u.lang,u.voice&&u.voice.name]);setTimeout(()=>u.onend&&u.onend(),50)}}})""")
+    assert page.evaluate("desk.voice.speak('Prueba 1, todo bien.','es')") is True
+    assert page.evaluate("speechSynthesis.spoken") == [['Prueba 1, todo bien.', 'es-ES', 'Jorge']]
+    assert page.evaluate("desk.voice.speak('Prueba 2','es')") is True and len(page.evaluate("speechSynthesis.spoken")) == 2, 'goes straight to the built-in voice while the cloud rests'
+    # The wall can't transcribe: this computer listens again.
+    home({'action': 'ears', 'on': True}); page.wait_for_function("desk.wallListening()")
+    home({'action': 'ears', 'on': False}); page.wait_for_function("!desk.wallListening()")
+
     # Reload: role remembered, wake screen straight away.
     page.reload(); assert page.locator('#wake').is_visible() and page.locator('#chooser').is_hidden()
     # Old invitation links still reach the camera app.

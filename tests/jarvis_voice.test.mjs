@@ -37,3 +37,24 @@ test('audio is streamed back and the provider key stays on the server',async()=>
  assert.equal((await setup({},401).handler(req())).status,502);
  assert.equal((await (await setup({},429).handler(req())).json()).error,'ElevenLabs quota reached');
 });
+
+test('ElevenLabs out of credit → Gemini free voice as WAV; model ladder on 429',async()=>{
+ let handler;const calls=[];
+ const env={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',ELEVENLABS_API_KEY:'private-elevenlabs-fixture',GEMINI_API_KEY:'gem-fixture'};
+ const pcm=btoa(String.fromCharCode(1,2,3,4));
+ const fetch=async(url,opts)=>{url=String(url);calls.push({url,opts});
+  if(url.includes('elevenlabs'))return Response.json({detail:{status:'quota_exceeded'}},{status:401});
+  if(url.includes('gemini-2.5-flash-preview-tts'))return new Response('{}',{status:429});
+  return Response.json({candidates:[{content:{parts:[{inlineData:{mimeType:'audio/L16;codec=pcm;rate=24000',data:pcm}}]}}]})};
+ new Function('Deno','fetch',code)({env:{get:n=>env[n]},serve:h=>handler=h},fetch);
+ const r=await handler(req({text:'Hola, señor.',lang:'es'}));
+ assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'audio/wav');
+ const bytes=new Uint8Array(await r.arrayBuffer());assert.equal(new TextDecoder().decode(bytes.slice(0,4)),'RIFF');assert.equal(bytes.length,48);
+ assert.equal(new DataView(bytes.buffer).getUint32(24,true),24000);
+ const g=calls.filter(c=>c.url.includes('generativelanguage'));assert.equal(g.length,2);assert.match(g[1].url,/gemini-2\.5-flash-tts:generateContent/);
+ const body=JSON.parse(g[1].opts.body);assert.match(body.contents[0].parts[0].text,/español de España: Hola, señor\.$/);assert.deepEqual(body.generationConfig.responseModalities,['AUDIO']);
+ // Only Gemini configured: still talks. Nothing works: clear error.
+ delete env.ELEVENLABS_API_KEY;assert.equal((await handler(req())).status,200);
+ const all429=async()=>new Response('{}',{status:429});let h2;new Function('Deno','fetch',code)({env:{get:n=>env[n]},serve:h=>h2=h},all429);
+ assert.equal((await (await h2(req())).json()).error,'Gemini voice unavailable');
+});

@@ -138,7 +138,7 @@ function geminiSchema(s: any): any {
 }
 // deno-lint-ignore no-explicit-any
 async function askGemini(key: string, system: string, messages: { role: string; content: string }[], tools: any[]) {
-  const models = (Deno.env.get("GEMINI_MODEL") || "gemini-flash-latest,gemini-2.5-flash").split(",").map((m) => m.trim()).filter(Boolean);
+  const models = (Deno.env.get("GEMINI_MODEL") || "gemini-flash-latest,gemini-2.5-flash,gemini-flash-lite-latest,gemini-2.5-flash-lite").split(",").map((m) => m.trim()).filter(Boolean);
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
@@ -149,7 +149,8 @@ async function askGemini(key: string, system: string, messages: { role: string; 
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000),
     });
-    if (r.status === 404) continue;   // model name not available: try the next one
+    // Each model has its own free quota: unavailable or out of quota → try the next one.
+    if (r.status === 404 || r.status === 429 || r.status >= 500) continue;
     if (!r.ok) throw Error("gemini " + r.status);
     const data = await r.json();
     const parts = data?.candidates?.[0]?.content?.parts || [];
