@@ -27,6 +27,9 @@
     store.get("jarvis-settings", {}),
   );
   const save = () => store.set("jarvis-settings", settings);
+  // Safari's recognizer gets no audio on iPhone while the camera runs and makes the
+  // system "ding" on every restart: switch saved background listening off once.
+  if ((settings.v || 0) < 2) { settings.always = false; settings.engine = "cloud"; settings.v = 2; save(); }
   const jarvis = window.jarvis = {
     started: false, stream: null, detector: null,
     threshold: 0.55, absenceMS: 5 * 60000, lastSeen: 0, busy: false, enrolling: null,

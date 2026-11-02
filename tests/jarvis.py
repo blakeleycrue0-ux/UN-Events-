@@ -23,7 +23,7 @@ window.webkitSpeechRecognition=class{
   stop(){} abort(){}
 };
 window.SpeechRecognition=window.webkitSpeechRecognition;
-if(!localStorage.getItem('jarvis-settings'))localStorage.setItem('jarvis-settings',JSON.stringify({engine:'native',always:true}));
+if(!localStorage.getItem('jarvis-settings'))localStorage.setItem('jarvis-settings',JSON.stringify({engine:'native',always:true,v:2}));
 // Cloud hearing: tests feed utterances through capQueue unless realCapture is set.
 window.capQueue=[];
 document.addEventListener('DOMContentLoaded',()=>{if(!window.jarvis||window.realCapture)return;
@@ -252,8 +252,14 @@ with sync_playwright() as p:
     # A face registered with the previous version is kept as yours.
     old = b.new_context(viewport={'width': 390, 'height': 844}).new_page()
     old.add_init_script("localStorage.setItem('jarvis-faces', JSON.stringify([[1,0,0,0]]))")
+    old.add_init_script("if(!sessionStorage.getItem('x')){sessionStorage.setItem('x','1');localStorage.setItem('jarvis-settings',JSON.stringify({always:true,engine:'native',key:'k'}))}")
     old.goto(URL); old.click('#openSettings')
     assert 'cara registrada' in old.locator('#people').inner_text()
+    # Settings saved by older versions: background Safari listening (the "ding") is switched off once.
+    assert old.evaluate("[jarvis.settings.always, jarvis.settings.engine, JSON.parse(localStorage.getItem('jarvis-settings')).v]") == [False, 'cloud', 2]
+    assert not old.locator('#always').is_checked()
+    old.click('#closeSettings'); old.click('#openSettings'); old.check('#always'); old.reload()
+    assert old.evaluate("jarvis.settings.always") is True, 'Turning it back on later is respected'
 
     # Old invitation links still reach the hidden camera app, even in an open tab.
     page.goto(URL + '#invite=' + 'a' * 64)

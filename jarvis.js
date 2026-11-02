@@ -31,6 +31,12 @@
     store.get("jarvis-settings", {})
   );
   const save = () => store.set("jarvis-settings", settings);
+  if ((settings.v || 0) < 2) {
+    settings.always = false;
+    settings.engine = "cloud";
+    settings.v = 2;
+    save();
+  }
   const jarvis = window.jarvis = {
     started: false,
     stream: null,
