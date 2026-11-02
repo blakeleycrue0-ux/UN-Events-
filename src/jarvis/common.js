@@ -79,7 +79,11 @@ export function connectHome({ key, onEvent, onStatus = () => {} }) {
     };
   }
   void open();
-  return { stop() { stopped = true; clearTimeout(retry); clearInterval(beat); try { ws?.close(); } catch {} } };
+  return {
+    stop() { stopped = true; clearTimeout(retry); clearInterval(beat); try { ws?.close(); } catch {} },
+    // Straight to the other devices on the same private channel (no server function).
+    send(payload) { if (!topic || ws?.readyState !== 1) return false; send({ topic, event: "broadcast", payload: { type: "broadcast", event: "command", payload } }); return true; },
+  };
 }
 
 export function clockParts(lang) {

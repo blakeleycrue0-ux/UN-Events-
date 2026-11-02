@@ -260,6 +260,7 @@ desk.addTimer = addTimer;
 async function onHome(event) {
   const at = +event.at || Date.now();
   if (event.action === "wall") { desk.wallSeen = at; render(); return; }
+  if (event.action === "frame") { onFrame(event); return; }
   // A memory saved elsewhere, or a reminder that came due.
   if (event.action === "remember" && event.fact) { addMemory(String(event.fact).slice(0, 200)); return; }
   if (event.action === "remind" && event.text) {
@@ -414,7 +415,34 @@ function openSettings() {
   }));
   $("micLog").textContent = desk.log.slice(-16).join("\n");
   $("settings").hidden = false;
+  startPeek();
 }
+// ---------- Ver la cámara de la pared ----------
+// While settings are open, ask the wall phone for snapshots every few seconds.
+function startPeek() {
+  clearInterval(desk.peekTimer); desk.lastFrame = 0;
+  $("peekInfo").textContent = "Conectando con el móvil de la pared…";
+  const ask = () => {
+    if ($("settings").hidden) { clearInterval(desk.peekTimer); return; }
+    if (!home?.send({ action: "peek" })) $("peekInfo").textContent = settings.key ? "Sin conexión. Pulsa para despertar a Jarvis primero." : "Falta la clave de Jarvis.";
+    else if (Date.now() - desk.lastFrame > 4000) { $("peekImg").hidden = !desk.lastFrame; if (!desk.lastFrame || Date.now() - desk.lastFrame > 6000) $("peekInfo").textContent = "Sin imagen: abre la pared en el móvil, pulsa «Empezar a vigilar» y usa la misma clave."; }
+  };
+  ask(); desk.peekTimer = setInterval(ask, 3000);
+}
+function onFrame(e) {
+  if ($("settings").hidden || !/^data:image\/jpeg;base64,/.test(String(e.img || ""))) return;
+  desk.lastFrame = Date.now();
+  $("peekImg").src = e.img; $("peekImg").hidden = false;
+  const faces = Array.isArray(e.faces) ? e.faces : [];
+  $("peekInfo").textContent = `En directo · cámara ${e.facing === "environment" ? "trasera" : "delantera"} · ` + (faces.length ? faces.join(", ") : "nadie");
+  $("camFront").classList.toggle("on", e.facing === "user"); $("camBack").classList.toggle("on", e.facing === "environment");
+}
+desk.onFrame = onFrame;
+function switchWallCamera(facing) {
+  if (home?.send({ action: "camera", facing })) $("peekInfo").textContent = facing === "environment" ? "Cambiando a la cámara trasera…" : "Cambiando a la cámara delantera…";
+}
+$("camFront").onclick = () => switchWallCamera("user");
+$("camBack").onclick = () => switchWallCamera("environment");
 $("openSettings").onclick = openSettings;
 $("closeSettings").onclick = () => { $("settings").hidden = true; };
 const bind = (id, key, conv = (v) => v) => { $(id).onchange = () => { settings[key] = conv($(id).type === "checkbox" ? $(id).checked : $(id).value); settings.save(); render(); }; };

@@ -51,6 +51,11 @@
       document.head.append(s);
     });
   }
+  async function sha256hex(text) {
+    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  var homeTopic = async (key) => "jarvis-pc-" + (await sha256hex("jarvis-pc:" + key.trim())).slice(0, 40);
   var config = () => window.SECURITY_SUPABASE_PUBLIC || {};
   function call(name, body, key, init = {}) {
     const c = config();
@@ -59,6 +64,59 @@
       headers: { "Content-Type": "application/json", "x-jarvis-key": key, apikey: c.key || "", ...init.headers || {} },
       body: init.raw ?? JSON.stringify(body)
     });
+  }
+  function connectHome({ key, onEvent, onStatus = () => {
+  } }) {
+    let ws = null, beat = null, ref = 0, topic = "", stopped = false, retry = null;
+    const send = (m) => {
+      if (ws?.readyState === 1) ws.send(JSON.stringify({ ...m, ref: String(++ref) }));
+    };
+    async function open() {
+      if (stopped) return;
+      topic = "realtime:" + await homeTopic(key);
+      const c = config();
+      const socket = ws = new WebSocket(c.url.replace(/^http/, "ws") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(c.key) + "&vsn=1.0.0");
+      socket.onopen = () => {
+        send({ topic, event: "phx_join", join_ref: "1", payload: { config: { broadcast: { self: false, ack: false }, presence: { key: "" }, private: false } } });
+        beat = setInterval(() => send({ topic: "phoenix", event: "heartbeat", payload: {} }), 2e4);
+      };
+      socket.onmessage = (e) => {
+        let m;
+        try {
+          m = JSON.parse(e.data);
+        } catch {
+          return;
+        }
+        if (m.topic !== topic) return;
+        if (m.event === "phx_reply" && m.payload?.status) onStatus(m.payload.status === "ok" ? "online" : "error");
+        if (m.event === "broadcast" && m.payload?.event === "command") onEvent(m.payload.payload || {});
+      };
+      socket.onclose = () => {
+        clearInterval(beat);
+        if (ws === socket && !stopped) {
+          onStatus("offline");
+          retry = setTimeout(open, 4e3);
+        }
+      };
+    }
+    void open();
+    return {
+      stop() {
+        stopped = true;
+        clearTimeout(retry);
+        clearInterval(beat);
+        try {
+          ws?.close();
+        } catch {
+        }
+      },
+      // Straight to the other devices on the same private channel (no server function).
+      send(payload) {
+        if (!topic || ws?.readyState !== 1) return false;
+        send({ topic, event: "broadcast", payload: { type: "broadcast", event: "command", payload } });
+        return true;
+      }
+    };
   }
   function clockParts(lang) {
     const now = /* @__PURE__ */ new Date(), locale = lang === "es" ? "es-ES" : "en-GB";
@@ -186,11 +244,12 @@
   wall.identify = identify;
   async function startCamera() {
     wall.stream?.getTracks().forEach((t) => t.stop());
-    wall.stream = await navigator.mediaDevices.getUserMedia({
-      // Up to 4K: the door crop needs the pixels for faces ~5 m away.
-      audio: false,
-      video: { facingMode: settings.facing, width: { ideal: 3840 }, height: { ideal: 2160 } }
-    });
+    const size = { width: { ideal: 3840 }, height: { ideal: 2160 } };
+    try {
+      wall.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { exact: settings.facing }, ...size } });
+    } catch {
+      wall.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: settings.facing, ...size } });
+    }
     $("video").srcObject = wall.stream;
     $("preview").classList.toggle("back", settings.facing === "environment");
     await $("video").play().catch(() => {
@@ -261,8 +320,10 @@
       const tag = document.createElement("span");
       tag.textContent = m.person ? displayName(m.person) : wall.enrolling ? "\u2026" : "?";
       el.append(tag);
+      el.face = { x: mirror ? 1 - x - w : x, y, w, h, label: tag.textContent, known: !!m.person };
       return el;
     });
+    wall.lastFaces = { at: Date.now(), list: boxes.map((b) => b.face) };
     layer.replaceChildren(...boxes);
     if (boxes.length && !wall.enrolling && !framing && $("settings").hidden) {
       clearTimeout(wall.spotTimer);
@@ -281,6 +342,62 @@
     }
   }
   wall.drawBoxes = drawBoxes;
+  var peek = document.createElement("canvas");
+  var peekCtx = peek.getContext("2d");
+  function sendFrame() {
+    const video = $("video");
+    if (!wall.home || Date.now() > (wall.peekUntil || 0) || !video.videoWidth) return;
+    const w = 480, h = Math.round(w * video.videoHeight / video.videoWidth), mirror = settings.facing === "user";
+    peek.width = w;
+    peek.height = h;
+    peekCtx.save();
+    if (mirror) {
+      peekCtx.translate(w, 0);
+      peekCtx.scale(-1, 1);
+    }
+    peekCtx.drawImage(video, 0, 0, w, h);
+    peekCtx.restore();
+    if ((settings.crop?.zoom || 1) > 1.01) {
+      const r = cropRect(video);
+      peekCtx.setLineDash([6, 5]);
+      peekCtx.strokeStyle = "rgba(255,255,255,.8)";
+      peekCtx.lineWidth = 1.5;
+      peekCtx.strokeRect((mirror ? 1 - r.x - r.w : r.x) * w, r.y * h, r.w * w, r.h * h);
+      peekCtx.setLineDash([]);
+    }
+    const faces = wall.lastFaces && Date.now() - wall.lastFaces.at < 1500 ? wall.lastFaces.list : [];
+    peekCtx.font = "600 13px -apple-system, system-ui, sans-serif";
+    for (const f of faces) {
+      const color = f.known ? "#34d399" : "#fbbf24";
+      peekCtx.strokeStyle = color;
+      peekCtx.lineWidth = 2.5;
+      peekCtx.strokeRect(f.x * w, f.y * h, f.w * w, f.h * h);
+      const tw = peekCtx.measureText(f.label).width + 12;
+      peekCtx.fillStyle = color;
+      peekCtx.fillRect(f.x * w, Math.max(0, f.y * h - 20), tw, 18);
+      peekCtx.fillStyle = "#06130d";
+      peekCtx.fillText(f.label, f.x * w + 6, Math.max(13, f.y * h - 6));
+    }
+    wall.home.send({ action: "frame", img: peek.toDataURL("image/jpeg", 0.55), facing: settings.facing, faces: faces.map((f) => f.label), state: $("faceState").textContent });
+  }
+  setInterval(sendFrame, 500);
+  wall.sendFrame = sendFrame;
+  async function onDesk(e) {
+    if (e.action === "peek") wall.peekUntil = Date.now() + 15e3;
+    if (e.action === "camera" && (e.facing === "user" || e.facing === "environment") && e.facing !== settings.facing) {
+      settings.facing = e.facing;
+      settings.save();
+      $("facing").value = e.facing;
+      if (wall.started) await startCamera().catch(() => {
+      });
+    }
+  }
+  wall.onDesk = onDesk;
+  function listenToDesk() {
+    wall.home?.stop();
+    wall.home = null;
+    if (settings.key) wall.home = connectHome({ key: settings.key, onEvent: (e) => void onDesk(e) });
+  }
   function onFaces(found) {
     if (wall.enrolling) return enrollStep(found);
     const known = wall.people.some((p) => p.samples?.length);
@@ -462,6 +579,7 @@
       status(settings.key ? "Vigilando la puerta" : "Falta la clave de Jarvis (toca la pantalla)");
       await keepAwake();
       void scan();
+      listenToDesk();
       if (settings.key) void tell("status", { camera: true });
     } catch (e) {
       status(e.name === "NotAllowedError" ? "Necesito la c\xE1mara: perm\xEDtela en Safari" : "No he podido arrancar: " + e.message);
@@ -497,7 +615,10 @@
   $("voiceKey").onchange = () => {
     settings.key = $("voiceKey").value.trim();
     settings.save();
-    if (wall.started) status("Vigilando la puerta");
+    if (wall.started) {
+      status("Vigilando la puerta");
+      listenToDesk();
+    }
   };
   $("facing").onchange = async () => {
     settings.facing = $("facing").value;

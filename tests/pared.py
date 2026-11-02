@@ -16,6 +16,21 @@ FAKE = """(vec)=>{
 }"""
 A, B, C, D = [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]
 events, forbidden = [], []
+channel = {'ws': None, 'topic': None, 'frames': []}
+
+def realtime(ws):
+    channel['ws'] = ws
+    def receive(raw):
+        m = json.loads(raw)
+        if m['event'] == 'phx_join':
+            channel['topic'] = m['topic']
+            ws.send(json.dumps({'topic': m['topic'], 'event': 'phx_reply', 'ref': m['ref'], 'payload': {'status': 'ok', 'response': {}}}))
+        if m['event'] == 'broadcast' and m['payload']['payload'].get('action') == 'frame':
+            channel['frames'].append(m['payload']['payload'])
+    ws.on_message(receive)
+
+def desk_says(payload):
+    channel['ws'].send(json.dumps({'topic': channel['topic'], 'event': 'broadcast', 'ref': None, 'payload': {'event': 'command', 'type': 'broadcast', 'payload': payload}}))
 
 def event(route):
     req = route.request
@@ -41,6 +56,7 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.add_init_script(INIT)
     page.route('https://*.supabase.co/functions/v1/jarvis-event', event)
+    page.route_web_socket('wss://*.supabase.co/**', realtime)
     for name in ['jarvis-voice', 'jarvis-brain', 'jarvis-hear']:
         page.route(f'https://*.supabase.co/functions/v1/{name}', never)
 
@@ -108,6 +124,21 @@ with sync_playwright() as p:
     assert wait_event(page, 'unknown')['count'] == 1
     page.wait_for_timeout(2500); assert len([e for e in events if e['kind'] == 'unknown']) == 1, 'strangers reported at most every 2 minutes'
     assert 'Papá' in page.locator('#wallSeen').inner_text()
+
+    # The desk's settings can see the camera: frames only while asked, with the face boxes.
+    assert channel['topic'] and not channel['frames'], 'no frames unless the desk asks'
+    page.evaluate('v=>{window.nextFace=v}', A)
+    desk_says({'action': 'peek'})
+    for _ in range(40):
+        if any('Crew' in f['faces'] for f in channel['frames']): break
+        page.wait_for_timeout(100)
+    f = next(f for f in channel['frames'] if 'Crew' in f['faces'])
+    assert f['img'].startswith('data:image/jpeg;base64,') and len(f['img']) < 200000 and f['facing'] == 'user'
+    # Switch to the back camera from the desk (required, not just preferred).
+    desk_says({'action': 'camera', 'facing': 'environment'})
+    page.wait_for_function("JSON.parse(localStorage.getItem('jarvis-settings')).facing==='environment' && document.getElementById('facing').value==='environment'")
+    page.wait_for_function("wall.stream && wall.stream.getVideoTracks()[0].readyState==='live'")
+    page.evaluate("()=>{window.nextFace=null; wall.peekUntil=0}")
     page.evaluate('()=>{window.nextFace=null}')
     page.screenshot(path='/tmp/pared-live.png')
     assert page.evaluate("document.getElementById('wallFace').style.transform.startsWith('translate')"), 'clock drifts against burn-in'

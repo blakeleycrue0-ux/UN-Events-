@@ -94,15 +94,23 @@
       };
     }
     void open();
-    return { stop() {
-      stopped = true;
-      clearTimeout(retry);
-      clearInterval(beat);
-      try {
-        ws?.close();
-      } catch {
+    return {
+      stop() {
+        stopped = true;
+        clearTimeout(retry);
+        clearInterval(beat);
+        try {
+          ws?.close();
+        } catch {
+        }
+      },
+      // Straight to the other devices on the same private channel (no server function).
+      send(payload) {
+        if (!topic || ws?.readyState !== 1) return false;
+        send({ topic, event: "broadcast", payload: { type: "broadcast", event: "command", payload } });
+        return true;
       }
-    } };
+    };
   }
   function clockParts(lang) {
     const now = /* @__PURE__ */ new Date(), locale = lang === "es" ? "es-ES" : "en-GB";
@@ -1076,6 +1084,10 @@
       render();
       return;
     }
+    if (event.action === "frame") {
+      onFrame(event);
+      return;
+    }
     if (event.action === "remember" && event.fact) {
       addMemory(String(event.fact).slice(0, 200));
       return;
@@ -1330,7 +1342,42 @@
     }));
     $("micLog").textContent = desk.log.slice(-16).join("\n");
     $("settings").hidden = false;
+    startPeek();
   }
+  function startPeek() {
+    clearInterval(desk.peekTimer);
+    desk.lastFrame = 0;
+    $("peekInfo").textContent = "Conectando con el m\xF3vil de la pared\u2026";
+    const ask = () => {
+      if ($("settings").hidden) {
+        clearInterval(desk.peekTimer);
+        return;
+      }
+      if (!home?.send({ action: "peek" })) $("peekInfo").textContent = settings.key ? "Sin conexi\xF3n. Pulsa para despertar a Jarvis primero." : "Falta la clave de Jarvis.";
+      else if (Date.now() - desk.lastFrame > 4e3) {
+        $("peekImg").hidden = !desk.lastFrame;
+        if (!desk.lastFrame || Date.now() - desk.lastFrame > 6e3) $("peekInfo").textContent = "Sin imagen: abre la pared en el m\xF3vil, pulsa \xABEmpezar a vigilar\xBB y usa la misma clave.";
+      }
+    };
+    ask();
+    desk.peekTimer = setInterval(ask, 3e3);
+  }
+  function onFrame(e) {
+    if ($("settings").hidden || !/^data:image\/jpeg;base64,/.test(String(e.img || ""))) return;
+    desk.lastFrame = Date.now();
+    $("peekImg").src = e.img;
+    $("peekImg").hidden = false;
+    const faces = Array.isArray(e.faces) ? e.faces : [];
+    $("peekInfo").textContent = `En directo \xB7 c\xE1mara ${e.facing === "environment" ? "trasera" : "delantera"} \xB7 ` + (faces.length ? faces.join(", ") : "nadie");
+    $("camFront").classList.toggle("on", e.facing === "user");
+    $("camBack").classList.toggle("on", e.facing === "environment");
+  }
+  desk.onFrame = onFrame;
+  function switchWallCamera(facing) {
+    if (home?.send({ action: "camera", facing })) $("peekInfo").textContent = facing === "environment" ? "Cambiando a la c\xE1mara trasera\u2026" : "Cambiando a la c\xE1mara delantera\u2026";
+  }
+  $("camFront").onclick = () => switchWallCamera("user");
+  $("camBack").onclick = () => switchWallCamera("environment");
   $("openSettings").onclick = openSettings;
   $("closeSettings").onclick = () => {
     $("settings").hidden = true;

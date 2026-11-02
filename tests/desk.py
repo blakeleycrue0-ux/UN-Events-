@@ -52,6 +52,9 @@ def weather(route):
     route.fulfill(status=200, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'},
                   body=json.dumps({'hourly': {'time': [time.strftime('%Y-%m-%dT%H:00', time.localtime(time.time() + 3600 * h)) for h in range(-1, 8)], 'temperature_2m': [20, 21, 22, 22, 21, 19, 18, 17, 16], 'weather_code': [1, 1, 2, 3, 61, 61, 3, 0, 0]}, 'current': {'temperature_2m': 21.4, 'weather_code': 1}, 'daily': {'temperature_2m_max': [24], 'temperature_2m_min': [15], 'precipitation_probability_max': [10]}}))
 
+to_wall = []
+PIXEL = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=='
+
 def realtime(ws):
     entry = {'ws': ws, 'topic': None}; sockets.append(entry)
     def receive(raw):
@@ -59,6 +62,8 @@ def realtime(ws):
         if m['event'] == 'phx_join':
             entry['topic'] = m['topic']
             ws.send(json.dumps({'topic': m['topic'], 'event': 'phx_reply', 'ref': m['ref'], 'payload': {'status': 'ok', 'response': {}}}))
+        if m['event'] == 'broadcast':
+            to_wall.append(m['payload']['payload'])
     ws.on_message(receive)
 
 def home(event):
@@ -214,7 +219,21 @@ with sync_playwright() as p:
     page.evaluate("document.getElementById('say').textContent='Good evening, Crew. 21 degrees and clear in Calvià.'")
     page.screenshot(path='/tmp/desk-live.png')
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth && document.documentElement.scrollHeight<=innerHeight')
-    page.click('#openSettings'); page.wait_for_timeout(400); page.screenshot(path='/tmp/desk-settings.png')
+    page.click('#openSettings')
+    # Settings show the wall camera: the desk asks for frames and can switch cameras.
+    for _ in range(30):
+        if any(x.get('action') == 'peek' for x in to_wall): break
+        page.wait_for_timeout(100)
+    assert any(x.get('action') == 'peek' for x in to_wall)
+    home({'action': 'frame', 'img': 'data:image/jpeg;base64,' + PIXEL, 'facing': 'environment', 'faces': ['Crew']})
+    page.wait_for_function("!document.getElementById('peekImg').hidden && document.getElementById('peekInfo').textContent.includes('trasera')")
+    assert 'Crew' in page.locator('#peekInfo').inner_text() and page.evaluate("document.getElementById('camBack').classList.contains('on')")
+    page.click('#camFront')
+    for _ in range(30):
+        if {'action': 'camera', 'facing': 'user'} in to_wall: break
+        page.wait_for_timeout(100)
+    assert {'action': 'camera', 'facing': 'user'} in to_wall
+    page.wait_for_timeout(400); page.screenshot(path='/tmp/desk-settings.png')
     assert 'maths exam' in page.locator('#memoryList').inner_text()
     page.locator('#memoryList button').first.click(); page.locator('#memoryList button').first.click()
     assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == []
