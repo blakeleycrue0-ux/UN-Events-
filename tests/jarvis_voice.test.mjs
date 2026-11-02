@@ -11,7 +11,7 @@ function setup(extra={},status=200){
  new Function('Deno','fetch',code)({env:{get:n=>env[n]},serve:h=>handler=h},fetch);
  return {handler,calls};
 }
-const req=({origin='https://app.example.com',key='clave-larga-de-prueba',text='Hola, Crew.',method='POST'}={})=>new Request('https://fixture.supabase.co/functions/v1/jarvis-voice',{method,headers:{origin,'x-jarvis-key':key,'content-type':'application/json'},body:method==='POST'?JSON.stringify({text}):undefined});
+const req=({origin='https://app.example.com',key='clave-larga-de-prueba',text='Hola, Crew.',method='POST',lang}={})=>new Request('https://fixture.supabase.co/functions/v1/jarvis-voice',{method,headers:{origin,'x-jarvis-key':key,'content-type':'application/json'},body:method==='POST'?JSON.stringify({text,lang}):undefined});
 test('voice requires the allowed origin, the private Jarvis key and sane text before calling ElevenLabs',async()=>{
  const s=setup();
  assert.equal((await s.handler(req({origin:'https://evil.example.com'}))).status,403);
@@ -31,8 +31,9 @@ test('audio is streamed back and the provider key stays on the server',async()=>
  assert.deepEqual([...new Uint8Array(await r.arrayBuffer())],[73,68,51]);
  const call=s.calls[0];assert.ok(call.url.startsWith('https://api.elevenlabs.io/v1/text-to-speech/'));
  assert.equal(call.opts.headers['xi-api-key'],'private-elevenlabs-fixture');
- const body=JSON.parse(call.opts.body);assert.equal(body.text,'Hola, Crew.');assert.equal(body.language_code,'es');
+ const body=JSON.parse(call.opts.body);assert.equal(body.text,'Hola, Crew.');assert.equal(body.language_code,'en');
  assert.ok(!JSON.stringify([...r.headers]).includes('private-elevenlabs-fixture'));
+ const es=setup();await es.handler(req({lang:'es'}));assert.equal(JSON.parse(es.calls[0].opts.body).language_code,'es');
  assert.equal((await setup({},401).handler(req())).status,502);
  assert.equal((await (await setup({},429).handler(req())).json()).error,'ElevenLabs quota reached');
 });

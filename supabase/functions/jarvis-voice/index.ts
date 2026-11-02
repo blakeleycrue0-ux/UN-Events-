@@ -28,8 +28,8 @@ Deno.serve(async (request: Request) => {
   for (let i = 0; i < b.length; i++) diff |= (a[i] ?? 0) ^ b[i];
   if (diff) return reply(401, "Wrong Jarvis key");
 
-  let text = "";
-  try { text = String((await request.json()).text || "").trim(); } catch { /* handled below */ }
+  let text = "", lang = "en";
+  try { const body = await request.json(); text = String(body.text || "").trim(); lang = body.lang === "es" ? "es" : "en"; } catch { /* handled below */ }
   if (!text || text.length > 400) return reply(400, "Text must be 1-400 characters");
 
   const voice = Deno.env.get("ELEVENLABS_VOICE_ID") || "onwK4e9ZLuTAKqWW03F9"; // "Daniel": calm, deep, British.
@@ -43,7 +43,7 @@ Deno.serve(async (request: Request) => {
         body: JSON.stringify({
           text,
           model_id: Deno.env.get("ELEVENLABS_MODEL") || "eleven_flash_v2_5",
-          language_code: "es",
+          language_code: lang,
           voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true },
         }),
         signal: AbortSignal.timeout(15000),

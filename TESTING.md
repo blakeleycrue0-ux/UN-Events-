@@ -168,3 +168,8 @@ La app de vigilancia pasa a `camara.html` (`/camara` en Netlify) sin cambios de 
 ## Jarvis: diseño de cristal, voz ElevenLabs y escucha robusta — 2026-11-01
 
 Portada rediseñada (negro, cuadrícula, burbuja de cristal que flota, escucha y habla; se toca para hablar). Voz con ElevenLabs mediante la función `jarvis-voice`, que guarda la clave del proveedor en Supabase y exige una clave privada de Jarvis. `tests/jarvis_voice.test.mjs` cubre origen, clave, longitud de texto, errores del proveedor y que la clave nunca vuelve al navegador. `tests/jarvis.py` simula ElevenLabs y un reconocedor que se cuelga: respuesta normal, reconocedor sin evento final, silencio, micrófono denegado y cancelación; en todos la burbuja vuelve a reposo. El modelo de caras se pausa mientras escucha o habla. Sin probar todavía con la cuenta real de ElevenLabs ni en Safari del iPhone.
+
+
+## Jarvis conversa con Claude, en inglés y con manos libres — 2026-11-02
+
+Nueva función `jarvis-brain` (SDK oficial de Anthropic, Claude Opus 5.5, esfuerzo bajo, respaldo de rechazos `fallbacks: "default"`); la clave de Anthropic vive en Supabase. Jarvis responde en inglés por defecto (configurable) y entiende español. Escucha continua: solo actúa si oye «Jarvis»; tras cada respuesta escucha unos segundos más para seguir la conversación sin repetir la palabra. Si Safari no deja escuchar sin tocar, vuelve a tocar para hablar. `tests/jarvis_brain.test.mjs` cubre origen, clave, validación de la conversación, parámetros enviados a Claude y errores; `tests/jarvis.py` cubre conversación con historial, seguimiento sin palabra clave, frases ignoradas sin «Jarvis», acciones locales sin Claude, errores del cerebro y bloqueos de Safari. Sin probar todavía con la API real de Claude ni en el iPhone.

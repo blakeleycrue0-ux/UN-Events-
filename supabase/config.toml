@@ -6,3 +6,7 @@ verify_jwt = false
 [functions.jarvis-voice]
 # The function checks the private JARVIS_KEY itself; no Supabase login is involved.
 verify_jwt = false
+
+[functions.jarvis-brain]
+# The function checks the private JARVIS_KEY itself; no Supabase login is involved.
+verify_jwt = false

@@ -26,7 +26,10 @@
       }
     }
   };
-  const settings = Object.assign({ name: "Crew", facing: "user", greet: true, typing: false, key: "" }, store.get("jarvis-settings", {}));
+  const settings = Object.assign(
+    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: true },
+    store.get("jarvis-settings", {})
+  );
   const save = () => store.set("jarvis-settings", settings);
   const jarvis = window.jarvis = {
     started: false,
@@ -43,8 +46,95 @@
     timers: [],
     speaking: false,
     listening: false,
-    voiceError: ""
+    voiceError: "",
+    history: [],
+    lastTalk: 0,
+    settings
   };
+  const T = {
+    en: {
+      tap: "Tap the bubble to start",
+      waking: "Waking up\u2026",
+      ready: (n) => "Hello, ".concat(n, ". I'm online."),
+      readyNoFace: "Hello. Register your face in settings so I can recognise you.",
+      needKey: "Ready. Add your Jarvis key in \u2699\uFE0E so I can talk.",
+      listening: "Listening\u2026",
+      notHeard: "I didn't catch that. Tap the bubble and talk.",
+      micDenied: "I need the microphone. Check Safari and that Siri is on.",
+      noMic: "This browser won't let me listen. Type below.",
+      cam: "I need the camera. Allow it in Safari and tap again.",
+      cantStart: "I couldn't start: ",
+      morning: "Good morning",
+      afternoon: "Good afternoon",
+      evening: "Good evening",
+      greetTail: ["What shall we do today?", "How can I help?", "Good to see you.", "All systems ready."],
+      time: (t2) => "It's ".concat(t2, "."),
+      date: (d) => "Today is ".concat(d, "."),
+      timerSet: (x) => "Done. I'll remind you in ".concat(x, "."),
+      timerBad: "I didn't get how long the timer should be.",
+      timerUp: (n) => "".concat(n, ", time's up."),
+      device: (d) => "I can't control ".concat(d, " yet. Once the universal remote arrives, I'll take care of it."),
+      deviceDone: (on, d) => "Done, ".concat(on ? "turning on" : "turning off", " ").concat(d, "."),
+      leaving: (n) => "See you later, ".concat(n, ". Once the door laser is installed, I'll keep watch while you're out."),
+      back: (n) => "Welcome back, ".concat(n, "."),
+      thanks: ["You're welcome.", "Any time.", "My pleasure."],
+      who: "I'm Jarvis, the assistant of this room.",
+      how: "Running at a hundred percent. And you?",
+      help: "I can chat about anything, tell you the time, set timers and greet you when you come in. Lights, air conditioning, the fan and the PlayStation are coming soon.",
+      unknown: "I didn't understand that. Try asking: what can you do?",
+      yes: ["Yes?", "At your service.", "I'm listening."],
+      jokes: ["I'd tell you a UDP joke, but you might not get it.", "There are ten kinds of people: those who understand binary and those who don't.", "Why did the computer go to the doctor? It had a virus."],
+      refused: "I'd rather not answer that one.",
+      nice: (n) => "Nice to meet you, ".concat(n, ". I'll recognise you now."),
+      test: (n) => "Hello, ".concat(n, ". This is how I sound now."),
+      forgot: "I've deleted your face from this phone.",
+      thinkErr: { "Claude key rejected": "My brain's key was rejected. Check ANTHROPIC_API_KEY in Supabase.", "Claude credit exhausted": "My brain has run out of Claude credit.", "Claude busy": "My brain is busy. Try again in a moment.", "Brain not configured": "My brain isn't set up yet. Add ANTHROPIC_API_KEY in Supabase.", "Wrong Jarvis key": "The Jarvis key doesn't match Supabase." },
+      thinkDown: "I can't reach my brain right now.",
+      devices: { luz: "the lights", aire: "the air conditioning", ventilador: "the fan", play: "the PlayStation", tele: "the TV" }
+    },
+    es: {
+      tap: "Toca la burbuja para empezar",
+      waking: "Despertando\u2026",
+      ready: (n) => "Hola, ".concat(n, ". Estoy listo."),
+      readyNoFace: "Hola. Registra tu cara en ajustes para que te reconozca.",
+      needKey: "Listo. Pon la clave de Jarvis en \u2699\uFE0E para que te hable.",
+      listening: "Te escucho\u2026",
+      notHeard: "No te he o\xEDdo. Toca la burbuja y habla.",
+      micDenied: "Necesito el micr\xF3fono. Revisa Safari y que Siri est\xE9 activado.",
+      noMic: "Este navegador no me deja escucharte. Escr\xEDbeme abajo.",
+      cam: "Necesito la c\xE1mara. Perm\xEDtela en Safari y toca otra vez.",
+      cantStart: "No he podido arrancar: ",
+      morning: "Buenos d\xEDas",
+      afternoon: "Buenas tardes",
+      evening: "Buenas noches",
+      greetTail: ["\xBFQu\xE9 quieres hacer hoy?", "\xBFEn qu\xE9 te ayudo?", "Me alegro de verte.", "Todo listo por aqu\xED."],
+      time: (t2) => "Son las ".concat(t2, "."),
+      date: (d) => "Hoy es ".concat(d, "."),
+      timerSet: (x) => "Vale, te aviso en ".concat(x, "."),
+      timerBad: "No he entendido el tiempo del temporizador.",
+      timerUp: (n) => "".concat(n, ", se acab\xF3 el tiempo."),
+      device: (d) => "Todav\xEDa no puedo controlar ".concat(d, ". Cuando tengamos el mando universal, lo conecto."),
+      deviceDone: (on, d) => "Hecho, ".concat(on ? "enciendo" : "apago", " ").concat(d, "."),
+      leaving: (n) => "Hasta luego, ".concat(n, ". Cuando instalemos el l\xE1ser de la puerta, vigilar\xE9 mientras no est\xE1s."),
+      back: (n) => "Bienvenido, ".concat(n, "."),
+      thanks: ["De nada.", "Para eso estoy.", "Cuando quieras."],
+      who: "Soy Jarvis, el asistente de tu cuarto.",
+      how: "Funcionando al cien por cien. \xBFY t\xFA?",
+      help: "Puedo charlar de lo que quieras, decirte la hora, poner temporizadores y saludarte al entrar. Pronto controlar\xE9 las luces, el aire, el ventilador y la Play.",
+      unknown: "No te he entendido. Prueba a decir: qu\xE9 puedes hacer.",
+      yes: ["\xBFS\xED?", "A tu servicio.", "Te escucho."],
+      jokes: ["Hay diez tipos de personas: las que entienden binario y las que no.", "\xBFPor qu\xE9 el ordenador fue al m\xE9dico? Porque ten\xEDa un virus."],
+      refused: "Prefiero no contestar a eso.",
+      nice: (n) => "Encantado, ".concat(n, ". Ya te reconozco."),
+      test: (n) => "Hola, ".concat(n, ". As\xED sueno ahora."),
+      forgot: "He borrado tu cara de este m\xF3vil.",
+      thinkErr: { "Claude key rejected": "La clave de mi cerebro no vale. Revisa ANTHROPIC_API_KEY en Supabase.", "Claude credit exhausted": "Mi cerebro se ha quedado sin cr\xE9dito de Claude.", "Claude busy": "Mi cerebro est\xE1 ocupado. Prueba en un momento.", "Brain not configured": "Mi cerebro a\xFAn no est\xE1 configurado. A\xF1ade ANTHROPIC_API_KEY en Supabase.", "Wrong Jarvis key": "La clave de Jarvis no coincide con la de Supabase." },
+      thinkDown: "Ahora no puedo conectar con mi cerebro.",
+      devices: { luz: "las luces", aire: "el aire acondicionado", ventilador: "el ventilador", play: "la Play", tele: "la tele" }
+    }
+  };
+  const t = () => T[settings.lang] || T.en;
+  const locale = () => settings.lang === "es" ? "es-ES" : "en-GB";
   let mood = "off";
   function setState(state) {
     mood = state;
@@ -57,11 +147,23 @@
   function tickClock() {
     const now = /* @__PURE__ */ new Date();
     $("clock").textContent = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-    const date = now.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+    const date = now.toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" });
     $("date").textContent = date.charAt(0).toUpperCase() + date.slice(1);
   }
   tickClock();
   setInterval(tickClock, 1e3);
+  const endpoint = (name) => {
+    const c = window.SECURITY_SUPABASE_PUBLIC;
+    return (c == null ? void 0 : c.url) ? "".concat(c.url, "/functions/v1/").concat(name) : "";
+  };
+  const post = (name, body) => {
+    var _a;
+    return fetch(endpoint(name), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-jarvis-key": settings.key, apikey: ((_a = window.SECURITY_SUPABASE_PUBLIC) == null ? void 0 : _a.key) || "" },
+      body: JSON.stringify(body)
+    });
+  };
   const audio = new Audio();
   audio.preload = "auto";
   let speechId = 0, endSpeech = null;
@@ -86,29 +188,20 @@
     audio.play().catch(() => {
     });
   }
-  const voiceEndpoint = () => {
-    const c = window.SECURITY_SUPABASE_PUBLIC;
-    return (c == null ? void 0 : c.url) ? c.url + "/functions/v1/jarvis-voice" : "";
-  };
   async function voiceBlob(text) {
     const cacheable = !/\d/.test(text) && "caches" in window;
-    const keyUrl = location.origin + "/__jarvis-voice?" + encodeURIComponent(text);
+    const keyUrl = location.origin + "/__jarvis-voice?" + settings.lang + "&" + encodeURIComponent(text);
     let cache;
     if (cacheable) {
       try {
-        cache = await caches.open("jarvis-voice-v1");
+        cache = await caches.open("jarvis-voice-v2");
         const hit = await cache.match(keyUrl);
         if (hit) return await hit.blob();
       } catch {
       }
     }
     if (!settings.key) throw Error("Falta la clave de Jarvis en Ajustes.");
-    const c = window.SECURITY_SUPABASE_PUBLIC;
-    const response = await fetch(voiceEndpoint(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-jarvis-key": settings.key, apikey: c.key },
-      body: JSON.stringify({ text })
-    });
+    const response = await post("jarvis-voice", { text, lang: settings.lang });
     if (!response.ok) {
       let error = "";
       try {
@@ -181,95 +274,132 @@
     }
   }
   jarvis.speak = speak;
-  function partOfDay() {
-    const h = (/* @__PURE__ */ new Date()).getHours();
-    return h >= 6 && h < 13 ? "Buenos d\xEDas" : h >= 13 && h < 21 ? "Buenas tardes" : "Buenas noches";
-  }
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   function greeting() {
-    return "".concat(partOfDay(), ", ").concat(settings.name, ". ") + pick(["\xBFQu\xE9 quieres hacer hoy?", "\xBFEn qu\xE9 te ayudo?", "Me alegro de verte.", "Todo listo por aqu\xED."]);
+    const h = (/* @__PURE__ */ new Date()).getHours(), s = t();
+    const part = h >= 6 && h < 13 ? s.morning : h >= 13 && h < 21 ? s.afternoon : s.evening;
+    return "".concat(part, ", ").concat(settings.name, ". ").concat(pick(s.greetTail));
   }
   const devices = [
-    { id: "luz", names: ["luz", "luces", "led", "leds", "lampara"], label: "las luces", connected: false },
-    { id: "aire", names: ["aire", "aire acondicionado", "clima", "split"], label: "el aire acondicionado", connected: false },
-    { id: "ventilador", names: ["ventilador"], label: "el ventilador", connected: false },
-    { id: "play", names: ["play", "playstation", "ps5", "consola"], label: "la Play", connected: false },
-    { id: "tele", names: ["tele", "television", "televisor"], label: "la tele", connected: false }
+    { id: "luz", names: ["luz", "luces", "led", "leds", "lampara", "light", "lights", "lamp"], connected: false },
+    { id: "aire", names: ["aire", "aire acondicionado", "clima", "air conditioning", "ac", "aircon"], connected: false },
+    { id: "ventilador", names: ["ventilador", "fan"], connected: false },
+    { id: "play", names: ["play", "playstation", "ps5", "consola", "console"], connected: false },
+    { id: "tele", names: ["tele", "television", "televisor", "tv"], connected: false }
   ];
   jarvis.devices = devices;
-  const normalize = (t) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!.,]/g, " ").replace(/\s+/g, " ").trim();
+  const normalize = (x) => x.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!.,]/g, " ").replace(/\s+/g, " ").trim();
   const has = (text, ...words) => words.some((w) => new RegExp("(^| )".concat(w, "( |$)")).test(text));
-  const numbers = { un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, quince: 15, veinte: 20, treinta: 30, media: 30 };
-  const jokes = [
-    "\xBFQu\xE9 le dice un bit a otro? Nos vemos en el bus.",
-    "\xBFPor qu\xE9 el ordenador fue al m\xE9dico? Porque ten\xEDa un virus.",
-    "Hay diez tipos de personas: las que entienden binario y las que no.",
-    "\xBFCu\xE1l es el caf\xE9 m\xE1s peligroso del mundo? El ex-preso."
-  ];
-  function handle(raw) {
-    const text = normalize(raw);
-    if (!text) return "No te he o\xEDdo. Prueba otra vez.";
-    if (has(text, "hora")) return "Son las " + (/* @__PURE__ */ new Date()).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) + ".";
-    if (has(text, "dia", "fecha") && !has(text, "buenos"))
-      return "Hoy es " + (/* @__PURE__ */ new Date()).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" }) + ".";
-    const timer = /temporizador|alarma|avisame|cuenta atras/.test(text) && /(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|quince|veinte|treinta|media) ?(minutos?|segundos?|hora)/.exec(text);
+  const numbers = { un: 1, uno: 1, una: 1, a: 1, an: 1, one: 1, dos: 2, two: 2, tres: 3, three: 3, cuatro: 4, four: 4, cinco: 5, five: 5, seis: 6, six: 6, siete: 7, seven: 7, ocho: 8, eight: 8, nueve: 9, nine: 9, diez: 10, ten: 10, quince: 15, fifteen: 15, veinte: 20, twenty: 20, treinta: 30, thirty: 30 };
+  function quick(text) {
+    const s = t();
+    const timer = /temporizador|alarma|avisame|cuenta atras|timer|remind me/.test(text) && /(\d+|un|uno|una|a|an|one|dos|two|tres|three|cuatro|four|cinco|five|seis|six|siete|seven|ocho|eight|nueve|nine|diez|ten|quince|fifteen|veinte|twenty|treinta|thirty|media|half an?) ?(minutos?|minutes?|segundos?|seconds?|horas?|hours?)/.exec(text);
     if (timer) {
-      const n = /\d+/.test(timer[1]) ? +timer[1] : numbers[timer[1]];
-      const unit = timer[2].startsWith("seg") ? 1e3 : timer[2].startsWith("hora") ? 36e5 : 6e4;
-      const ms = timer[1] === "media" && unit === 36e5 ? 18e5 : n * unit;
-      if (!ms || ms > 6 * 36e5) return "No he entendido el tiempo del temporizador.";
-      jarvis.timers.push(setTimeout(() => speak("".concat(settings.name, ", se acab\xF3 el tiempo.")), ms));
-      return "Vale, te aviso en ".concat(timer[1] === "media" ? "media hora" : n + " " + timer[2], ".");
+      const half = /^(media|half)/.test(timer[1]);
+      const n = half ? 0.5 : /\d+/.test(timer[1]) ? +timer[1] : numbers[timer[1]];
+      const unit = /^seg|^sec/.test(timer[2]) ? 1e3 : /^hora|^hour/.test(timer[2]) ? 36e5 : 6e4;
+      const ms = n * unit;
+      if (!ms || ms > 6 * 36e5) return s.timerBad;
+      jarvis.timers.push(setTimeout(() => speak(t().timerUp(settings.name)), ms));
+      return s.timerSet(half ? settings.lang === "es" ? "media hora" : "half an hour" : "".concat(n, " ").concat(timer[2]));
     }
     const device = devices.find((d) => d.names.some((n) => has(text, n.split(" ")[0]) && text.includes(n)));
-    if (device) {
-      const off = has(text, "apaga", "apagar", "desconecta", "quita");
+    if (device && /enciende|encender|apaga|apagar|pon|quita|turn|switch|power|start/.test(text)) {
+      const off = has(text, "apaga", "apagar", "quita", "off");
       if (device.connected && device[off ? "off" : "on"]) {
         device[off ? "off" : "on"]();
-        return "Hecho, ".concat(off ? "apago" : "enciendo", " ").concat(device.label, ".");
+        return s.deviceDone(!off, s.devices[device.id]);
       }
-      return "Todav\xEDa no puedo controlar ".concat(device.label, ". Cuando tengamos el mando universal, lo conecto.");
+      return s.device(s.devices[device.id]);
     }
-    if (/me voy|salgo de casa|modo fuera/.test(text))
-      return "Hasta luego, ".concat(settings.name, ". Cuando instalemos el l\xE1ser de la puerta, vigilar\xE9 mientras no est\xE1s.");
-    if (/he vuelto|ya estoy|estoy en casa/.test(text)) return "Bienvenido, ".concat(settings.name, ".");
-    if (has(text, "hola", "buenas", "buenos", "hey", "ey")) return greeting();
-    if (has(text, "chiste", "gracioso")) return pick(jokes);
-    if (has(text, "gracias")) return pick(["De nada.", "Para eso estoy.", "Cuando quieras."]);
-    if (/como te llamas|quien eres/.test(text)) return "Soy Jarvis, el asistente de tu cuarto.";
-    if (/como estas|que tal/.test(text)) return "Funcionando al cien por cien. \xBFY t\xFA?";
-    if (/que (puedes|sabes) hacer|ayuda|comandos/.test(text))
-      return "Te digo la hora y el d\xEDa, pongo temporizadores, cuento chistes y te saludo al verte. Pronto controlar\xE9 tus luces, el aire, el ventilador y la Play.";
-    return "No te he entendido. Prueba a decir: qu\xE9 puedes hacer.";
+    if (/me voy|salgo de casa|modo fuera|i'?m leaving|i'?m off|going out|away mode/.test(text)) return s.leaving(settings.name);
+    return "";
+  }
+  function offline(text) {
+    const s = t();
+    if (has(text, "hora", "time")) return s.time((/* @__PURE__ */ new Date()).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }));
+    if ((has(text, "dia", "fecha", "date", "day") || /what day/.test(text)) && !has(text, "buenos"))
+      return s.date((/* @__PURE__ */ new Date()).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" }));
+    if (/he vuelto|ya estoy|estoy en casa|i'?m (back|home)/.test(text)) return s.back(settings.name);
+    if (has(text, "hola", "buenas", "buenos", "hey", "hello", "hi", "morning", "evening")) return greeting();
+    if (has(text, "chiste", "gracioso", "joke", "funny")) return pick(s.jokes);
+    if (has(text, "gracias", "thanks", "thank")) return pick(s.thanks);
+    if (/como te llamas|quien eres|who are you|your name/.test(text)) return s.who;
+    if (/como estas|que tal|how are you/.test(text)) return s.how;
+    if (/que (puedes|sabes) hacer|ayuda|comandos|what can you do|help/.test(text)) return s.help;
+    return s.unknown;
+  }
+  function handle(raw) {
+    const text = normalize(raw);
+    return quick(text) || offline(text);
   }
   jarvis.handle = handle;
+  async function think(raw) {
+    var _a;
+    if (Date.now() - jarvis.lastTalk > 5 * 6e4) jarvis.history = [];
+    jarvis.lastTalk = Date.now();
+    const history = jarvis.history;
+    history.push({ role: "user", content: raw.slice(0, 1e3) });
+    while (history.length > 19 || ((_a = history[0]) == null ? void 0 : _a.role) !== "user") history.shift();
+    try {
+      const now = (/* @__PURE__ */ new Date()).toLocaleString(locale(), { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+      const response = await post("jarvis-brain", { messages: history, lang: settings.lang, name: settings.name, now });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw Error(t().thinkErr[data.error] || t().thinkDown);
+      const reply = data.refused || !data.reply ? t().refused : data.reply;
+      history.push({ role: "assistant", content: reply });
+      return reply;
+    } catch (e) {
+      history.pop();
+      jarvis.brainError = e.message;
+      const local = offline(normalize(raw));
+      return local === t().unknown ? e.message || t().thinkDown : local;
+    }
+  }
   async function respond(raw) {
     $("heard").textContent = "\xAB" + raw + "\xBB";
-    await speak(handle(raw));
+    const text = normalize(raw);
+    let reply = quick(text);
+    if (!reply) {
+      setState("thinking");
+      reply = settings.key ? await think(raw) : offline(text);
+    }
+    await speak(reply);
   }
+  jarvis.respond = respond;
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognition = null, finishListening = null;
-  jarvis.listenLimits = { silenceMS: 1300, noSpeechMS: 7e3, maxMS: 12e3 };
-  function listen() {
+  const WAKE = /\b(jarvis|yarvis|jarbis|charvis|harvis|jervis|travis)\b/i;
+  let finishListening = null, restartTimer = null, quickFails = 0;
+  jarvis.listenLimits = { silenceMS: 1300, noSpeechMS: 7e3, maxMS: 12e3, followMS: 6e3, wakeMS: 15e3 };
+  function scheduleWake(delay = 350) {
+    clearTimeout(restartTimer);
+    if (!settings.always || !jarvis.started || !Recognition) return;
+    restartTimer = setTimeout(() => {
+      if (!jarvis.listening && !jarvis.speaking && mood !== "thinking" && !document.hidden && $("settings").hidden) listen("wake");
+      else scheduleWake(800);
+    }, delay);
+  }
+  function listen(mode = "tap") {
     if (jarvis.listening) {
-      finishListening == null ? void 0 : finishListening();
+      finishListening == null ? void 0 : finishListening(true);
       return;
     }
     if (!Recognition) {
       $("typeForm").hidden = false;
       $("typeInput").focus();
-      show("Este navegador no me deja escucharte. Escr\xEDbeme abajo.");
+      show(t().noMic);
       return;
     }
-    stopSpeaking();
-    const started = Date.now();
+    clearTimeout(restartTimer);
+    if (mode !== "wake") stopSpeaking();
+    const started = Date.now(), limits = jarvis.listenLimits;
     let text = "", lastChange = started, failure = "", ended = false;
-    const rec = recognition = new Recognition();
-    rec.lang = "es-ES";
+    const rec = new Recognition();
+    rec.lang = settings.hear;
     rec.interimResults = true;
-    rec.continuous = false;
+    rec.continuous = mode === "wake";
     rec.maxAlternatives = 1;
-    const finish = finishListening = () => {
+    const finish = finishListening = (cancelled = false) => {
       if (ended) return;
       ended = true;
       clearInterval(watch);
@@ -279,39 +409,74 @@
       } catch {
       }
       jarvis.listening = false;
-      rest();
-      if (text.trim()) void respond(text.trim());
-      else if (/not-allowed|service-not-allowed/.test(failure)) {
-        show("Necesito permiso para el micr\xF3fono. Revisa Safari y que Siri est\xE9 activado.");
-      } else show("No te he o\xEDdo. Toca la burbuja y habla.");
+      jarvis.listenMode = "";
+      if (mode !== "wake") rest();
+      const said = text.trim();
+      if (/not-allowed|service-not-allowed/.test(failure)) {
+        if (mode === "tap") show(t().micDenied);
+        else {
+          settings.always = false;
+          jarvis.wakeBlocked = true;
+        }
+        return;
+      }
+      quickFails = Date.now() - started < 600 && !said ? quickFails + 1 : 0;
+      if (cancelled) {
+        scheduleWake(1500);
+        return;
+      }
+      if (mode === "wake") {
+        const match = WAKE.exec(said);
+        if (match) {
+          const command = said.slice(match.index + match[0].length).replace(/^[\s,.:]+/, "");
+          if (command) void respond(command).then(() => listen("follow"));
+          else {
+            show(pick(t().yes));
+            $("heard").textContent = "";
+            void speak($("say").textContent).then(() => listen("follow"));
+          }
+        } else scheduleWake(quickFails > 4 ? 4e3 : 300);
+        return;
+      }
+      if (said) void respond(said).then(() => listen("follow"));
+      else if (mode === "tap") {
+        show(t().notHeard);
+        scheduleWake();
+      } else scheduleWake();
     };
     rec.onresult = (e) => {
       const now = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
       if (now !== text) {
         text = now;
         lastChange = Date.now();
-        $("heard").textContent = text;
+        if (mode !== "wake" || WAKE.test(text)) {
+          $("heard").textContent = text;
+          if (mode === "wake") setState("listening");
+        }
       }
-      if (e.results[e.results.length - 1].isFinal) finish();
+      if (mode !== "wake" && e.results[e.results.length - 1].isFinal) finish();
     };
     rec.onerror = (e) => {
       failure = e.error || "error";
       finish();
     };
-    rec.onend = finish;
-    const limits = jarvis.listenLimits;
+    rec.onend = () => finish();
+    const quietLimit = mode === "follow" ? limits.followMS : mode === "wake" ? limits.wakeMS : limits.noSpeechMS;
     const watch = setInterval(() => {
-      const t = Date.now();
-      if (text && t - lastChange > limits.silenceMS || !text && t - started > limits.noSpeechMS || t - started > limits.maxMS) finish();
+      const now = Date.now();
+      if (text && now - lastChange > limits.silenceMS || !text && now - started > quietLimit || now - started > Math.max(limits.maxMS, quietLimit)) finish();
     }, 200);
     jarvis.listening = true;
-    setState("listening");
-    $("heard").textContent = "";
-    show("Te escucho\u2026");
+    jarvis.listenMode = mode;
+    if (mode !== "wake") {
+      setState("listening");
+      $("heard").textContent = "";
+      show(t().listening);
+    }
     try {
       rec.start();
     } catch (e) {
-      failure = e.message;
+      failure = /not-allowed/i.test(e.name + e.message) ? "not-allowed" : e.message;
       finish();
     }
   }
@@ -386,7 +551,7 @@
   }
   async function startCamera() {
     var _a;
-    (_a = jarvis.stream) == null ? void 0 : _a.getTracks().forEach((t) => t.stop());
+    (_a = jarvis.stream) == null ? void 0 : _a.getTracks().forEach((track) => track.stop());
     jarvis.stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { facingMode: settings.facing, width: { ideal: 640 }, height: { ideal: 480 } }
@@ -401,8 +566,8 @@
     clearTimeout(jarvis.loop);
     if (!jarvis.started || document.hidden) return;
     const video = $("video");
-    const quiet = jarvis.listening || jarvis.speaking;
-    if (!jarvis.busy && !quiet && video.readyState >= 2) {
+    const talking = jarvis.listening && jarvis.listenMode !== "wake" || jarvis.speaking || mood === "thinking";
+    if (!jarvis.busy && !talking && video.readyState >= 2) {
       jarvis.busy = true;
       try {
         onFaces(await jarvis.detector.detect(video));
@@ -431,7 +596,10 @@
       $("faceState").textContent = "".concat(settings.name, " \xB7 ").concat(Math.round(score * 100), "%");
       const away = now - jarvis.lastSeen > jarvis.absenceMS;
       jarvis.lastSeen = now;
-      if (away && settings.greet && !jarvis.listening) void speak(greeting());
+      if (away && settings.greet && !(jarvis.listening && jarvis.listenMode !== "wake") && !jarvis.speaking) {
+        if (jarvis.listening) finishListening == null ? void 0 : finishListening(true);
+        void speak(greeting()).then(() => listen("follow"));
+      }
     } else $("faceState").textContent = "Persona desconocida";
   }
   function enrollStep(found) {
@@ -449,7 +617,7 @@
       else {
         renderFaceInfo();
         jarvis.lastSeen = Date.now();
-        void speak("Encantado, ".concat(settings.name, ". Ya te reconozco."));
+        void speak(t().nice(settings.name));
       }
     }
   }
@@ -475,7 +643,7 @@
     starting = true;
     unlockAudio();
     setState("thinking");
-    show("Despertando\u2026");
+    show(t().waking);
     try {
       await startCamera();
       jarvis.detector = jarvis.detector || await jarvis.createDetector();
@@ -483,17 +651,34 @@
       rest();
       await keepAwake();
       void scan();
-      if (!settings.key) show("Listo. Pon la clave de voz en \u2699\uFE0E para que te hable.");
-      else void speak(jarvis.faces.length ? "Hola, ".concat(settings.name, ". Estoy listo.") : "Hola. Registra tu cara en ajustes para que te reconozca.");
+      if (!settings.key) {
+        show(t().needKey);
+        scheduleWake();
+      } else void speak(jarvis.faces.length ? t().ready(settings.name) : t().readyNoFace).then(() => scheduleWake());
     } catch (e) {
       setState("off");
-      show(e.name === "NotAllowedError" ? "Necesito la c\xE1mara. Perm\xEDtela en Safari y toca otra vez." : "No he podido arrancar: " + e.message);
+      show(e.name === "NotAllowedError" ? t().cam : t().cantStart + e.message);
     } finally {
       starting = false;
     }
   }
   jarvis.start = start;
-  $("bubble").onclick = () => jarvis.started ? listen() : start();
+  $("bubble").onclick = () => {
+    if (!jarvis.started) return start();
+    if (jarvis.speaking) {
+      stopSpeaking();
+      return scheduleWake();
+    }
+    if (jarvis.listening && jarvis.listenMode === "wake") {
+      finishListening == null ? void 0 : finishListening(true);
+      clearTimeout(restartTimer);
+    }
+    if (jarvis.wakeBlocked) {
+      jarvis.wakeBlocked = false;
+      settings.always = store.get("jarvis-settings", {}).always !== false;
+    }
+    listen("tap");
+  };
   $("typeForm").onsubmit = (e) => {
     e.preventDefault();
     const value = $("typeInput").value.trim();
@@ -501,12 +686,17 @@
     if (value) void respond(value);
   };
   $("typeForm").hidden = !settings.typing;
+  show(t().tap);
   $("openSettings").onclick = () => {
+    if (jarvis.listening) finishListening == null ? void 0 : finishListening(true);
     $("name").value = settings.name;
     $("facing").value = settings.facing;
     $("greetOn").checked = settings.greet;
     $("showType").checked = settings.typing;
     $("voiceKey").value = settings.key;
+    $("lang").value = settings.lang;
+    $("hear").value = settings.hear;
+    $("always").checked = store.get("jarvis-settings", {}).always !== false;
     $("voiceInfo").textContent = jarvis.voiceError || (settings.key ? "" : "Sin clave: Jarvis solo escribir\xE1.");
     renderFaceInfo();
     $("settings").hidden = false;
@@ -514,6 +704,7 @@
   $("closeSettings").onclick = () => {
     $("settings").hidden = true;
     if (jarvis.enrolling) endEnroll();
+    scheduleWake();
   };
   $("settings").onclick = (e) => {
     if (e.target === $("settings")) $("closeSettings").onclick();
@@ -535,12 +726,27 @@
     settings.key = $("voiceKey").value.trim();
     save();
   };
+  $("lang").onchange = () => {
+    settings.lang = $("lang").value;
+    jarvis.history = [];
+    save();
+    tickClock();
+  };
+  $("hear").onchange = () => {
+    settings.hear = $("hear").value;
+    save();
+  };
+  $("always").onchange = () => {
+    settings.always = $("always").checked;
+    jarvis.wakeBlocked = false;
+    save();
+  };
   $("testVoice").onclick = async () => {
     settings.key = $("voiceKey").value.trim();
     save();
     unlockAudio();
     $("voiceInfo").textContent = "Probando\u2026";
-    await speak("Hola, ".concat(settings.name, ". As\xED sueno ahora."));
+    await speak(t().test(settings.name));
     $("voiceInfo").textContent = jarvis.voiceError || "Voz funcionando.";
   };
   $("facing").onchange = async () => {
@@ -569,16 +775,18 @@
     jarvis.faces = [];
     store.set("jarvis-faces", []);
     renderFaceInfo();
-    show("He borrado tu cara de este m\xF3vil.");
+    show(t().forgot);
   };
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      if (jarvis.listening) finishListening == null ? void 0 : finishListening();
+      if (jarvis.listening) finishListening == null ? void 0 : finishListening(true);
+      clearTimeout(restartTimer);
       return;
     }
     if (jarvis.started) {
       void keepAwake();
       void scan();
+      scheduleWake();
     }
   });
   setState("off");

@@ -1,7 +1,7 @@
 "use strict";
 // Jarvis: a room assistant that runs in this browser. Face templates stay in
-// localStorage on this device. Replies are spoken with ElevenLabs through a
-// Supabase function that keeps the provider key on the server.
+// localStorage on this device. Conversation goes to Claude and speech to
+// ElevenLabs through Supabase functions that keep the provider keys server-side.
 (() => {
   // Old pairing links pointed at the home page; the camera app now lives at /camara.
   const toCamera = () => {
@@ -22,13 +22,71 @@
       try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
     },
   };
-  const settings = Object.assign({ name: "Crew", facing: "user", greet: true, typing: false, key: "" }, store.get("jarvis-settings", {}));
+  const settings = Object.assign(
+    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: true },
+    store.get("jarvis-settings", {}),
+  );
   const save = () => store.set("jarvis-settings", settings);
   const jarvis = window.jarvis = {
     started: false, stream: null, detector: null, faces: store.get("jarvis-faces", []),
     threshold: 0.55, absenceMS: 5 * 60000, lastSeen: 0, busy: false, enrolling: null,
     loop: null, wakeLock: null, timers: [], speaking: false, listening: false, voiceError: "",
+    history: [], lastTalk: 0, settings,
   };
+
+  // ---------- Textos (inglés / español) ----------
+  const T = {
+    en: {
+      tap: "Tap the bubble to start", waking: "Waking up…", ready: (n) => `Hello, ${n}. I'm online.`,
+      readyNoFace: "Hello. Register your face in settings so I can recognise you.",
+      needKey: "Ready. Add your Jarvis key in ⚙︎ so I can talk.", listening: "Listening…",
+      notHeard: "I didn't catch that. Tap the bubble and talk.", micDenied: "I need the microphone. Check Safari and that Siri is on.",
+      noMic: "This browser won't let me listen. Type below.", cam: "I need the camera. Allow it in Safari and tap again.",
+      cantStart: "I couldn't start: ", morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening",
+      greetTail: ["What shall we do today?", "How can I help?", "Good to see you.", "All systems ready."],
+      time: (t) => `It's ${t}.`, date: (d) => `Today is ${d}.`, timerSet: (x) => `Done. I'll remind you in ${x}.`,
+      timerBad: "I didn't get how long the timer should be.", timerUp: (n) => `${n}, time's up.`,
+      device: (d) => `I can't control ${d} yet. Once the universal remote arrives, I'll take care of it.`,
+      deviceDone: (on, d) => `Done, ${on ? "turning on" : "turning off"} ${d}.`,
+      leaving: (n) => `See you later, ${n}. Once the door laser is installed, I'll keep watch while you're out.`,
+      back: (n) => `Welcome back, ${n}.`, thanks: ["You're welcome.", "Any time.", "My pleasure."],
+      who: "I'm Jarvis, the assistant of this room.", how: "Running at a hundred percent. And you?",
+      help: "I can chat about anything, tell you the time, set timers and greet you when you come in. Lights, air conditioning, the fan and the PlayStation are coming soon.",
+      unknown: "I didn't understand that. Try asking: what can you do?", yes: ["Yes?", "At your service.", "I'm listening."],
+      jokes: ["I'd tell you a UDP joke, but you might not get it.", "There are ten kinds of people: those who understand binary and those who don't.", "Why did the computer go to the doctor? It had a virus."],
+      refused: "I'd rather not answer that one.", nice: (n) => `Nice to meet you, ${n}. I'll recognise you now.`,
+      test: (n) => `Hello, ${n}. This is how I sound now.`, forgot: "I've deleted your face from this phone.",
+      thinkErr: { "Claude key rejected": "My brain's key was rejected. Check ANTHROPIC_API_KEY in Supabase.", "Claude credit exhausted": "My brain has run out of Claude credit.", "Claude busy": "My brain is busy. Try again in a moment.", "Brain not configured": "My brain isn't set up yet. Add ANTHROPIC_API_KEY in Supabase.", "Wrong Jarvis key": "The Jarvis key doesn't match Supabase." },
+      thinkDown: "I can't reach my brain right now.",
+      devices: { luz: "the lights", aire: "the air conditioning", ventilador: "the fan", play: "the PlayStation", tele: "the TV" },
+    },
+    es: {
+      tap: "Toca la burbuja para empezar", waking: "Despertando…", ready: (n) => `Hola, ${n}. Estoy listo.`,
+      readyNoFace: "Hola. Registra tu cara en ajustes para que te reconozca.",
+      needKey: "Listo. Pon la clave de Jarvis en ⚙︎ para que te hable.", listening: "Te escucho…",
+      notHeard: "No te he oído. Toca la burbuja y habla.", micDenied: "Necesito el micrófono. Revisa Safari y que Siri esté activado.",
+      noMic: "Este navegador no me deja escucharte. Escríbeme abajo.", cam: "Necesito la cámara. Permítela en Safari y toca otra vez.",
+      cantStart: "No he podido arrancar: ", morning: "Buenos días", afternoon: "Buenas tardes", evening: "Buenas noches",
+      greetTail: ["¿Qué quieres hacer hoy?", "¿En qué te ayudo?", "Me alegro de verte.", "Todo listo por aquí."],
+      time: (t) => `Son las ${t}.`, date: (d) => `Hoy es ${d}.`, timerSet: (x) => `Vale, te aviso en ${x}.`,
+      timerBad: "No he entendido el tiempo del temporizador.", timerUp: (n) => `${n}, se acabó el tiempo.`,
+      device: (d) => `Todavía no puedo controlar ${d}. Cuando tengamos el mando universal, lo conecto.`,
+      deviceDone: (on, d) => `Hecho, ${on ? "enciendo" : "apago"} ${d}.`,
+      leaving: (n) => `Hasta luego, ${n}. Cuando instalemos el láser de la puerta, vigilaré mientras no estás.`,
+      back: (n) => `Bienvenido, ${n}.`, thanks: ["De nada.", "Para eso estoy.", "Cuando quieras."],
+      who: "Soy Jarvis, el asistente de tu cuarto.", how: "Funcionando al cien por cien. ¿Y tú?",
+      help: "Puedo charlar de lo que quieras, decirte la hora, poner temporizadores y saludarte al entrar. Pronto controlaré las luces, el aire, el ventilador y la Play.",
+      unknown: "No te he entendido. Prueba a decir: qué puedes hacer.", yes: ["¿Sí?", "A tu servicio.", "Te escucho."],
+      jokes: ["Hay diez tipos de personas: las que entienden binario y las que no.", "¿Por qué el ordenador fue al médico? Porque tenía un virus."],
+      refused: "Prefiero no contestar a eso.", nice: (n) => `Encantado, ${n}. Ya te reconozco.`,
+      test: (n) => `Hola, ${n}. Así sueno ahora.`, forgot: "He borrado tu cara de este móvil.",
+      thinkErr: { "Claude key rejected": "La clave de mi cerebro no vale. Revisa ANTHROPIC_API_KEY en Supabase.", "Claude credit exhausted": "Mi cerebro se ha quedado sin crédito de Claude.", "Claude busy": "Mi cerebro está ocupado. Prueba en un momento.", "Brain not configured": "Mi cerebro aún no está configurado. Añade ANTHROPIC_API_KEY en Supabase.", "Wrong Jarvis key": "La clave de Jarvis no coincide con la de Supabase." },
+      thinkDown: "Ahora no puedo conectar con mi cerebro.",
+      devices: { luz: "las luces", aire: "el aire acondicionado", ventilador: "el ventilador", play: "la Play", tele: "la tele" },
+    },
+  };
+  const t = () => T[settings.lang] || T.en;
+  const locale = () => (settings.lang === "es" ? "es-ES" : "en-GB");
 
   // ---------- Pantalla ----------
   let mood = "off";
@@ -38,10 +96,21 @@
   function tickClock() {
     const now = new Date();
     $("clock").textContent = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-    const date = now.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+    const date = now.toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" });
     $("date").textContent = date.charAt(0).toUpperCase() + date.slice(1);
   }
   tickClock(); setInterval(tickClock, 1000);
+
+  // ---------- Servicios en Supabase ----------
+  const endpoint = (name) => {
+    const c = window.SECURITY_SUPABASE_PUBLIC;
+    return c?.url ? `${c.url}/functions/v1/${name}` : "";
+  };
+  const post = (name, body) => fetch(endpoint(name), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-jarvis-key": settings.key, apikey: window.SECURITY_SUPABASE_PUBLIC?.key || "" },
+    body: JSON.stringify(body),
+  });
 
   // ---------- Voz (ElevenLabs) ----------
   const audio = new Audio();
@@ -56,24 +125,15 @@
     return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
   }
   function unlockAudio() { audio.src = silentUrl(); audio.play().catch(() => {}); }
-  const voiceEndpoint = () => {
-    const c = window.SECURITY_SUPABASE_PUBLIC;
-    return c?.url ? c.url + "/functions/v1/jarvis-voice" : "";
-  };
   async function voiceBlob(text) {
     const cacheable = !/\d/.test(text) && "caches" in window;
-    const keyUrl = location.origin + "/__jarvis-voice?" + encodeURIComponent(text);
+    const keyUrl = location.origin + "/__jarvis-voice?" + settings.lang + "&" + encodeURIComponent(text);
     let cache;
     if (cacheable) {
-      try { cache = await caches.open("jarvis-voice-v1"); const hit = await cache.match(keyUrl); if (hit) return await hit.blob(); } catch {}
+      try { cache = await caches.open("jarvis-voice-v2"); const hit = await cache.match(keyUrl); if (hit) return await hit.blob(); } catch {}
     }
     if (!settings.key) throw Error("Falta la clave de Jarvis en Ajustes.");
-    const c = window.SECURITY_SUPABASE_PUBLIC;
-    const response = await fetch(voiceEndpoint(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-jarvis-key": settings.key, apikey: c.key },
-      body: JSON.stringify({ text }),
-    });
+    const response = await post("jarvis-voice", { text, lang: settings.lang });
     if (!response.ok) {
       let error = ""; try { error = (await response.json()).error || ""; } catch {}
       throw Error({
@@ -123,113 +183,176 @@
   jarvis.speak = speak;
 
   // ---------- Saludos ----------
-  function partOfDay() {
-    const h = new Date().getHours();
-    return h >= 6 && h < 13 ? "Buenos días" : h >= 13 && h < 21 ? "Buenas tardes" : "Buenas noches";
-  }
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   function greeting() {
-    return `${partOfDay()}, ${settings.name}. ` +
-      pick(["¿Qué quieres hacer hoy?", "¿En qué te ayudo?", "Me alegro de verte.", "Todo listo por aquí."]);
+    const h = new Date().getHours(), s = t();
+    const part = h >= 6 && h < 13 ? s.morning : h >= 13 && h < 21 ? s.afternoon : s.evening;
+    return `${part}, ${settings.name}. ${pick(s.greetTail)}`;
   }
 
-  // ---------- Órdenes ----------
+  // ---------- Órdenes rápidas (sin internet) ----------
   // Future devices plug in here: when the universal remote or smart plug arrives,
   // set connected:true and give it on/off functions.
   const devices = [
-    { id: "luz", names: ["luz", "luces", "led", "leds", "lampara"], label: "las luces", connected: false },
-    { id: "aire", names: ["aire", "aire acondicionado", "clima", "split"], label: "el aire acondicionado", connected: false },
-    { id: "ventilador", names: ["ventilador"], label: "el ventilador", connected: false },
-    { id: "play", names: ["play", "playstation", "ps5", "consola"], label: "la Play", connected: false },
-    { id: "tele", names: ["tele", "television", "televisor"], label: "la tele", connected: false },
+    { id: "luz", names: ["luz", "luces", "led", "leds", "lampara", "light", "lights", "lamp"], connected: false },
+    { id: "aire", names: ["aire", "aire acondicionado", "clima", "air conditioning", "ac", "aircon"], connected: false },
+    { id: "ventilador", names: ["ventilador", "fan"], connected: false },
+    { id: "play", names: ["play", "playstation", "ps5", "consola", "console"], connected: false },
+    { id: "tele", names: ["tele", "television", "televisor", "tv"], connected: false },
   ];
   jarvis.devices = devices;
-  const normalize = (t) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!.,]/g, " ").replace(/\s+/g, " ").trim();
+  const normalize = (x) => x.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!.,]/g, " ").replace(/\s+/g, " ").trim();
   const has = (text, ...words) => words.some((w) => new RegExp(`(^| )${w}( |$)`).test(text));
-  const numbers = { un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, quince: 15, veinte: 20, treinta: 30, media: 30 };
-  const jokes = [
-    "¿Qué le dice un bit a otro? Nos vemos en el bus.",
-    "¿Por qué el ordenador fue al médico? Porque tenía un virus.",
-    "Hay diez tipos de personas: las que entienden binario y las que no.",
-    "¿Cuál es el café más peligroso del mundo? El ex-preso.",
-  ];
-  function handle(raw) {
-    const text = normalize(raw);
-    if (!text) return "No te he oído. Prueba otra vez.";
-    if (has(text, "hora")) return "Son las " + new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) + ".";
-    if (has(text, "dia", "fecha") && !has(text, "buenos"))
-      return "Hoy es " + new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" }) + ".";
-    const timer = /temporizador|alarma|avisame|cuenta atras/.test(text) && /(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|quince|veinte|treinta|media) ?(minutos?|segundos?|hora)/.exec(text);
+  const numbers = { un: 1, uno: 1, una: 1, a: 1, an: 1, one: 1, dos: 2, two: 2, tres: 3, three: 3, cuatro: 4, four: 4, cinco: 5, five: 5, seis: 6, six: 6, siete: 7, seven: 7, ocho: 8, eight: 8, nueve: 9, nine: 9, diez: 10, ten: 10, quince: 15, fifteen: 15, veinte: 20, twenty: 20, treinta: 30, thirty: 30 };
+  // Actions that must happen on this phone are answered here, instantly.
+  function quick(text) {
+    const s = t();
+    const timer = /temporizador|alarma|avisame|cuenta atras|timer|remind me/.test(text) &&
+      /(\d+|un|uno|una|a|an|one|dos|two|tres|three|cuatro|four|cinco|five|seis|six|siete|seven|ocho|eight|nueve|nine|diez|ten|quince|fifteen|veinte|twenty|treinta|thirty|media|half an?) ?(minutos?|minutes?|segundos?|seconds?|horas?|hours?)/.exec(text);
     if (timer) {
-      const n = /\d+/.test(timer[1]) ? +timer[1] : numbers[timer[1]];
-      const unit = timer[2].startsWith("seg") ? 1000 : timer[2].startsWith("hora") ? 3600000 : 60000;
-      const ms = timer[1] === "media" && unit === 3600000 ? 1800000 : n * unit;
-      if (!ms || ms > 6 * 3600000) return "No he entendido el tiempo del temporizador.";
-      jarvis.timers.push(setTimeout(() => speak(`${settings.name}, se acabó el tiempo.`), ms));
-      return `Vale, te aviso en ${timer[1] === "media" ? "media hora" : n + " " + timer[2]}.`;
+      const half = /^(media|half)/.test(timer[1]);
+      const n = half ? 0.5 : /\d+/.test(timer[1]) ? +timer[1] : numbers[timer[1]];
+      const unit = /^seg|^sec/.test(timer[2]) ? 1000 : /^hora|^hour/.test(timer[2]) ? 3600000 : 60000;
+      const ms = n * unit;
+      if (!ms || ms > 6 * 3600000) return s.timerBad;
+      jarvis.timers.push(setTimeout(() => speak(t().timerUp(settings.name)), ms));
+      return s.timerSet(half ? (settings.lang === "es" ? "media hora" : "half an hour") : `${n} ${timer[2]}`);
     }
     const device = devices.find((d) => d.names.some((n) => has(text, n.split(" ")[0]) && text.includes(n)));
-    if (device) {
-      const off = has(text, "apaga", "apagar", "desconecta", "quita");
-      if (device.connected && device[off ? "off" : "on"]) { device[off ? "off" : "on"](); return `Hecho, ${off ? "apago" : "enciendo"} ${device.label}.`; }
-      return `Todavía no puedo controlar ${device.label}. Cuando tengamos el mando universal, lo conecto.`;
+    if (device && /enciende|encender|apaga|apagar|pon|quita|turn|switch|power|start/.test(text)) {
+      const off = has(text, "apaga", "apagar", "quita", "off");
+      if (device.connected && device[off ? "off" : "on"]) { device[off ? "off" : "on"](); return s.deviceDone(!off, s.devices[device.id]); }
+      return s.device(s.devices[device.id]);
     }
-    if (/me voy|salgo de casa|modo fuera/.test(text))
-      return `Hasta luego, ${settings.name}. Cuando instalemos el láser de la puerta, vigilaré mientras no estás.`;
-    if (/he vuelto|ya estoy|estoy en casa/.test(text)) return `Bienvenido, ${settings.name}.`;
-    if (has(text, "hola", "buenas", "buenos", "hey", "ey")) return greeting();
-    if (has(text, "chiste", "gracioso")) return pick(jokes);
-    if (has(text, "gracias")) return pick(["De nada.", "Para eso estoy.", "Cuando quieras."]);
-    if (/como te llamas|quien eres/.test(text)) return "Soy Jarvis, el asistente de tu cuarto.";
-    if (/como estas|que tal/.test(text)) return "Funcionando al cien por cien. ¿Y tú?";
-    if (/que (puedes|sabes) hacer|ayuda|comandos/.test(text))
-      return "Te digo la hora y el día, pongo temporizadores, cuento chistes y te saludo al verte. Pronto controlaré tus luces, el aire, el ventilador y la Play.";
-    return "No te he entendido. Prueba a decir: qué puedes hacer.";
+    if (/me voy|salgo de casa|modo fuera|i'?m leaving|i'?m off|going out|away mode/.test(text)) return s.leaving(settings.name);
+    return "";
   }
+  // Used when Claude is not configured or not reachable.
+  function offline(text) {
+    const s = t();
+    if (has(text, "hora", "time")) return s.time(new Date().toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }));
+    if ((has(text, "dia", "fecha", "date", "day") || /what day/.test(text)) && !has(text, "buenos"))
+      return s.date(new Date().toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" }));
+    if (/he vuelto|ya estoy|estoy en casa|i'?m (back|home)/.test(text)) return s.back(settings.name);
+    if (has(text, "hola", "buenas", "buenos", "hey", "hello", "hi", "morning", "evening")) return greeting();
+    if (has(text, "chiste", "gracioso", "joke", "funny")) return pick(s.jokes);
+    if (has(text, "gracias", "thanks", "thank")) return pick(s.thanks);
+    if (/como te llamas|quien eres|who are you|your name/.test(text)) return s.who;
+    if (/como estas|que tal|how are you/.test(text)) return s.how;
+    if (/que (puedes|sabes) hacer|ayuda|comandos|what can you do|help/.test(text)) return s.help;
+    return s.unknown;
+  }
+  function handle(raw) { const text = normalize(raw); return quick(text) || offline(text); }
   jarvis.handle = handle;
+
+  // ---------- Cerebro (Claude) ----------
+  async function think(raw) {
+    if (Date.now() - jarvis.lastTalk > 5 * 60000) jarvis.history = [];
+    jarvis.lastTalk = Date.now();
+    const history = jarvis.history;
+    history.push({ role: "user", content: raw.slice(0, 1000) });
+    while (history.length > 19 || history[0]?.role !== "user") history.shift();
+    try {
+      const now = new Date().toLocaleString(locale(), { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+      const response = await post("jarvis-brain", { messages: history, lang: settings.lang, name: settings.name, now });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw Error(t().thinkErr[data.error] || t().thinkDown);
+      const reply = data.refused || !data.reply ? t().refused : data.reply;
+      history.push({ role: "assistant", content: reply });
+      return reply;
+    } catch (e) {
+      history.pop();
+      jarvis.brainError = e.message;
+      // Offline answers still work for the basics.
+      const local = offline(normalize(raw));
+      return local === t().unknown ? (e.message || t().thinkDown) : local;
+    }
+  }
   async function respond(raw) {
     $("heard").textContent = "«" + raw + "»";
-    await speak(handle(raw));
+    const text = normalize(raw);
+    let reply = quick(text);
+    if (!reply) {
+      setState("thinking");
+      reply = settings.key ? await think(raw) : offline(text);
+    }
+    await speak(reply);
   }
+  jarvis.respond = respond;
 
   // ---------- Escuchar ----------
-  // Safari's recognizer can stall without ever firing "end": every path below
-  // has its own timer, so the bubble always comes back.
+  // Two ways to talk: tap the bubble, or (always-listening) say "Jarvis …".
+  // After each answer Jarvis keeps listening for a few seconds so the
+  // conversation flows without repeating the wake word. Safari's recognizer
+  // can stall without firing "end", so every session has its own timers.
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognition = null, finishListening = null;
-  jarvis.listenLimits = { silenceMS: 1300, noSpeechMS: 7000, maxMS: 12000 };
-  function listen() {
-    if (jarvis.listening) { finishListening?.(); return; }
-    if (!Recognition) { $("typeForm").hidden = false; $("typeInput").focus(); show("Este navegador no me deja escucharte. Escríbeme abajo."); return; }
-    stopSpeaking();
-    const started = Date.now();
+  const WAKE = /\b(jarvis|yarvis|jarbis|charvis|harvis|jervis|travis)\b/i;
+  let finishListening = null, restartTimer = null, quickFails = 0;
+  jarvis.listenLimits = { silenceMS: 1300, noSpeechMS: 7000, maxMS: 12000, followMS: 6000, wakeMS: 15000 };
+  function scheduleWake(delay = 350) {
+    clearTimeout(restartTimer);
+    if (!settings.always || !jarvis.started || !Recognition) return;
+    restartTimer = setTimeout(() => {
+      if (!jarvis.listening && !jarvis.speaking && mood !== "thinking" && !document.hidden && $("settings").hidden) listen("wake");
+      else scheduleWake(800);
+    }, delay);
+  }
+  // mode: "tap" (user pressed), "follow" (right after an answer), "wake" (background, needs "Jarvis").
+  function listen(mode = "tap") {
+    if (jarvis.listening) { finishListening?.(true); return; }
+    if (!Recognition) { $("typeForm").hidden = false; $("typeInput").focus(); show(t().noMic); return; }
+    clearTimeout(restartTimer);
+    if (mode !== "wake") stopSpeaking();
+    const started = Date.now(), limits = jarvis.listenLimits;
     let text = "", lastChange = started, failure = "", ended = false;
-    const rec = recognition = new Recognition();
-    rec.lang = "es-ES"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-    const finish = finishListening = () => {
+    const rec = new Recognition();
+    rec.lang = settings.hear; rec.interimResults = true; rec.continuous = mode === "wake"; rec.maxAlternatives = 1;
+    const finish = finishListening = (cancelled = false) => {
       if (ended) return; ended = true;
       clearInterval(watch); finishListening = null;
       try { rec.abort(); } catch {}
-      jarvis.listening = false; rest();
-      if (text.trim()) void respond(text.trim());
-      else if (/not-allowed|service-not-allowed/.test(failure)) {
-        show("Necesito permiso para el micrófono. Revisa Safari y que Siri esté activado.");
-      } else show("No te he oído. Toca la burbuja y habla.");
+      jarvis.listening = false; jarvis.listenMode = "";
+      if (mode !== "wake") rest();
+      const said = text.trim();
+      if (/not-allowed|service-not-allowed/.test(failure)) {
+        // iPhone refused to listen without a tap: fall back to tap-to-talk.
+        if (mode === "tap") show(t().micDenied);
+        else { settings.always = false; jarvis.wakeBlocked = true; }
+        return;
+      }
+      quickFails = Date.now() - started < 600 && !said ? quickFails + 1 : 0;
+      if (cancelled) { scheduleWake(1500); return; }
+      if (mode === "wake") {
+        const match = WAKE.exec(said);
+        if (match) {
+          const command = said.slice(match.index + match[0].length).replace(/^[\s,.:]+/, "");
+          if (command) void respond(command).then(() => listen("follow"));
+          else { show(pick(t().yes)); $("heard").textContent = ""; void speak($("say").textContent).then(() => listen("follow")); }
+        } else scheduleWake(quickFails > 4 ? 4000 : 300);
+        return;
+      }
+      if (said) void respond(said).then(() => listen("follow"));
+      else if (mode === "tap") { show(t().notHeard); scheduleWake(); }
+      else scheduleWake(); // a quiet follow-up just ends the conversation
     };
     rec.onresult = (e) => {
       const now = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
-      if (now !== text) { text = now; lastChange = Date.now(); $("heard").textContent = text; }
-      if (e.results[e.results.length - 1].isFinal) finish();
+      if (now !== text) {
+        text = now; lastChange = Date.now();
+        if (mode !== "wake" || WAKE.test(text)) { $("heard").textContent = text; if (mode === "wake") setState("listening"); }
+      }
+      if (mode !== "wake" && e.results[e.results.length - 1].isFinal) finish();
     };
     rec.onerror = (e) => { failure = e.error || "error"; finish(); };
-    rec.onend = finish;
-    const limits = jarvis.listenLimits;
+    rec.onend = () => finish();
+    const quietLimit = mode === "follow" ? limits.followMS : mode === "wake" ? limits.wakeMS : limits.noSpeechMS;
     const watch = setInterval(() => {
-      const t = Date.now();
-      if ((text && t - lastChange > limits.silenceMS) || (!text && t - started > limits.noSpeechMS) || t - started > limits.maxMS) finish();
+      const now = Date.now();
+      if ((text && now - lastChange > limits.silenceMS) || (!text && now - started > quietLimit) || now - started > Math.max(limits.maxMS, quietLimit)) finish();
     }, 200);
-    jarvis.listening = true; setState("listening"); $("heard").textContent = ""; show("Te escucho…");
-    try { rec.start(); } catch (e) { failure = e.message; finish(); }
+    jarvis.listening = true; jarvis.listenMode = mode;
+    if (mode !== "wake") { setState("listening"); $("heard").textContent = ""; show(t().listening); }
+    try { rec.start(); } catch (e) { failure = /not-allowed/i.test(e.name + e.message) ? "not-allowed" : e.message; finish(); }
   }
   jarvis.listen = listen;
 
@@ -281,7 +404,7 @@
     return best;
   }
   async function startCamera() {
-    jarvis.stream?.getTracks().forEach((t) => t.stop());
+    jarvis.stream?.getTracks().forEach((track) => track.stop());
     jarvis.stream = await navigator.mediaDevices.getUserMedia({
       audio: false, video: { facingMode: settings.facing, width: { ideal: 640 }, height: { ideal: 480 } },
     });
@@ -294,9 +417,9 @@
     clearTimeout(jarvis.loop);
     if (!jarvis.started || document.hidden) return;
     const video = $("video");
-    // Pause the face model while talking so the phone stays responsive.
-    const quiet = jarvis.listening || jarvis.speaking;
-    if (!jarvis.busy && !quiet && video.readyState >= 2) {
+    // Pause the face model while a conversation is happening so the phone stays responsive.
+    const talking = (jarvis.listening && jarvis.listenMode !== "wake") || jarvis.speaking || mood === "thinking";
+    if (!jarvis.busy && !talking && video.readyState >= 2) {
       jarvis.busy = true;
       try { onFaces(await jarvis.detector.detect(video)); }
       catch (e) { $("faceState").textContent = "Error: " + e.message; }
@@ -315,7 +438,10 @@
       $("faceState").textContent = `${settings.name} · ${Math.round(score * 100)}%`;
       const away = now - jarvis.lastSeen > jarvis.absenceMS;
       jarvis.lastSeen = now;
-      if (away && settings.greet && !jarvis.listening) void speak(greeting());
+      if (away && settings.greet && !(jarvis.listening && jarvis.listenMode !== "wake") && !jarvis.speaking) {
+        if (jarvis.listening) finishListening?.(true);
+        void speak(greeting()).then(() => listen("follow"));
+      }
     } else $("faceState").textContent = "Persona desconocida";
   }
   // Enrolment keeps several samples of one clearly visible face.
@@ -330,7 +456,7 @@
     if (e.samples.length >= 5) {
       jarvis.faces = e.samples; endEnroll();
       if (!store.set("jarvis-faces", jarvis.faces)) $("faceInfo").textContent = "No se pudo guardar en este navegador.";
-      else { renderFaceInfo(); jarvis.lastSeen = Date.now(); void speak(`Encantado, ${settings.name}. Ya te reconozco.`); }
+      else { renderFaceInfo(); jarvis.lastSeen = Date.now(); void speak(t().nice(settings.name)); }
     }
   }
   function endEnroll() {
@@ -352,7 +478,7 @@
     if (starting) return;
     starting = true;
     unlockAudio(); // must happen inside the tap
-    setState("thinking"); show("Despertando…");
+    setState("thinking"); show(t().waking);
     try {
       await startCamera();
       jarvis.detector = jarvis.detector || await jarvis.createDetector();
@@ -360,39 +486,52 @@
       rest();
       await keepAwake();
       void scan();
-      if (!settings.key) show("Listo. Pon la clave de voz en ⚙︎ para que te hable.");
-      else void speak(jarvis.faces.length ? `Hola, ${settings.name}. Estoy listo.` : `Hola. Registra tu cara en ajustes para que te reconozca.`);
+      if (!settings.key) { show(t().needKey); scheduleWake(); }
+      else void speak(jarvis.faces.length ? t().ready(settings.name) : t().readyNoFace).then(() => scheduleWake());
     } catch (e) {
       setState("off");
-      show(e.name === "NotAllowedError" ? "Necesito la cámara. Permítela en Safari y toca otra vez." : "No he podido arrancar: " + e.message);
+      show(e.name === "NotAllowedError" ? t().cam : t().cantStart + e.message);
     } finally { starting = false; }
   }
   jarvis.start = start;
 
-  $("bubble").onclick = () => (jarvis.started ? listen() : start());
+  $("bubble").onclick = () => {
+    if (!jarvis.started) return start();
+    if (jarvis.speaking) { stopSpeaking(); return scheduleWake(); }
+    // A tap during background listening switches to a direct question.
+    if (jarvis.listening && jarvis.listenMode === "wake") { finishListening?.(true); clearTimeout(restartTimer); }
+    if (jarvis.wakeBlocked) { jarvis.wakeBlocked = false; settings.always = store.get("jarvis-settings", {}).always !== false; }
+    listen("tap");
+  };
   $("typeForm").onsubmit = (e) => {
     e.preventDefault();
     const value = $("typeInput").value.trim(); $("typeInput").value = "";
     if (value) void respond(value);
   };
   $("typeForm").hidden = !settings.typing;
+  show(t().tap);
   $("openSettings").onclick = () => {
+    if (jarvis.listening) finishListening?.(true);
     $("name").value = settings.name; $("facing").value = settings.facing; $("greetOn").checked = settings.greet;
     $("showType").checked = settings.typing; $("voiceKey").value = settings.key;
+    $("lang").value = settings.lang; $("hear").value = settings.hear; $("always").checked = store.get("jarvis-settings", {}).always !== false;
     $("voiceInfo").textContent = jarvis.voiceError || (settings.key ? "" : "Sin clave: Jarvis solo escribirá.");
     renderFaceInfo(); $("settings").hidden = false;
   };
-  $("closeSettings").onclick = () => { $("settings").hidden = true; if (jarvis.enrolling) endEnroll(); };
+  $("closeSettings").onclick = () => { $("settings").hidden = true; if (jarvis.enrolling) endEnroll(); scheduleWake(); };
   $("settings").onclick = (e) => { if (e.target === $("settings")) $("closeSettings").onclick(); };
   $("name").onchange = () => { settings.name = $("name").value.trim() || "Crew"; save(); };
   $("greetOn").onchange = () => { settings.greet = $("greetOn").checked; save(); };
   $("showType").onchange = () => { settings.typing = $("showType").checked; save(); $("typeForm").hidden = !settings.typing; };
   $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); save(); };
+  $("lang").onchange = () => { settings.lang = $("lang").value; jarvis.history = []; save(); tickClock(); };
+  $("hear").onchange = () => { settings.hear = $("hear").value; save(); };
+  $("always").onchange = () => { settings.always = $("always").checked; jarvis.wakeBlocked = false; save(); };
   $("testVoice").onclick = async () => {
     settings.key = $("voiceKey").value.trim(); save();
     unlockAudio();
     $("voiceInfo").textContent = "Probando…";
-    await speak(`Hola, ${settings.name}. Así sueno ahora.`);
+    await speak(t().test(settings.name));
     $("voiceInfo").textContent = jarvis.voiceError || "Voz funcionando.";
   };
   $("facing").onchange = async () => {
@@ -408,11 +547,11 @@
   };
   $("forget").onclick = () => {
     jarvis.faces = []; store.set("jarvis-faces", []); renderFaceInfo();
-    show("He borrado tu cara de este móvil.");
+    show(t().forgot);
   };
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { if (jarvis.listening) finishListening?.(); return; }
-    if (jarvis.started) { void keepAwake(); void scan(); }
+    if (document.hidden) { if (jarvis.listening) finishListening?.(true); clearTimeout(restartTimer); return; }
+    if (jarvis.started) { void keepAwake(); void scan(); scheduleWake(); }
   });
   setState("off");
   renderFaceInfo();

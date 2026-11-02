@@ -27,7 +27,7 @@
           <span id="date" class="date"></span>
         </span>
       </button>
-      <p id="say" class="say" aria-live="polite">Toca la burbuja para empezar</p>
+      <p id="say" class="say" aria-live="polite"></p>
       <p id="heard" class="heard"></p>
     </main>
 
@@ -47,6 +47,11 @@
           <button id="enroll" class="pill">Registrar mi cara</button>
           <button id="forget" class="pill ghost">Borrar</button>
         </div>
+
+        <h3>Conversación</h3>
+        <label>Jarvis habla en<select id="lang"><option value="en">English</option><option value="es">Español</option></select></label>
+        <label>Yo le hablo en<select id="hear"><option value="es-ES">Español</option><option value="en-US">English</option></select></label>
+        <label class="check"><input id="always" type="checkbox" /> Escuchar siempre (di «Jarvis…»)</label>
 
         <h3>Voz</h3>
         <label>Clave de Jarvis<input id="voiceKey" type="password" autocomplete="off" placeholder="La que pusiste en Supabase" /></label>
