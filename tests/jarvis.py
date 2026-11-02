@@ -56,7 +56,11 @@ def wait_said(page, pattern, timeout=8000):
     page.wait_for_function('p=>said.some(t=>new RegExp(p).test(t))', arg=pattern, timeout=timeout)
 
 def calm(page):
-    page.wait_for_function("!jarvis.speaking && document.body.dataset.state==='idle' && !(jarvis.listening && jarvis.listenMode!=='wake')", timeout=10000)
+    # Idle, and (if always-listening) back in the background session, past any follow-up window.
+    settled = "!jarvis.speaking && document.body.dataset.state==='idle' && !(jarvis.listening && jarvis.listenMode!=='wake')"
+    page.wait_for_function(settled, timeout=10000)
+    page.wait_for_timeout(500)
+    page.wait_for_function(settled + " && (!jarvis.settings.always || jarvis.listenMode==='wake')", timeout=10000)
 
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'])
@@ -92,7 +96,13 @@ with sync_playwright() as p:
     page.click('#closeSettings')
     calm(page)
 
+    # Microphone diagnostics show what the recognizer does.
+    page.click('#openSettings'); page.evaluate("recQueue.push({results:[['probando',true]],end:true})"); page.click('#micTest')
+    page.wait_for_function("document.getElementById('micLog').textContent.includes('soporte: sí') && document.getElementById('micLog').textContent.includes('probando')")
+    page.click('#closeSettings'); calm(page)
+
     # Tap-to-talk conversation with Claude, then a follow-up without repeating "Jarvis".
+    # The tap reuses the running background session (no microphone restart).
     page.evaluate("recQueue.push({results:[['what is the meaning of life',true]],end:true},{results:[['and why',true]],end:true})")
     page.evaluate("said.length=0"); page.click('#bubble', force=True)
     wait_said(page, '^Brain says: what is the meaning of life$')

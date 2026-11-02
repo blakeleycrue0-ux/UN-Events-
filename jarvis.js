@@ -369,9 +369,17 @@
   jarvis.respond = respond;
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const WAKE = /\b(jarvis|yarvis|jarbis|charvis|harvis|jervis|travis)\b/i;
-  let finishListening = null, restartTimer = null, quickFails = 0;
+  let finishListening = null, promoteListening = null, restartTimer = null, quickFails = 0;
+  const micLog = jarvis.micLog = [];
+  function mlog(message) {
+    const d = /* @__PURE__ */ new Date();
+    micLog.push("".concat(d.toLocaleTimeString("es-ES"), ".").concat(String(d.getMilliseconds()).padStart(3, "0"), " ").concat(message));
+    while (micLog.length > 40) micLog.shift();
+    if (!$("settings").hidden) $("micLog").textContent = micLog.slice(-14).join("\n");
+  }
+  const later = (fn, ms = 350) => setTimeout(fn, ms);
   jarvis.listenLimits = { silenceMS: 1300, noSpeechMS: 7e3, maxMS: 12e3, followMS: 6e3, wakeMS: 15e3 };
-  function scheduleWake(delay = 350) {
+  function scheduleWake(delay = 600) {
     clearTimeout(restartTimer);
     if (!settings.always || !jarvis.started || !Recognition) return;
     restartTimer = setTimeout(() => {
@@ -381,7 +389,8 @@
   }
   function listen(mode = "tap") {
     if (jarvis.listening) {
-      finishListening == null ? void 0 : finishListening(true);
+      if (mode === "tap" && jarvis.listenMode === "wake" && promoteListening) promoteListening();
+      else finishListening == null ? void 0 : finishListening(true);
       return;
     }
     if (!Recognition) {
@@ -393,7 +402,7 @@
     clearTimeout(restartTimer);
     if (mode !== "wake") stopSpeaking();
     const started = Date.now(), limits = jarvis.listenLimits;
-    let text = "", lastChange = started, failure = "", ended = false;
+    let text = "", base = "", lastChange = started, failure = "", ended = false, startedAt = started, promoted = false;
     const rec = new Recognition();
     rec.lang = settings.hear;
     rec.interimResults = true;
@@ -404,6 +413,8 @@
       ended = true;
       clearInterval(watch);
       finishListening = null;
+      promoteListening = null;
+      mlog("fin (".concat(mode, ") ").concat(cancelled ? "cancelado" : failure ? "error " + failure : "texto: \xAB" + text.trim() + "\xBB"));
       try {
         rec.abort();
       } catch {
@@ -420,7 +431,7 @@
         }
         return;
       }
-      quickFails = Date.now() - started < 600 && !said ? quickFails + 1 : 0;
+      quickFails = Date.now() - startedAt < 600 && !said ? quickFails + 1 : 0;
       if (cancelled) {
         scheduleWake(1500);
         return;
@@ -429,23 +440,29 @@
         const match = WAKE.exec(said);
         if (match) {
           const command = said.slice(match.index + match[0].length).replace(/^[\s,.:]+/, "");
-          if (command) void respond(command).then(() => listen("follow"));
+          if (command) void respond(command).then(() => later(() => listen("follow")));
           else {
             show(pick(t().yes));
             $("heard").textContent = "";
-            void speak($("say").textContent).then(() => listen("follow"));
+            void speak($("say").textContent).then(() => later(() => listen("follow")));
           }
         } else scheduleWake(quickFails > 4 ? 4e3 : 300);
         return;
       }
-      if (said) void respond(said).then(() => listen("follow"));
+      if (promoted && !said && !cancelled && Date.now() - startedAt < limits.noSpeechMS) {
+        later(() => listen("tap"), 250);
+        return;
+      }
+      if (said) void respond(said).then(() => later(() => listen("follow")));
       else if (mode === "tap") {
         show(t().notHeard);
         scheduleWake();
       } else scheduleWake();
     };
     rec.onresult = (e) => {
-      const now = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
+      const full = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
+      const now = full.startsWith(base) ? full.slice(base.length).trim() : full;
+      if (now !== text) mlog("oye: \xAB" + full + "\xBB");
       if (now !== text) {
         text = now;
         lastChange = Date.now();
@@ -458,13 +475,34 @@
     };
     rec.onerror = (e) => {
       failure = e.error || "error";
+      mlog("error: " + failure);
       finish();
     };
-    rec.onend = () => finish();
-    const quietLimit = mode === "follow" ? limits.followMS : mode === "wake" ? limits.wakeMS : limits.noSpeechMS;
+    rec.onend = () => {
+      mlog("end");
+      finish();
+    };
+    rec.onstart = () => mlog("start");
+    rec.onaudiostart = () => mlog("audio abierto");
+    rec.onspeechstart = () => mlog("voz detectada");
+    promoteListening = () => {
+      base = text ? (base + " " + text).trim() : base;
+      text = "";
+      mode = "tap";
+      promoted = true;
+      startedAt = Date.now();
+      lastChange = startedAt;
+      quietLimitNow = limits.noSpeechMS;
+      jarvis.listenMode = "tap";
+      setState("listening");
+      $("heard").textContent = "";
+      show(t().listening);
+      mlog("tap: pregunta directa");
+    };
+    let quietLimitNow = mode === "follow" ? limits.followMS : mode === "wake" ? limits.wakeMS : limits.noSpeechMS;
     const watch = setInterval(() => {
       const now = Date.now();
-      if (text && now - lastChange > limits.silenceMS || !text && now - started > quietLimit || now - started > Math.max(limits.maxMS, quietLimit)) finish();
+      if (text && now - lastChange > limits.silenceMS || !text && now - startedAt > quietLimitNow || now - startedAt > Math.max(limits.maxMS, quietLimitNow)) finish();
     }, 200);
     jarvis.listening = true;
     jarvis.listenMode = mode;
@@ -473,10 +511,11 @@
       $("heard").textContent = "";
       show(t().listening);
     }
+    mlog("escuchar (".concat(mode, ", ").concat(rec.lang, ")"));
     try {
       rec.start();
     } catch (e) {
-      failure = /not-allowed/i.test(e.name + e.message) ? "not-allowed" : e.message;
+      failure = /not-allowed/i.test(e.name + e.message) ? "not-allowed" : e.name + ": " + e.message;
       finish();
     }
   }
@@ -598,7 +637,7 @@
       jarvis.lastSeen = now;
       if (away && settings.greet && !(jarvis.listening && jarvis.listenMode !== "wake") && !jarvis.speaking) {
         if (jarvis.listening) finishListening == null ? void 0 : finishListening(true);
-        void speak(greeting()).then(() => listen("follow"));
+        void speak(greeting()).then(() => later(() => listen("follow")));
       }
     } else $("faceState").textContent = "Persona desconocida";
   }
@@ -669,10 +708,6 @@
       stopSpeaking();
       return scheduleWake();
     }
-    if (jarvis.listening && jarvis.listenMode === "wake") {
-      finishListening == null ? void 0 : finishListening(true);
-      clearTimeout(restartTimer);
-    }
     if (jarvis.wakeBlocked) {
       jarvis.wakeBlocked = false;
       settings.always = store.get("jarvis-settings", {}).always !== false;
@@ -700,6 +735,37 @@
     $("voiceInfo").textContent = jarvis.voiceError || (settings.key ? "" : "Sin clave: Jarvis solo escribir\xE1.");
     renderFaceInfo();
     $("settings").hidden = false;
+    $("micLog").textContent = micLog.slice(-14).join("\n");
+  };
+  $("micTest").onclick = () => {
+    const out = (m) => mlog("[prueba] " + m);
+    if (jarvis.listening) finishListening == null ? void 0 : finishListening(true);
+    out("soporte: ".concat(Recognition ? "s\xED" : "NO", " \xB7 pantalla de inicio: ").concat(navigator.standalone ? "s\xED" : "no", " \xB7 idioma: ").concat(settings.hear));
+    if (!Recognition) {
+      out("Este modo no tiene reconocimiento de voz. Abre Jarvis en Safari normal.");
+      return;
+    }
+    const rec = new Recognition();
+    rec.lang = settings.hear;
+    rec.interimResults = true;
+    rec.continuous = false;
+    ["start", "audiostart", "soundstart", "speechstart", "speechend", "audioend", "end"].forEach((n) => {
+      rec["on" + n] = () => out(n);
+    });
+    rec.onresult = (e) => out("oye: \xAB" + Array.from(e.results).map((r) => r[0].transcript).join(" ") + "\xBB");
+    rec.onerror = (e) => out("error: " + e.error);
+    try {
+      rec.start();
+      out("habla ahora\u2026 (6 s)");
+    } catch (e) {
+      out("no arranca: " + e.name + " " + e.message);
+    }
+    setTimeout(() => {
+      try {
+        rec.stop();
+      } catch {
+      }
+    }, 6e3);
   };
   $("closeSettings").onclick = () => {
     $("settings").hidden = true;

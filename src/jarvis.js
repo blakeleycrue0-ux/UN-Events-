@@ -287,9 +287,18 @@
   // can stall without firing "end", so every session has its own timers.
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const WAKE = /\b(jarvis|yarvis|jarbis|charvis|harvis|jervis|travis)\b/i;
-  let finishListening = null, restartTimer = null, quickFails = 0;
+  let finishListening = null, promoteListening = null, restartTimer = null, quickFails = 0;
+  // A short log of what the recognizer really does, shown in Ajustes → Micrófono.
+  const micLog = jarvis.micLog = [];
+  function mlog(message) {
+    const d = new Date();
+    micLog.push(`${d.toLocaleTimeString("es-ES")}.${String(d.getMilliseconds()).padStart(3, "0")} ${message}`);
+    while (micLog.length > 40) micLog.shift();
+    if (!$("settings").hidden) $("micLog").textContent = micLog.slice(-14).join("\n");
+  }
+  const later = (fn, ms = 350) => setTimeout(fn, ms);
   jarvis.listenLimits = { silenceMS: 1300, noSpeechMS: 7000, maxMS: 12000, followMS: 6000, wakeMS: 15000 };
-  function scheduleWake(delay = 350) {
+  function scheduleWake(delay = 600) {
     clearTimeout(restartTimer);
     if (!settings.always || !jarvis.started || !Recognition) return;
     restartTimer = setTimeout(() => {
@@ -299,17 +308,24 @@
   }
   // mode: "tap" (user pressed), "follow" (right after an answer), "wake" (background, needs "Jarvis").
   function listen(mode = "tap") {
-    if (jarvis.listening) { finishListening?.(true); return; }
+    if (jarvis.listening) {
+      // Reuse an open background session instead of restarting the microphone,
+      // which iPhone often refuses when done back to back.
+      if (mode === "tap" && jarvis.listenMode === "wake" && promoteListening) promoteListening();
+      else finishListening?.(true);
+      return;
+    }
     if (!Recognition) { $("typeForm").hidden = false; $("typeInput").focus(); show(t().noMic); return; }
     clearTimeout(restartTimer);
     if (mode !== "wake") stopSpeaking();
     const started = Date.now(), limits = jarvis.listenLimits;
-    let text = "", lastChange = started, failure = "", ended = false;
+    let text = "", base = "", lastChange = started, failure = "", ended = false, startedAt = started, promoted = false;
     const rec = new Recognition();
     rec.lang = settings.hear; rec.interimResults = true; rec.continuous = mode === "wake"; rec.maxAlternatives = 1;
     const finish = finishListening = (cancelled = false) => {
       if (ended) return; ended = true;
-      clearInterval(watch); finishListening = null;
+      clearInterval(watch); finishListening = null; promoteListening = null;
+      mlog(`fin (${mode}) ${cancelled ? "cancelado" : failure ? "error " + failure : "texto: «" + text.trim() + "»"}`);
       try { rec.abort(); } catch {}
       jarvis.listening = false; jarvis.listenMode = "";
       if (mode !== "wake") rest();
@@ -320,39 +336,54 @@
         else { settings.always = false; jarvis.wakeBlocked = true; }
         return;
       }
-      quickFails = Date.now() - started < 600 && !said ? quickFails + 1 : 0;
+      quickFails = Date.now() - startedAt < 600 && !said ? quickFails + 1 : 0;
       if (cancelled) { scheduleWake(1500); return; }
       if (mode === "wake") {
         const match = WAKE.exec(said);
         if (match) {
           const command = said.slice(match.index + match[0].length).replace(/^[\s,.:]+/, "");
-          if (command) void respond(command).then(() => listen("follow"));
-          else { show(pick(t().yes)); $("heard").textContent = ""; void speak($("say").textContent).then(() => listen("follow")); }
+          if (command) void respond(command).then(() => later(() => listen("follow")));
+          else { show(pick(t().yes)); $("heard").textContent = ""; void speak($("say").textContent).then(() => later(() => listen("follow"))); }
         } else scheduleWake(quickFails > 4 ? 4000 : 300);
         return;
       }
-      if (said) void respond(said).then(() => listen("follow"));
+      // A promoted background session that the phone closed right away: open a fresh one.
+      if (promoted && !said && !cancelled && Date.now() - startedAt < limits.noSpeechMS) { later(() => listen("tap"), 250); return; }
+      if (said) void respond(said).then(() => later(() => listen("follow")));
       else if (mode === "tap") { show(t().notHeard); scheduleWake(); }
       else scheduleWake(); // a quiet follow-up just ends the conversation
     };
     rec.onresult = (e) => {
-      const now = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
+      const full = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
+      const now = full.startsWith(base) ? full.slice(base.length).trim() : full;
+      if (now !== text) mlog("oye: «" + full + "»");
       if (now !== text) {
         text = now; lastChange = Date.now();
         if (mode !== "wake" || WAKE.test(text)) { $("heard").textContent = text; if (mode === "wake") setState("listening"); }
       }
       if (mode !== "wake" && e.results[e.results.length - 1].isFinal) finish();
     };
-    rec.onerror = (e) => { failure = e.error || "error"; finish(); };
-    rec.onend = () => finish();
-    const quietLimit = mode === "follow" ? limits.followMS : mode === "wake" ? limits.wakeMS : limits.noSpeechMS;
+    rec.onerror = (e) => { failure = e.error || "error"; mlog("error: " + failure); finish(); };
+    rec.onend = () => { mlog("end"); finish(); };
+    rec.onstart = () => mlog("start");
+    rec.onaudiostart = () => mlog("audio abierto");
+    rec.onspeechstart = () => mlog("voz detectada");
+    promoteListening = () => {
+      // The tap turns the running background session into a direct question.
+      base = text ? (base + " " + text).trim() : base; text = ""; mode = "tap"; promoted = true;
+      startedAt = Date.now(); lastChange = startedAt; quietLimitNow = limits.noSpeechMS;
+      jarvis.listenMode = "tap"; setState("listening"); $("heard").textContent = ""; show(t().listening);
+      mlog("tap: pregunta directa");
+    };
+    let quietLimitNow = mode === "follow" ? limits.followMS : mode === "wake" ? limits.wakeMS : limits.noSpeechMS;
     const watch = setInterval(() => {
       const now = Date.now();
-      if ((text && now - lastChange > limits.silenceMS) || (!text && now - started > quietLimit) || now - started > Math.max(limits.maxMS, quietLimit)) finish();
+      if ((text && now - lastChange > limits.silenceMS) || (!text && now - startedAt > quietLimitNow) || now - startedAt > Math.max(limits.maxMS, quietLimitNow)) finish();
     }, 200);
     jarvis.listening = true; jarvis.listenMode = mode;
     if (mode !== "wake") { setState("listening"); $("heard").textContent = ""; show(t().listening); }
-    try { rec.start(); } catch (e) { failure = /not-allowed/i.test(e.name + e.message) ? "not-allowed" : e.message; finish(); }
+    mlog(`escuchar (${mode}, ${rec.lang})`);
+    try { rec.start(); } catch (e) { failure = /not-allowed/i.test(e.name + e.message) ? "not-allowed" : e.name + ": " + e.message; finish(); }
   }
   jarvis.listen = listen;
 
@@ -440,7 +471,7 @@
       jarvis.lastSeen = now;
       if (away && settings.greet && !(jarvis.listening && jarvis.listenMode !== "wake") && !jarvis.speaking) {
         if (jarvis.listening) finishListening?.(true);
-        void speak(greeting()).then(() => listen("follow"));
+        void speak(greeting()).then(() => later(() => listen("follow")));
       }
     } else $("faceState").textContent = "Persona desconocida";
   }
@@ -498,8 +529,6 @@
   $("bubble").onclick = () => {
     if (!jarvis.started) return start();
     if (jarvis.speaking) { stopSpeaking(); return scheduleWake(); }
-    // A tap during background listening switches to a direct question.
-    if (jarvis.listening && jarvis.listenMode === "wake") { finishListening?.(true); clearTimeout(restartTimer); }
     if (jarvis.wakeBlocked) { jarvis.wakeBlocked = false; settings.always = store.get("jarvis-settings", {}).always !== false; }
     listen("tap");
   };
@@ -516,7 +545,21 @@
     $("showType").checked = settings.typing; $("voiceKey").value = settings.key;
     $("lang").value = settings.lang; $("hear").value = settings.hear; $("always").checked = store.get("jarvis-settings", {}).always !== false;
     $("voiceInfo").textContent = jarvis.voiceError || (settings.key ? "" : "Sin clave: Jarvis solo escribirá.");
-    renderFaceInfo(); $("settings").hidden = false;
+    renderFaceInfo(); $("settings").hidden = false; $("micLog").textContent = micLog.slice(-14).join("\n");
+  };
+  // Ajustes → Micrófono: a direct recognizer test whose raw events explain any problem.
+  $("micTest").onclick = () => {
+    const out = (m) => mlog("[prueba] " + m);
+    if (jarvis.listening) finishListening?.(true);
+    out(`soporte: ${Recognition ? "sí" : "NO"} · pantalla de inicio: ${navigator.standalone ? "sí" : "no"} · idioma: ${settings.hear}`);
+    if (!Recognition) { out("Este modo no tiene reconocimiento de voz. Abre Jarvis en Safari normal."); return; }
+    const rec = new Recognition();
+    rec.lang = settings.hear; rec.interimResults = true; rec.continuous = false;
+    ["start", "audiostart", "soundstart", "speechstart", "speechend", "audioend", "end"].forEach((n) => { rec["on" + n] = () => out(n); });
+    rec.onresult = (e) => out("oye: «" + Array.from(e.results).map((r) => r[0].transcript).join(" ") + "»");
+    rec.onerror = (e) => out("error: " + e.error);
+    try { rec.start(); out("habla ahora… (6 s)"); } catch (e) { out("no arranca: " + e.name + " " + e.message); }
+    setTimeout(() => { try { rec.stop(); } catch {} }, 6000);
   };
   $("closeSettings").onclick = () => { $("settings").hidden = true; if (jarvis.enrolling) endEnroll(); scheduleWake(); };
   $("settings").onclick = (e) => { if (e.target === $("settings")) $("closeSettings").onclick(); };

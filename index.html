@@ -53,6 +53,10 @@
         <label>Yo le hablo en<select id="hear"><option value="es-ES">Español</option><option value="en-US">English</option></select></label>
         <label class="check"><input id="always" type="checkbox" /> Escuchar siempre (di «Jarvis…»)</label>
 
+        <h3>Micrófono</h3>
+        <div class="row"><button id="micTest" class="pill ghost">Probar micrófono</button></div>
+        <pre id="micLog" class="mic-log"></pre>
+
         <h3>Voz</h3>
         <label>Clave de Jarvis<input id="voiceKey" type="password" autocomplete="off" placeholder="La que pusiste en Supabase" /></label>
         <div class="row"><button id="testVoice" class="pill">Probar voz</button></div>
