@@ -162,7 +162,7 @@ Deno.serve(async (request: Request) => {
   const memory = (Array.isArray(body.memory) ? body.memory : []).slice(-40).map((m) => String(m).replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean);
   const context = String(body.context || "").replace(/\s+/g, " ").slice(0, 300);
   // Keep the phone side up to date (ignored if the table isn't there).
-  db("jarvis_state", { method: "POST", body: JSON.stringify({ id: 1, name, lang: body.lang === "es" ? "es" : "en", hear: body.hear === "en-US" ? "en-US" : "es-ES", memory, updated_at: new Date().toISOString() }) }).catch(() => {});
+  await db("jarvis_state", { method: "POST", body: JSON.stringify({ id: 1, name, lang: body.lang === "es" ? "es" : "en", hear: body.hear === "en-US" ? "en-US" : "es-ES", memory, updated_at: new Date().toISOString() }) }).catch(() => {});
 
   const system =
     `You are Jarvis, the AI assistant of ${name}'s bedroom: you live on the Chromebook on the desk, with a camera on the wall that tells you who comes through the door. ` +

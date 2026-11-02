@@ -31,7 +31,7 @@ alter table public.jarvis_calls enable row level security;
 revoke all on public.jarvis_state, public.jarvis_reminders, public.jarvis_calls from anon, authenticated;
 
 -- Every minute: if a reminder is due, wake jarvis-call. The shared secret lives
--- in Vault as 'jarvis_cron' (same value as the JARVIS_CRON_SECRET function secret).
+-- in Vault as 'jarvis_cron'; jarvis-call checks it with jarvis_cron_check().
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 select cron.unschedule(jobid) from cron.job where jobname = 'jarvis-reminders';
@@ -50,3 +50,10 @@ select cron.schedule('jarvis-cleanup', '17 4 * * *', $$
   delete from public.jarvis_calls where created_at < now() - interval '2 days';
   delete from public.jarvis_reminders where done and delivered_at < now() - interval '30 days';
 $$);
+
+create or replace function public.jarvis_cron_check(token text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from vault.decrypted_secrets where name = 'jarvis_cron' and length(token) >= 16 and decrypted_secret = token)
+$$;
+revoke execute on function public.jarvis_cron_check(text) from public, anon, authenticated;
+grant execute on function public.jarvis_cron_check(text) to service_role;

@@ -265,7 +265,7 @@
       return el;
     });
     layer.replaceChildren(...boxes);
-    if (boxes.length && !wall.enrolling && !framing) {
+    if (boxes.length && !wall.enrolling && !framing && $("settings").hidden) {
       clearTimeout(wall.spotTimer);
       const preview = $("preview");
       if (preview.classList.contains("stash")) {
@@ -481,6 +481,10 @@
     renderPeople();
     $("faceInfo").textContent = "";
     $("settings").hidden = false;
+    if ($("preview").classList.contains("spot")) {
+      $("preview").classList.remove("spot");
+      $("preview").classList.add("stash");
+    }
   }
   $("closeSettings").onclick = () => {
     if (framing) setFraming(false);

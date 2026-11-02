@@ -4,7 +4,7 @@
 // (called every minute by pg_cron) and answers when the user rings Jarvis.
 //
 // Secrets: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (Jarvis's number),
-// JARVIS_PHONE_TO (the user's mobile), JARVIS_CRON_SECRET, plus the existing
+// JARVIS_PHONE_TO (the user's mobile), plus the existing
 // JARVIS_KEY, ANTHROPIC_API_KEY and ELEVENLABS_API_KEY.
 import Anthropic from "npm:@anthropic-ai/sdk";
 
@@ -203,8 +203,10 @@ Deno.serve(async (request: Request) => {
 
     // ---- Every minute from pg_cron ----
     if (step === "cron") {
-      const secret = env("JARVIS_CRON_SECRET");
-      if (secret.length < 16 || !same(request.headers.get("x-jarvis-cron") || "", secret)) return new Response("Forbidden", { status: 403 });
+      // The shared secret lives in Vault ('jarvis_cron'); the database checks it.
+      const token = (request.headers.get("x-jarvis-cron") || "").slice(0, 200);
+      const check = token.length >= 16 ? await db("rpc/jarvis_cron_check", { method: "POST", body: JSON.stringify({ token }) }) : null;
+      if (!check?.ok || (await check.json().catch(() => false)) !== true) return new Response("Forbidden", { status: 403 });
       return Response.json({ delivered: await deliverDue() });
     }
 

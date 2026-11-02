@@ -4,7 +4,7 @@
 // on the Jarvis desk, before anything that can't be undone.
 const AGENT_MAX_STEPS = 30;
 const RISKY_WORDS = /\b(submit|turn in|hand in|send|post|publish|delete|remove|pay|buy|purchase|order|unsubscribe|reply all)\b|entregar|enviar|publicar|eliminar|borrar|pagar|comprar|darse de baja|responder a todos/i;
-const YES = /^\s*(s[ií]|yes|yeah|yep|vale|dale|ok|okay|claro|venga|hazlo|do it|go ahead|sure|adelante|correcto|confirm|confirmo)\b/i;
+const YES = /^\s*(s[ií]|yes|yeah|yep|vale|dale|ok|okay|claro|venga|hazlo|do it|go ahead|sure|adelante|correcto|confirm|confirmo)(?![\p{L}])/iu;
 
 // A step needs the user's OK if Claude says so or the button/text looks final.
 function agentNeedsConfirm(action, label = "") {

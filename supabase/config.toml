@@ -18,3 +18,11 @@ verify_jwt = false
 [functions.jarvis-event]
 # The function checks the private JARVIS_KEY itself; no Supabase login is involved.
 verify_jwt = false
+
+[functions.jarvis-agent]
+# The function checks the private JARVIS_KEY itself; no Supabase login is involved.
+verify_jwt = false
+
+[functions.jarvis-call]
+# Twilio webhooks are verified by signature; desk and cron use JARVIS_KEY / the Vault secret.
+verify_jwt = false

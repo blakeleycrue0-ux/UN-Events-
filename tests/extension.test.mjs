@@ -53,3 +53,33 @@ test('background joins the private topic and turns a broadcast into a new tab',a
   assert.ok(zip.includes(Buffer.from('jarvis-chromebook/'+f)),f);
  JSON.parse(fs.readFileSync('extension/manifest.json','utf8'));
 });
+test('agent: risky steps wait for a spoken yes; a no is passed back to Claude; summary reaches the desk',async()=>{
+ const {agentNeedsConfirm,agentSaidYes}=require('../extension/agent.js');
+ assert.ok(agentNeedsConfirm({type:'click',risky:false},'Hand in'));assert.ok(agentNeedsConfirm({type:'click',risky:true},'Next'));
+ assert.ok(agentNeedsConfirm({type:'click'},'Entregar'));assert.ok(!agentNeedsConfirm({type:'click'},'Assignments'));
+ assert.ok(!agentNeedsConfirm({type:'scroll'},'send'));
+ assert.ok(agentSaidYes('Sí, hazlo'));assert.ok(agentSaidYes('yes please'));assert.ok(!agentSaidYes('no'));assert.ok(!agentSaidYes(''));
+ assert.deepEqual(jarvisPlan({action:'agent',task:'  check   teams ',lang:'es'}),{kind:'agent',task:'check teams',lang:'es'});
+ assert.equal(jarvisPlan({action:'agent',task:''}),null);
+ // Full loop with fake Chrome and a fake agent function.
+ const desk=[],acted=[],steps=[{type:'click',id:2,risky:true,say:'Handing in'},{type:'click',id:2,risky:true,say:'Handing in'},{type:'done',summary:'Handed in your maths homework.'}];
+ const bodies=[];let answers=['no, wait','sí'];
+ const chrome={storage:{local:{get:async()=>({key:'clave-larga'})}},
+  windows:{create:async()=>({id:9,tabs:[{id:5}]})},
+  tabs:{get:async(id)=>({id,status:'complete',url:'https://teams.microsoft.com/',title:'Teams'}),update:async()=>{},goBack:async()=>{},
+   captureVisibleTab:async()=>'data:image/jpeg;base64,'+'A'.repeat(200),
+   query:async()=>[{id:1,url:'https://unevents.netlify.app/'},{id:3,url:'https://unevents.netlify.app/pared'}],
+   sendMessage:async(tabId,m)=>{assert.equal(tabId,1,'only the desk tab, never the wall');desk.push(m.agent);if(m.agent.kind==='ask')setTimeout(()=>ctx.agentAnswer(m.agent.id,answers.shift()),5)}},
+  scripting:{executeScript:async({func,args})=>{if(func.name==='agentSnapshot')return[{result:{url:'https://teams.microsoft.com/',title:'Teams',text:'Homework',elements:['[2] button Hand in']}}];
+   if(args[0].peek)return[{result:{ok:true,label:'Hand in',href:''}}];acted.push(args[0]);return[{result:{ok:true,label:'Hand in'}}]}},
+  downloads:{download:async()=>{}}};
+ const fetch=async(url,o)=>{bodies.push(JSON.parse(o.body));assert.ok(url.endsWith('/functions/v1/jarvis-agent'));assert.equal(o.headers['x-jarvis-key'],'clave-larga');return Response.json({action:steps.shift()})};
+ const ctx=vm.createContext({chrome,fetch,Response,console,setTimeout:(f,ms)=>{const t=setTimeout(f,ms>5000?ms:Math.min(ms,5));if(ms>5000)t.unref();return t},JARVIS_CONFIG:{url:'https://x.supabase.co',anonKey:'anon'},Date,String,Promise,Map});
+ vm.runInContext(fs.readFileSync('extension/agent.js','utf8'),ctx);
+ await vm.runInContext('runAgent("Hand in my maths homework on Teams","es")',ctx);
+ assert.equal(acted.length,1,'clicked only after the yes');
+ assert.match(bodies[1].log.at(-1),/user said no/);
+ assert.deepEqual(desk.filter(m=>m.kind==='ask').length,2);assert.match(desk.find(m=>m.kind==='ask').question,/Hand in/);
+ const done=desk.at(-1);assert.equal(done.kind,'done');assert.equal(done.summary,'Handed in your maths homework.');
+ assert.ok(bodies[0].screenshot.startsWith('data:image/jpeg'));assert.equal(bodies[0].lang,'es');
+});

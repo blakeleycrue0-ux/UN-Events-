@@ -165,7 +165,7 @@ function drawBoxes(found) {
   });
   layer.replaceChildren(...boxes);
   // On the black wall screen, show the camera for a few seconds when someone is there.
-  if (boxes.length && !wall.enrolling && !framing) {
+  if (boxes.length && !wall.enrolling && !framing && $("settings").hidden) {
     clearTimeout(wall.spotTimer);
     const preview = $("preview");
     if (preview.classList.contains("stash")) { preview.classList.remove("stash"); preview.classList.add("spot"); }
@@ -298,6 +298,7 @@ $("wall").onclick = (e) => { if (e.target !== $("wallStart")) openSettings(); };
 function openSettings() {
   $("name").value = settings.name; $("voiceKey").value = settings.key; $("facing").value = settings.facing;
   renderPeople(); $("faceInfo").textContent = ""; $("settings").hidden = false;
+  if ($("preview").classList.contains("spot")) { $("preview").classList.remove("spot"); $("preview").classList.add("stash"); }
 }
 $("closeSettings").onclick = () => { if (framing) setFraming(false); if (wall.enrolling) endEnroll(); $("settings").hidden = true; };
 $("name").onchange = () => { settings.name = $("name").value.trim() || "Crew"; settings.save(); };

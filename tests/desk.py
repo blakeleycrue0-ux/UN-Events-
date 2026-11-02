@@ -25,7 +25,8 @@ window.webkitSpeechRecognition=class{
 window.SpeechRecognition=window.webkitSpeechRecognition;
 // Fake Chromebook extension answering the bridge.
 window.extCalls=[];
-window.addEventListener('message',e=>{if(e.data?.source!=='jarvis-desk')return;extCalls.push(e.data.action);
+window.extMsgs=[];
+window.addEventListener('message',e=>{if(e.data?.source!=='jarvis-desk')return;extCalls.push(e.data.action);extMsgs.push(e.data);
   window.postMessage({source:'jarvis-extension',id:e.data.id,ok:true},'*')});
 // Fake hand detector fed from handQueue.
 window.handQueue=[];
@@ -147,6 +148,26 @@ with sync_playwright() as p:
     page.wait_for_function("!document.getElementById('timersCard').hidden")
     wait_voice(page, "time's up")
     calm(page)
+
+    # Browser agent: progress card, a spoken question, the spoken answer goes back to the extension.
+    post = lambda m: page.evaluate("m=>window.postMessage({source:'jarvis-extension',agent:m},'*')", m)
+    post({'kind': 'start', 'task': 'Check Teams for homework'})
+    page.wait_for_function("!document.getElementById('agentCard').hidden && document.getElementById('agentTask').textContent.includes('Teams')")
+    post({'kind': 'step', 'step': 2, 'say': 'Opening Teams'})
+    page.wait_for_function("document.getElementById('agentSay').textContent==='Opening Teams' && document.getElementById('agentStep').textContent==='step 2'")
+    post({'kind': 'ask', 'id': 7, 'question': 'Shall I press Hand in?'})
+    wait_voice(page, 'Shall I press Hand in')
+    page.evaluate("recQueue.push({results:[['yes go ahead',true]],end:true})")
+    page.wait_for_function("extMsgs.some(m=>m.action==='agent-answer'&&m.ask===7&&m.text==='yes go ahead')", timeout=8000)
+    calm(page)
+    post({'kind': 'done', 'ok': True, 'summary': 'Handed in your maths homework.'})
+    wait_voice(page, 'Handed in your maths homework')
+    page.wait_for_function("document.getElementById('agentCard').classList.contains('done')")
+    page.screenshot(path='/tmp/desk-agent.png')
+    calm(page)
+    # A reminder that comes due is spoken on the desk.
+    home({'action': 'remind', 'text': 'Time to study maths, Crew.', 'lang': 'en'})
+    wait_voice(page, 'Time to study maths'); calm(page)
 
     # The door: the wall camera's events.
     home({'action': 'wall', 'camera': True})
