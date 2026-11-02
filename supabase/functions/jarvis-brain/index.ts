@@ -117,6 +117,51 @@ async function db(path: string, init: RequestInit = {}) {
     signal: AbortSignal.timeout(8000),
   });
 }
+// ---------- Gemini (free tier) ----------
+// When GEMINI_API_KEY is set, Jarvis thinks with Gemini for free; if Gemini
+// fails or runs out of free quota, it falls back to Claude. The answer is
+// translated to Claude's shape so the same tools run either way.
+// deno-lint-ignore no-explicit-any
+function geminiSchema(s: any): any {
+  if (!s || typeof s !== "object") return s;
+  // deno-lint-ignore no-explicit-any
+  const out: any = {};
+  for (const [k, v] of Object.entries(s)) {
+    if (k === "additionalProperties" || k === "strict") continue;
+    if (k === "type") out.type = String(v).toUpperCase();
+    // deno-lint-ignore no-explicit-any
+    else if (k === "properties") out.properties = Object.fromEntries(Object.entries(v as any).map(([n, p]) => [n, geminiSchema(p)]));
+    else if (k === "items") out.items = geminiSchema(v);
+    else out[k] = v;
+  }
+  return out;
+}
+// deno-lint-ignore no-explicit-any
+async function askGemini(key: string, system: string, messages: { role: string; content: string }[], tools: any[]) {
+  const models = (Deno.env.get("GEMINI_MODEL") || "gemini-flash-latest,gemini-2.5-flash").split(",").map((m) => m.trim()).filter(Boolean);
+  const body = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+    tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: geminiSchema(t.input_schema) })) }],
+    generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
+  };
+  for (const model of models) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000),
+    });
+    if (r.status === 404) continue;   // model name not available: try the next one
+    if (!r.ok) throw Error("gemini " + r.status);
+    const data = await r.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    // deno-lint-ignore no-explicit-any
+    const content = parts.flatMap((p: any) => p.functionCall ? [{ type: "tool_use", name: p.functionCall.name, input: p.functionCall.args || {} }]
+      : typeof p.text === "string" && p.text.trim() ? [{ type: "text", text: p.text }] : []);
+    if (!content.length) throw Error("gemini empty (" + (data?.candidates?.[0]?.finishReason || "no candidate") + ")");
+    return { stop_reason: "end_turn", content, served_by: model };
+  }
+  throw Error("gemini: no model available");
+}
+
 async function emailMe(subject: string, body: string) {
   const key = (Deno.env.get("RESEND_API_KEY") || "").trim(), to = (Deno.env.get("JARVIS_EMAIL_TO") || "").trim();
   if (!key || !to) return "not configured";
@@ -149,7 +194,8 @@ Deno.serve(async (request: Request) => {
 
   const expected = (Deno.env.get("JARVIS_KEY") || "").trim();
   const apiKey = (Deno.env.get("ANTHROPIC_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
-  if (expected.length < 6 || !apiKey) return json(428, { error: "Brain not configured" });
+  const geminiKey = (Deno.env.get("GEMINI_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
+  if (expected.length < 6 || (!apiKey && !geminiKey)) return json(428, { error: "Brain not configured" });
   const given = (request.headers.get("x-jarvis-key") || "").trim();
   const a = new TextEncoder().encode(given), b = new TextEncoder().encode(expected);
   let diff = a.length ^ b.length;
@@ -200,20 +246,28 @@ Deno.serve(async (request: Request) => {
 
   // Claude Haiku 5.5 by default: ~40x cheaper than Opus. Set CLAUDE_MODEL to change it.
   const model = (Deno.env.get("CLAUDE_MODEL") || "claude-haiku-5-5").trim();
-  const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 45000 });
   try {
-    const params: Record<string, unknown> = {
-      model,
-      max_tokens: 1024, // spoken replies are short
-      output_config: { effort: "low" }, // quick conversational replies
-      system,
-      messages,
-      tools: TOOLS,
-    };
-    // Server-side refusal fallback: another model answers if this one declines.
-    if (FALLBACK_MODELS.includes(model)) Object.assign(params, { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
+    // Free first: Gemini. Anything goes wrong there → Claude takes over.
     // deno-lint-ignore no-explicit-any
-    const response: any = await client.beta.messages.create(params as any);
+    let response: any = null;
+    if (geminiKey) {
+      try { response = await askGemini(geminiKey, system, messages, TOOLS); }
+      catch (error) { console.log("jarvis-brain Gemini fallback:", String((error as Error).message).slice(0, 120)); if (!apiKey) return json(502, { error: "Claude busy" }); }
+    }
+    if (!response) {
+      const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 45000 });
+      const params: Record<string, unknown> = {
+        model,
+        max_tokens: 1024, // spoken replies are short
+        output_config: { effort: "low" }, // quick conversational replies
+        system,
+        messages,
+        tools: TOOLS,
+      };
+      // Server-side refusal fallback: another model answers if this one declines.
+      if (FALLBACK_MODELS.includes(model)) Object.assign(params, { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
+      response = await client.beta.messages.create(params as never);
+    }
     if (response.stop_reason === "refusal") return json(200, { reply: "", refused: true });
     let reply = (response.content || [])
       .filter((block: { type: string }) => block.type === "text")

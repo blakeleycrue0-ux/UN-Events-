@@ -145,3 +145,41 @@ test('homework and countdowns: Claude edits the lists on screen, with valid date
  assert.equal(r.reply,'Noted.');
  assert.match(s.calls.find(c=>c.params).params.system,/Current homework: Maths p\. 42 \(2026-11-03\)/);
 });
+
+// ---------- Gemini (free) with Claude fallback ----------
+function gemSetup(gemini,env={},claude=()=>({stop_reason:'end_turn',content:[{type:'text',text:'Claude here.'}]})){
+ let handler;const sdk=fakeSdk(claude);const outbound=[],gem=[];
+ const e={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',ANTHROPIC_API_KEY:'sk-ant-fixture',GEMINI_API_KEY:'gem-fixture',SUPABASE_URL:'https://fixture.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service-fixture',...env};
+ const fetch=async(url,opts)=>{url=String(url);
+  if(url.startsWith('https://generativelanguage.googleapis.com/')){gem.push({url,opts,body:JSON.parse(opts.body)});return gemini(url,gem.length)}
+  if(url.includes('/rest/v1/'))return new Response('',{status:201});
+  outbound.push({url,body:JSON.parse(opts.body)});return new Response('{}',{status:200})};
+ new Function('Deno','Anthropic','fetch',code)({env:{get:n=>e[n]},serve:h=>handler=h},sdk.Anthropic,fetch);
+ return {handler,calls:sdk.calls,gem,outbound};
+}
+const gemOk=(parts)=>()=>Response.json({candidates:[{content:{role:'model',parts},finishReason:'STOP'}]});
+test('with a Gemini key Jarvis thinks for free with Gemini, and its tools still work',async()=>{
+ const s=gemSetup(gemOk([{text:'Playing lofi on YouTube.'},{functionCall:{name:'play_music',args:{query:'lofi',service:'youtube'}}}]));
+ const r=await (await s.handler(req({...convo,messages:[{role:'user',content:'hi'},{role:'assistant',content:'Hello'},{role:'user',content:'play lofi'}]}))).json();
+ assert.deepEqual(r,{reply:'Playing lofi on YouTube.',actions:['play']});
+ assert.equal(s.calls.filter(c=>c.params).length,0,'Claude not used');
+ const g=s.gem[0];assert.match(g.url,/models\/gemini-flash-latest:generateContent$/);assert.equal(g.opts.headers['x-goog-api-key'],'gem-fixture');
+ assert.deepEqual(g.body.contents.map(c=>c.role),['user','model','user']);
+ assert.match(g.body.systemInstruction.parts[0].text,/You are Jarvis/);
+ const play=g.body.tools[0].functionDeclarations.find(f=>f.name==='play_music');
+ assert.equal(play.parameters.type,'OBJECT');assert.ok(!('additionalProperties' in play.parameters));assert.deepEqual(play.parameters.properties.service.enum,['youtube','spotify']);
+ assert.equal(s.outbound[0].body.messages[0].payload.action,'play');
+});
+test('Gemini model ladder, and Claude takes over when Gemini is out of free quota',async()=>{
+ const ladder=gemSetup((url)=>url.includes('gemini-flash-latest')?new Response('',{status:404}):gemOk([{text:'From 2.5.'}])());
+ assert.equal((await (await ladder.handler(req(convo))).json()).reply,'From 2.5.');
+ assert.match(ladder.gem[1].url,/gemini-2\.5-flash/);
+ const quota=gemSetup(()=>new Response('{"error":{"code":429}}',{status:429}));
+ assert.equal((await (await quota.handler(req(convo))).json()).reply,'Claude here.');
+ assert.equal(quota.calls.filter(c=>c.params)[0].params.model,'claude-haiku-5-5');
+ const onlyGem=gemSetup(()=>new Response('',{status:500}),{ANTHROPIC_API_KEY:''});
+ const r=await onlyGem.handler(req(convo));assert.equal(r.status,502);
+ const none=gemSetup(()=>new Response(''),{ANTHROPIC_API_KEY:'',GEMINI_API_KEY:''});assert.equal((await none.handler(req(convo))).status,428);
+ const noGem=gemSetup(()=>{throw Error('should not call')},{GEMINI_API_KEY:''});
+ assert.equal((await (await noGem.handler(req(convo))).json()).reply,'Claude here.');assert.equal(noGem.gem.length,0);
+});
