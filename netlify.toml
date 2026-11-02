@@ -59,3 +59,9 @@
   for = "/mando*"
   [headers.values]
     Permissions-Policy = "camera=(), microphone=(self), geolocation=()"
+
+# The service worker must always be fresh (phone notifications).
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

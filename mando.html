@@ -7,7 +7,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Jarvis · Mando</title>
-    <link rel="icon" href="data:," />
+    <link rel="icon" href="icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="stylesheet" href="mando.css" />
   </head>
   <body data-state="unknown">
@@ -25,6 +27,10 @@
         <button id="leave" class="btn primary">Me voy · activar</button>
         <button id="home" class="btn">Estoy en casa · desactivar</button>
       </div>
+      <section id="pushBox" class="push" hidden>
+        <button id="pushOn" class="btn">Activar notificaciones</button>
+        <p id="pushInfo" class="muted"></p>
+      </section>
       <section class="log"><h2>Últimos avisos</h2><ul id="log"><li class="muted">Nada todavía.</li></ul></section>
       <p class="hint">Mantén esta página abierta para enterarte al momento. Puedes añadirla a la pantalla de inicio desde Compartir → «Añadir a pantalla de inicio».</p>
     </main>

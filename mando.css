@@ -41,3 +41,6 @@ body[data-state="alarm"] .ring { border-color: var(--bad); box-shadow: 0 0 80px 
 .talk-btn.on { background: var(--accent); color: #06121f; animation: pulse 1.2s ease-in-out infinite; }
 .talk-heard { margin: 0; color: var(--soft); text-align: center; min-height: 1.4em; }
 .talk-reply { margin: 0; color: var(--text); text-align: center; font-size: 17px; }
+
+.push { display: grid; gap: 8px; }
+.push p { margin: 0; font-size: 14px; text-align: center; }

@@ -63,6 +63,7 @@ function toast(text) {
   $("toasts").append(el); setTimeout(() => el.classList.add("out"), 2200); setTimeout(() => el.remove(), 2800);
 }
 function quietNow(h = new Date().getHours()) {
+  if (desk.sleep) return true;   // asleep: greetings stay silent
   const { quietFrom: a, quietTo: b } = settings;
   return a === b ? false : a < b ? h >= a && h < b : h >= a || h < b;
 }
@@ -330,23 +331,106 @@ function renderWake() {
 }
 function setWake(time) { desk.wake.time = time; desk.wake.done = ""; desk.wakeOverride = 0; saveWake(); }
 desk.setWake = setWake;
-// Sunrise colours: night → deep red → orange → warm gold → soft daylight.
-const SKY = [[0, [0, 0, 0], [40, 4, 0]], [0.3, [30, 4, 2], [150, 25, 8]], [0.6, [110, 35, 10], [255, 120, 35]], [0.85, [210, 120, 60], [255, 200, 120]], [1, [255, 226, 190], [255, 246, 228]]];
-function skyAt(p) {
-  let i = 0; while (i < SKY.length - 2 && p > SKY[i + 1][0]) i++;
-  const [a, b] = [SKY[i], SKY[i + 1]], k = Math.min(1, Math.max(0, (p - a[0]) / (b[0] - a[0])));
-  const mix = (x, y) => x.map((v, j) => Math.round(v + (y[j] - v) * k));
-  return { bg: mix(a[1], b[1]), sun: mix(a[2], b[2]) };
+// ---------- Cielo: estrellas de noche y amanecer de verdad ----------
+// One canvas does both: at night a starry sky (twinkling, the odd shooting
+// star) over dark hills; at dawn the horizon turns violet, red and orange, the
+// sun rises from behind the hills, the stars fade and the sky ends up blue.
+const SKYK = [ // progress, zenith, horizon, sun
+  [0, [2, 3, 12], [9, 12, 30], [120, 20, 10]],
+  [0.25, [6, 9, 30], [56, 26, 66], [170, 40, 20]],
+  [0.5, [24, 32, 78], [205, 86, 50], [255, 110, 40]],
+  [0.75, [64, 104, 168], [252, 168, 88], [255, 196, 110]],
+  [1, [128, 186, 236], [255, 228, 186], [255, 248, 225]],
+];
+const lerp = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+function skyColors(p) {
+  let i = 0; while (i < SKYK.length - 2 && p > SKYK[i + 1][0]) i++;
+  const [a, b] = [SKYK[i], SKYK[i + 1]], k = Math.min(1, Math.max(0, (p - a[0]) / (b[0] - a[0])));
+  return { zen: lerp(a[1], b[1], k), hor: lerp(a[2], b[2], k), sun: lerp(a[3], b[3], k) };
 }
+desk.skyColors = skyColors;
+const stars = Array.from({ length: 340 }, () => ({ x: Math.random(), y: Math.pow(Math.random(), 1.4) * 0.8, r: Math.random() * 1.3 + 0.25, a: Math.random() * 0.7 + 0.3, s: Math.random() * 2 + 0.5, ph: Math.random() * 6.3 }));
+let meteor = null;
+function drawSky(p, t) {
+  const c = $("sky"), dpr = Math.min(2, window.devicePixelRatio || 1), W = innerWidth, H = innerHeight;
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const { zen, hor, sun } = skyColors(p), horizon = H * 0.78;
+  const grd = g.createLinearGradient(0, 0, 0, horizon);
+  grd.addColorStop(0, `rgb(${zen})`); grd.addColorStop(0.55, `rgb(${lerp(zen, hor, 0.45)})`); grd.addColorStop(1, `rgb(${hor})`);
+  g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  // Stars fade out as the light comes.
+  const starAlpha = Math.max(0, 1 - p * 2.4);
+  if (starAlpha > 0) {
+    for (const s of stars) {
+      const a = s.a * starAlpha * (0.55 + 0.45 * Math.sin(t / 1000 * s.s + s.ph));
+      g.fillStyle = `rgba(235,240,255,${a.toFixed(3)})`; g.beginPath(); g.arc(s.x * W, s.y * horizon, s.r, 0, 6.283); g.fill();
+    }
+    if (!meteor && p < 0.15 && Math.random() < 0.004) meteor = { x: Math.random() * W * 0.8, y: Math.random() * H * 0.3, t };
+    if (meteor) {
+      const k = (t - meteor.t) / 900;
+      if (k > 1) meteor = null;
+      else {
+        const x = meteor.x + k * 320, y = meteor.y + k * 140, tail = g.createLinearGradient(x - 120, y - 52, x, y);
+        tail.addColorStop(0, "rgba(255,255,255,0)"); tail.addColorStop(1, `rgba(255,255,255,${(0.9 * (1 - k) * starAlpha).toFixed(3)})`);
+        g.strokeStyle = tail; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - 120, y - 52); g.lineTo(x, y); g.stroke();
+      }
+    }
+  }
+  // Warm glow along the horizon, growing with the dawn.
+  if (p > 0.05) {
+    const glow = g.createRadialGradient(W / 2, horizon, 0, W / 2, horizon, W * (0.35 + p * 0.5));
+    glow.addColorStop(0, `rgba(${sun},${Math.min(0.85, p * 1.1).toFixed(3)})`); glow.addColorStop(1, `rgba(${sun},0)`);
+    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  }
+  // The sun rises from behind the hills.
+  if (p > 0.32) {
+    const k = (p - 0.32) / 0.68, R = H * 0.065, sy = horizon + R * 1.2 - k * H * 0.42;
+    const halo = g.createRadialGradient(W / 2, sy, R * 0.5, W / 2, sy, R * 7);
+    halo.addColorStop(0, `rgba(${sun},0.75)`); halo.addColorStop(1, `rgba(${sun},0)`);
+    g.fillStyle = halo; g.fillRect(0, 0, W, H);
+    g.fillStyle = `rgb(${lerp(sun, [255, 252, 240], 0.5)})`; g.beginPath(); g.arc(W / 2, sy, R, 0, 6.283); g.fill();
+  }
+  // Hills in silhouette, lit a little as the morning comes.
+  const hill = (base, amp, freq, phase, shade) => {
+    g.fillStyle = `rgb(${lerp([3, 4, 9], lerp(hor, [20, 30, 20], 0.6), Math.min(1, p * 0.55 + shade))})`;
+    g.beginPath(); g.moveTo(0, H);
+    for (let x = 0; x <= W; x += 8) g.lineTo(x, base + Math.sin(x / W * freq + phase) * amp + Math.sin(x / W * freq * 2.7 + phase * 2) * amp * 0.35);
+    g.lineTo(W, H); g.closePath(); g.fill();
+  };
+  hill(horizon + H * 0.03, H * 0.035, 5.5, 1.2, 0.05); hill(horizon + H * 0.09, H * 0.045, 3.4, 4, 0);
+}
+desk.drawSky = drawSky;
+function skyLoop(t) {
+  if ($("sunrise").hidden) { desk.skyLoop = 0; return; }
+  drawSky(desk.skyP || 0, t);
+  $("sunriseClock").textContent = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  desk.skyLoop = requestAnimationFrame(skyLoop);
+}
+function showSky() {
+  const on = !!(desk.sleep || desk.sunrise);
+  $("sunrise").hidden = !on;
+  $("sunrise").classList.toggle("night", !!desk.sleep && !desk.sunrise);
+  if (on && !desk.skyLoop) desk.skyLoop = requestAnimationFrame(skyLoop);
+}
+desk.showSky = showSky;
 function paintSunrise(p) {
-  const { bg, sun } = skyAt(p), y = 112 - p * 62, size = 18 + p * 70;
-  const mid = sun.map((v, j) => Math.round(v * 0.75 + bg[j] * 0.25)), edge = bg.map((v) => Math.round(v * 0.7));
-  const el = $("sunrise");
-  el.style.backgroundColor = `rgb(${edge})`;   // fully opaque: nothing of the desk shows through
-  el.style.backgroundImage = `radial-gradient(circle at 50% ${y}%, rgb(${sun}) 0%, rgb(${mid}) ${size * 0.35}%, rgb(${bg}) ${size}%, rgb(${edge}) 100%)`;
+  desk.skyP = p;
+  $("sunrise").classList.toggle("bright", p > 0.72);
   $("sunriseClock").textContent = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 desk.paintSunrise = paintSunrise;
+// "Me voy a dormir": stars until the alarm (or until you wake up).
+function enterSleep() {
+  desk.sleep = true; desk.skyP = 0; $("sunrise").classList.remove("ring", "bright");
+  $("sunriseMsg").textContent = /^\d{2}:\d{2}$/.test(desk.wake.time || "") ? (settings.lang === "es" ? `Despertador ${desk.wake.time} · Buenas noches` : `Alarm ${desk.wake.time} · Good night`) : (settings.lang === "es" ? "Buenas noches" : "Good night");
+  showSky();
+}
+function exitSleep() { desk.sleep = false; showSky(); }
+desk.enterSleep = enterSleep; desk.exitSleep = exitSleep;
+$("nightExit").onclick = () => { exitSleep(); };
+const SLEEP = /(me voy a (dormir|la cama|acostar|sobar)|me voy a dormir|buenas noches|a dormir|modo (noche|dormir)|good ?night|going to (sleep|bed)|im going to bed)/;
+
 // Nature: a soft stream (filtered brown noise) and birds, all generated (no files).
 function startNature() {
   if (desk.nature) return desk.nature;
@@ -378,7 +462,9 @@ function startNature() {
 function stopNature() { clearTimeout(desk.birdTimer); try { desk.nature?.noise.stop(); desk.nature?.master.disconnect(); } catch {} desk.nature = null; }
 function endSunrise(dismissed) {
   const target = wakeTarget();
-  $("sunrise").hidden = true; $("sunrise").classList.remove("ring"); stopNature(); desk.sunrise = false; desk.snoozeUntil = 0;
+  $("sunrise").classList.remove("ring", "bright"); stopNature(); desk.sunrise = false; desk.snoozeUntil = 0;
+  if (dismissed) desk.sleep = false;
+  showSky();
   if (dismissed && target) { desk.wake.done = String(target); desk.wakeOverride = 0; saveWake(); }
 }
 desk.endSunrise = endSunrise;
@@ -401,7 +487,7 @@ function sunriseTick() {
   if (now < start || now > target + desk.sunriseRingMS) { if (desk.sunrise) endSunrise(false); return; }
   if (desk.snoozeUntil > now) return;
   if (desk.snoozeUntil) { desk.snoozeUntil = 0; desk.wakeRang = 0; }
-  if (!desk.sunrise) { desk.sunrise = true; $("sunrise").hidden = false; wakeUp(); }
+  if (!desk.sunrise) { desk.sunrise = true; showSky(); wakeUp(); }
   const p = Math.min(1, (now - start) / desk.sunriseLeadMS);
   paintSunrise(p);
   // Nature sounds rise over the last third, then stay gentle.
@@ -413,7 +499,7 @@ desk.sunriseTick = sunriseTick;
 setInterval(sunriseTick, 1000);
 function snooze() {
   desk.snoozeUntil = Date.now() + desk.snoozeMS; desk.wakeRang = 0;
-  $("sunrise").hidden = true; $("sunrise").classList.remove("ring"); stopNature(); desk.sunrise = false;
+  $("sunrise").classList.remove("ring"); stopNature(); desk.sunrise = false; desk.sleep = true; desk.skyP = 0; showSky();
 }
 desk.snooze = snooze;
 $("sunriseStop").onclick = async () => { endSunrise(true); voice.stop(); await talk(settings.lang === "es" ? "Perfecto. Que tengas un gran día." : "Splendid. Have a great day."); ears.resume(); };
@@ -432,6 +518,19 @@ function parseWake(text) {
 desk.parseWake = parseWake;
 async function wakeVoice(raw) {
   const text = normalize(raw).replace(/'/g, ""), es = settings.lang === "es";
+  // "Me voy a dormir (despiértame a las 7)": stars now, sunrise in the morning.
+  if (SLEEP.test(text)) {
+    const time = parseWake(text);
+    if (time) setWake(time);
+    enterSleep();
+    const at = /^\d{2}:\d{2}$/.test(desk.wake.time || "") ? desk.wake.time : "";
+    await talk(es ? (at ? `Buenas noches, ${settings.name}. Te despierto a las ${at} con el amanecer.` : `Buenas noches, ${settings.name}. No tienes despertador puesto; dime «despiértame a las…» si quieres uno.`)
+      : (at ? `Good night, ${settings.name}. I'll wake you at ${at} with the sunrise.` : `Good night, ${settings.name}. No alarm is set; say "wake me at…" if you want one.`), es ? "es" : "en");
+    ears.resume(); return true;
+  }
+  if (desk.sleep && !desk.sunrise && /(ya )?estoy despierto|me levanto|im up|im awake|buenos dias|good morning/.test(text)) {
+    exitSleep(); await talk(es ? "Buenos días. Encendiendo las luces, por así decirlo." : "Good morning. Lights on, so to speak."); ears.resume(); return true;
+  }
   if (desk.sunrise && /(ya )?estoy despierto|me levanto|im up|im awake|apaga(r)? (la )?alarma|para(r)? (la )?alarma|stop (the )?alarm/.test(text)) { $("sunriseStop").click(); return true; }
   if (desk.sunrise && /cinco minutos|5 minutos|snooze|five more minutes|un rato mas/.test(text)) {
     snooze(); await talk(es ? "Nueve minutos más. Ni uno más." : "Nine more minutes. Not one more."); ears.resume(); return true;
@@ -472,7 +571,33 @@ function guardSend(extra = {}) {
   home?.send({ action: "guard-state", on: desk.guard.on, armAt: desk.guard.armAt || 0, alarm: !!desk.alarm, intruder: desk.intruder?.who || "", log: desk.guard.log.slice(-8), ...extra });
 }
 function saveGuard(extra) { store.set("jarvis-guard", desk.guard); renderGuard(); guardSend(extra); }
+// Phone notifications (the remote installed on the home screen).
+function notifyPhone(title, body, tag = "guard") {
+  if (settings.key) void call("jarvis-call", { action: "notify", title, body, tag }, settings.key).catch(() => {});
+}
+desk.notifyPhone = notifyPhone;
+// While armed, the screen becomes a pair of watching eyes.
+function lookAround() {
+  clearTimeout(desk.eyesTimer);
+  if ($("guardScreen").hidden) return;
+  const eyes = $("eyes"), focused = !!(desk.intruder || desk.alarm);
+  const x = focused ? 0 : (Math.random() * 2 - 1) * 2.2, y = focused ? 0 : (Math.random() * 2 - 1) * 1.1;
+  eyes.style.setProperty("--lx", x.toFixed(2) + "vw"); eyes.style.setProperty("--ly", y.toFixed(2) + "vw");
+  if (Math.random() < 0.35) { eyes.classList.add("blink"); setTimeout(() => eyes.classList.remove("blink"), 140); }
+  desk.eyesTimer = setTimeout(lookAround, focused ? 900 : 1200 + Math.random() * 2200);
+}
+function renderGuardScreen() {
+  const show = guardArmed() || !!desk.intruder || !!desk.alarm, es = settings.lang === "es";
+  const el = $("guardScreen"), was = !el.hidden;
+  el.hidden = !show;
+  el.classList.toggle("intruder", !!desk.intruder && !desk.alarm); el.classList.toggle("alarm", !!desk.alarm);
+  $("guardTitle").textContent = desk.alarm ? (es ? "INTRUSO" : "INTRUDER") : desk.intruder ? (es ? "IDENTIFÍCATE" : "IDENTIFY YOURSELF") : (es ? "VIGILANDO" : "WATCHING");
+  $("guardSub").textContent = desk.intruder ? `${desk.intruder.who} · ${es ? "pon el código" : "enter the code"}` : (es ? `${settings.name} no está` : `${settings.name} is out`);
+  if (show && !was) lookAround();
+}
+desk.renderGuardScreen = renderGuardScreen;
 function renderGuard() {
+  renderGuardScreen();
   const armed = guardArmed(), pending = desk.guard.on && !armed;
   $("guardDot").classList.toggle("armed", armed); $("guardDot").classList.toggle("pending", pending);
   $("guardLabel").textContent = desk.alarm ? "ALARM" : armed ? "Guard on" : pending ? "Guard soon" : "Guard";
@@ -501,6 +626,7 @@ async function guardIntruder(p, action) {
   if (desk.intruder) return;
   desk.intruder = { who: action === "unknown" ? (settings.lang === "es" ? "Desconocido" : "Unknown") : p.name, at: Date.now() };
   guardLog("Ha entrado: " + desk.intruder.who); saveGuard({ alert: "entry" });
+  notifyPhone(settings.lang === "es" ? "Alguien ha entrado" : "Someone came in", settings.lang === "es" ? `${desk.intruder.who} tiene 10 segundos para poner el código.` : `${desk.intruder.who} has 10 seconds to enter the code.`);
   openKeypad();
   const line = guardLine(p, action);
   voice.stop(); await talk(line.text, line.lang);
@@ -513,6 +639,7 @@ async function soundAlarm() {
   if (desk.alarm) return;
   guardLog("Alarma" + (desk.intruder ? " · " + desk.intruder.who : ""));
   desk.alarm = true; document.body.classList.add("alarm"); saveGuard({ alert: "alarm" });
+  notifyPhone(settings.lang === "es" ? "¡ALARMA!" : "ALARM!", settings.lang === "es" ? `${desk.intruder?.who || "Alguien"} no ha puesto el código.` : `${desk.intruder?.who || "Someone"} didn't enter the code.`);
   const es = settings.lang === "es";
   $("intruderBanner").hidden = false;
   // Over the top on purpose: a sweeping siren, red pulsing screen and a dramatic butler.
@@ -636,7 +763,7 @@ async function onHome(event) {
     return;
   }
   // Silenced from the phone: that entry is dealt with; stay armed for the next one.
-  if (event.action === "guard-silence") { stopAlarm(); desk.intruder = null; clearTimeout(desk.intruderTimer); closeKeypad(); guardSend(); return; }
+  if (event.action === "guard-silence") { stopAlarm(); desk.intruder = null; clearTimeout(desk.intruderTimer); closeKeypad(); renderGuard(); guardSend(); return; }
   if (event.action === "arrival" || event.action === "test" || event.action === "unknown") {
     desk.wallSeen = Date.now();
     const p = event.person || { name: settings.lang === "es" ? "Desconocido" : "Unknown", role: "unknown" };

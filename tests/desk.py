@@ -199,13 +199,18 @@ with sync_playwright() as p:
     assert page.evaluate("desk.guard.on") and any(x.get('action') == 'guard-state' and x.get('on') for x in to_wall)
     calm(page); page.wait_for_timeout(400)
     page.wait_for_function("document.getElementById('guardLabel').textContent==='Guard on'")
+    page.wait_for_function("!document.getElementById('guardScreen').hidden"); page.wait_for_timeout(600)
+    page.screenshot(path='/tmp/desk-guard-eyes.png')
+    calls.clear()
     home({'action': 'arrival', 'person': {'name': 'Mamá', 'role': 'mom', 'greeting': ''}})
     wait_voice(page, 'Pop the code in')
     assert page.locator('#keypad').is_visible() and any(x.get('alert') == 'entry' and x.get('intruder') == 'Mamá' for x in to_wall)
+    assert page.evaluate("document.getElementById('guardScreen').classList.contains('intruder')")
+    assert any(c.get('action') == 'notify' and 'Mamá' in c.get('body', '') for c in calls), 'phone notified'
     page.keyboard.type('1111'); page.wait_for_timeout(200)
     assert page.evaluate("desk.guard.on && !desk.alarm"), 'a wrong code keeps it armed'
     page.keyboard.type('2580'); wait_voice(page, 'Code accepted')
-    assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden()
+    assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden() and page.locator('#guardScreen').is_hidden()
     calm(page)
     # Armed from the phone; a stranger with no code sets off the gentle alarm; the phone can silence it.
     home({'action': 'guard', 'on': True}); page.wait_for_timeout(500)
@@ -216,6 +221,7 @@ with sync_playwright() as p:
     assert page.evaluate("document.body.classList.contains('alarm')") and any(x.get('alert') == 'alarm' for x in to_wall)
     assert page.locator('#intruderBanner').is_visible()
     page.screenshot(path='/tmp/desk-alarm.png')
+    assert page.evaluate("document.getElementById('guardScreen').classList.contains('alarm')") and any(c.get('action') == 'notify' and c.get('title') == 'ALARM!' for c in calls)
     home({'action': 'guard-silence'}); page.wait_for_function("desk.alarm===false")
     assert page.locator('#intruderBanner').is_hidden()
     assert page.evaluate("desk.guard.on"), 'silencing keeps watching'
@@ -265,7 +271,8 @@ with sync_playwright() as p:
     page.wait_for_function("!document.getElementById('sunrise').hidden", timeout=4000)
     page.wait_for_timeout(1200); page.screenshot(path='/tmp/desk-sunrise-mid.png')
     wait_voice(page, 'Good morning, Crew')
-    assert page.evaluate("getComputedStyle(document.getElementById('sunrise')).backgroundImage.includes('rgb(255')"), 'full daylight at the end'
+    page.wait_for_timeout(300)
+    assert page.evaluate("(()=>{const c=document.getElementById('sky'),d=c.getContext('2d').getImageData(c.width/2,10,1,1).data;return d[2]>180})()"), 'blue daylight sky at the end'
     page.screenshot(path='/tmp/desk-sunrise.png')
     assert page.evaluate("!!desk.nature"), 'nature sounds playing'
     calm(page)
@@ -273,6 +280,16 @@ with sync_playwright() as p:
     assert page.locator('#sunrise').is_hidden() and not page.evaluate("!!desk.nature")
     page.wait_for_timeout(1500); assert page.locator('#sunrise').is_hidden(), 'stays off once dismissed'
     calm(page)
+    # "Me voy a dormir": a starry night sky with the clock until morning.
+    page.evaluate("recQueue.push({results:[['Jarvis me voy a dormir despiértame a las 7',true]],end:true})"); page.keyboard.press('Space')
+    wait_voice(page, "Good night, Crew. I'll wake you at 07:00")
+    assert page.evaluate("desk.sleep && document.getElementById('sunrise').classList.contains('night') && !document.getElementById('sunrise').hidden")
+    assert 'Alarm 07:00' in page.locator('#sunriseMsg').inner_text()
+    page.wait_for_timeout(800); page.screenshot(path='/tmp/desk-night.png')
+    assert page.evaluate("(()=>{const c=document.getElementById('sky'),d=c.getContext('2d').getImageData(c.width/2,10,1,1).data;return d[0]+d[1]+d[2]<60})()"), 'dark night sky'
+    calm(page)
+    page.evaluate("recQueue.push({results:[['Jarvis ya estoy despierto',true]],end:true})"); page.keyboard.press('Space')
+    wait_voice(page, 'Good morning. Lights on'); assert page.locator('#sunrise').is_hidden(); calm(page)
     page.evaluate("recQueue.push({results:[['Jarvis quita el despertador',true]],end:true})"); page.keyboard.press('Space')
     wait_voice(page, 'Alarm clock off'); assert page.locator('#alarmInfo').is_hidden(); calm(page)
 

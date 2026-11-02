@@ -60,3 +60,20 @@ grant execute on function public.jarvis_cron_check(text) to service_role;
 
 -- The guard-mode code (4 digits) is stored privately here, not in the public site.
 alter table public.jarvis_state add column if not exists guard_pin text check (guard_pin ~ '^[0-9]{4}$');
+
+-- Web Push to the phone remote. The VAPID signing key (P-256 JWK) is a Vault
+-- secret named 'jarvis_vapid'; only the service role can read it.
+create or replace function public.jarvis_vapid() returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select decrypted_secret::jsonb from vault.decrypted_secrets where name = 'jarvis_vapid' limit 1
+$$;
+revoke execute on function public.jarvis_vapid() from public, anon, authenticated;
+grant execute on function public.jarvis_vapid() to service_role;
+create table if not exists public.jarvis_push (
+  endpoint text primary key check (endpoint ~ '^https://'),
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.jarvis_push enable row level security;
+revoke all on public.jarvis_push from anon, authenticated;

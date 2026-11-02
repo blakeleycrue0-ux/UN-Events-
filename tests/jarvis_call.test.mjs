@@ -60,3 +60,60 @@ test('the guard code is saved privately in the database, 4 digits only',async()=
  assert.equal((await setup().handler(desk({action:'pin',pin:'12a4'}))).status,400);
  assert.equal((await setup().handler(desk({action:'pin',pin:'2803'},{key:'nope'}))).status,401);
 });
+
+// ---------- Web Push ----------
+const {subtle}=globalThis.crypto;
+const pushCode=code+';return {encryptPush};';
+function pushSetup({subs=[],vapid=null,status=201}={}){
+ const out=[];
+ const fetch=async(url,opts={})=>{url=String(url);out.push({url,opts});
+  if(url.includes('/rest/v1/rpc/jarvis_vapid'))return Response.json(vapid);
+  if(url.includes('/rest/v1/jarvis_push?select'))return Response.json(subs);
+  if(url.includes('/rest/v1/'))return Response.json([]);
+  return new Response('',{status});};
+ let handler;const e={...ENV};
+ const api=new Function('Deno','fetch',pushCode)({env:{get:n=>e[n]},serve:h=>handler=h},fetch);
+ return {handler,out,api};
+}
+const b64u=(b)=>Buffer.from(b).toString('base64url');
+async function hk(salt,ikm,info,n){const k=await subtle.importKey('raw',ikm,'HKDF',false,['deriveBits']);return new Uint8Array(await subtle.deriveBits({name:'HKDF',hash:'SHA-256',salt,info},k,n*8))}
+test('push payloads are aes128gcm-encrypted so only the phone can read them (RFC 8291 round trip)',async()=>{
+ const ua=await subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+ const uaPub=new Uint8Array(await subtle.exportKey('raw',ua.publicKey)),auth=crypto.getRandomValues(new Uint8Array(16));
+ const {api}=pushSetup();
+ const body=await api.encryptPush(new TextEncoder().encode('{"title":"Alarma"}'),uaPub,auth);
+ const salt=body.slice(0,16),rs=new DataView(body.buffer,body.byteOffset).getUint32(16),idlen=body[20],asPub=body.slice(21,21+idlen),ct=body.slice(21+idlen);
+ assert.equal(rs,4096);assert.equal(idlen,65);
+ const as=await subtle.importKey('raw',asPub,{name:'ECDH',namedCurve:'P-256'},false,[]);
+ const shared=new Uint8Array(await subtle.deriveBits({name:'ECDH',public:as},ua.privateKey,256));
+ const te=new TextEncoder(),cat=(...a)=>Buffer.concat(a.map(x=>Buffer.from(x)));
+ const ikm=await hk(auth,shared,cat(te.encode('WebPush: info\0'),uaPub,asPub),32);
+ const cek=await hk(salt,ikm,te.encode('Content-Encoding: aes128gcm\0'),16),nonce=await hk(salt,ikm,te.encode('Content-Encoding: nonce\0'),12);
+ const plain=new Uint8Array(await subtle.decrypt({name:'AES-GCM',iv:nonce},await subtle.importKey('raw',cek,'AES-GCM',false,['decrypt']),ct));
+ assert.equal(plain.at(-1),2,'last-record delimiter');assert.equal(new TextDecoder().decode(plain.slice(0,-1)),'{"title":"Alarma"}');
+});
+test('notify signs with VAPID, sends to each phone and forgets dead ones; subscriptions are validated',async()=>{
+ const pair=await subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+ const jwk=await subtle.exportKey('jwk',pair.privateKey);
+ const ua=await subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+ const p256dh=b64u(new Uint8Array(await subtle.exportKey('raw',ua.publicKey))),auth=b64u(crypto.getRandomValues(new Uint8Array(16)));
+ const subs=[{endpoint:'https://web.push.apple.com/abc',p256dh,auth},{endpoint:'https://web.push.apple.com/dead',p256dh,auth}];
+ const s=pushSetup({subs,vapid:{kty:'EC',crv:'P-256',x:jwk.x,y:jwk.y,d:jwk.d}});
+ const r=await s.handler(desk({action:'notify',title:'¡Alarma!',body:'Mamá no ha puesto el código'}));
+ assert.equal(r.status,200);
+ const sent=s.out.filter(o=>o.url.startsWith('https://web.push.apple.com/'));assert.equal(sent.length,2);
+ const h=sent[0].opts.headers;assert.equal(h['Content-Encoding'],'aes128gcm');assert.equal(h.Urgency,'high');
+ const [,tok,k]=/^vapid t=([^,]+), k=(.+)$/.exec(h.Authorization);const [hd,pl,sig]=tok.split('.');
+ assert.equal(JSON.parse(Buffer.from(pl,'base64url')).aud,'https://web.push.apple.com');
+ assert.ok(await subtle.verify({name:'ECDSA',hash:'SHA-256'},pair.publicKey,Buffer.from(sig,'base64url'),new TextEncoder().encode(hd+'.'+pl)),'valid ES256 signature');
+ assert.equal(Buffer.from(k,'base64url').length,65);
+ // A 410 from the push service removes that phone.
+ const dead=pushSetup({subs:[subs[1]],vapid:{kty:'EC',crv:'P-256',x:jwk.x,y:jwk.y,d:jwk.d}},);
+ const d2=pushSetup({subs:[subs[1]],vapid:{kty:'EC',crv:'P-256',x:jwk.x,y:jwk.y,d:jwk.d},status:410});
+ await d2.handler(desk({action:'notify',title:'x'}));assert.ok(d2.out.some(o=>o.opts.method==='DELETE'&&o.url.includes('jarvis_push?endpoint=eq.')));
+ void dead;
+ // Subscribing: only well-formed push subscriptions are stored.
+ const ok=await s.handler(desk({action:'subscribe',subscription:{endpoint:'https://web.push.apple.com/xyz123',keys:{p256dh,auth}}}));assert.equal(ok.status,200);
+ assert.equal((await s.handler(desk({action:'subscribe',subscription:{endpoint:'http://evil',keys:{p256dh,auth}}}))).status,400);
+ assert.equal((await s.handler(desk({action:'notify',title:'x'},{key:'nope'}))).status,401);
+});

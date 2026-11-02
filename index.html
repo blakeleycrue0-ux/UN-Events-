@@ -83,9 +83,15 @@
       </section>
     </div>
 
+    <div id="guardScreen" class="guard-screen" hidden>
+      <div class="guard-scan"></div>
+      <div id="eyes" class="eyes"><div class="eye"><div class="pupil"></div></div><div class="eye"><div class="pupil"></div></div></div>
+      <div class="guard-text"><b id="guardTitle">VIGILANDO</b><span id="guardSub"></span></div>
+    </div>
     <div id="sunrise" class="sunrise" hidden>
+      <canvas id="sky" class="sky"></canvas>
       <div class="sunrise-text"><time id="sunriseClock">--:--</time><span id="sunriseMsg">Buenos días</span></div>
-      <div class="sunrise-actions"><button id="sunriseSnooze">Cinco minutos más</button><button id="sunriseStop">Ya estoy despierto</button></div>
+      <div class="sunrise-actions"><button id="sunriseSnooze">Cinco minutos más</button><button id="sunriseStop">Ya estoy despierto</button><button id="nightExit">Salir del modo noche</button></div>
     </div>
     <div id="intruderBanner" class="intruder" hidden><b>INTRUSO</b><span>Pon el código para pararlo</span></div>
     <div id="keypad" class="overlay keypad" hidden>

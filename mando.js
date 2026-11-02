@@ -346,6 +346,55 @@
     startTalk();
   };
   mando.sendAsk = sendAsk;
+  var VAPID_PUBLIC = "BEwF4C0OwXyxFx3JXcNVMxp1BG3am7wyuaDoA6ID1ydMILIazHAtqERjTFnjWxHd14qHvqvVVSXdYaGueHKGoD0";
+  var standalone = () => window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
+  var fromB64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+  async function renderPush() {
+    const box = $("pushBox"), info = $("pushInfo");
+    if (!("serviceWorker" in navigator)) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    if (!("PushManager" in window) || !("Notification" in window)) {
+      $("pushOn").hidden = true;
+      info.textContent = standalone() ? "Este m\xF3vil no admite notificaciones (hace falta iOS 16.4 o m\xE1s nuevo)." : "Para recibir avisos: Compartir \u2192 \xABA\xF1adir a pantalla de inicio\xBB y abre Jarvis desde ese icono.";
+      return;
+    }
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (Notification.permission === "granted" && sub) {
+      $("pushOn").hidden = true;
+      info.textContent = "Notificaciones activadas: te aviso si entra alguien o salta la alarma.";
+      return;
+    }
+    if (Notification.permission === "denied") {
+      $("pushOn").hidden = true;
+      info.textContent = "Notificaciones bloqueadas. Act\xEDvalas en Ajustes \u2192 Notificaciones \u2192 Jarvis.";
+      return;
+    }
+    $("pushOn").hidden = false;
+    info.textContent = "Te avisa aunque tengas la app cerrada.";
+  }
+  mando.renderPush = renderPush;
+  $("pushOn").onclick = async () => {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        await renderPush();
+        return;
+      }
+      const reg = await navigator.serviceWorker.register("sw.js");
+      await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromB64u(VAPID_PUBLIC) });
+      const response = await call("jarvis-call", { action: "subscribe", subscription: sub.toJSON() }, settings.key);
+      $("pushInfo").textContent = response.ok ? "Notificaciones activadas." : "No se pudo registrar: revisa la clave.";
+      if (response.ok) $("pushOn").hidden = true;
+    } catch (e) {
+      $("pushInfo").textContent = "No se pudo activar: " + e.message;
+    }
+  };
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(() => renderPush()).catch(() => renderPush());
   mando.started = Date.now();
   connect();
   render();

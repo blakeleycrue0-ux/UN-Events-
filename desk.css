@@ -219,12 +219,34 @@ a.choice { text-decoration: none; }
 .intruder b { font-size: clamp(40px, 7vw, 110px); font-weight: 800; letter-spacing: .3em; color: #ff3b47; text-shadow: 0 0 30px rgba(255, 40, 50, .9); animation: alarmGlow .9s steps(2) infinite; }
 .intruder span { color: rgba(255, 220, 220, .8); letter-spacing: .2em; text-transform: uppercase; font-size: 14px; }
 
-/* Sunrise alarm */
-.sunrise { position: fixed; inset: 0; z-index: 11; display: grid; grid-template-rows: 1fr auto; place-items: center; padding: 6vh 4vw; background-color: #000; cursor: default; }
-.sunrise-text { display: grid; gap: 10px; text-align: center; color: rgba(40, 18, 6, .0); transition: color 2s; }
-.sunrise-text time { font-size: clamp(80px, 14vw, 220px); font-weight: 200; letter-spacing: -.03em; line-height: 1; }
-.sunrise-text span { font-size: clamp(18px, 2vw, 30px); font-weight: 300; }
-.sunrise.ring .sunrise-text { color: rgba(60, 26, 6, .85); }
-.sunrise-actions { display: flex; gap: 16px; opacity: .0; transition: opacity 1s; }
+/* Night sky and sunrise */
+.sunrise { position: fixed; inset: 0; z-index: 11; display: grid; grid-template-rows: 1fr auto; place-items: center; padding: 6vh 4vw; background: #02030c; cursor: default; overflow: hidden; }
+.sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sunrise-text { position: relative; display: grid; gap: 12px; text-align: center; color: rgba(235, 240, 255, .78); transition: color 3s; margin-top: -12vh; }
+.sunrise-text time { font-size: clamp(80px, 13vw, 210px); font-weight: 100; letter-spacing: -.02em; line-height: 1; }
+.sunrise-text span { font-size: clamp(16px, 1.6vw, 26px); font-weight: 300; letter-spacing: .08em; }
+.sunrise.night .sunrise-text { color: rgba(200, 210, 255, .32); }
+.sunrise.bright .sunrise-text { color: rgba(60, 40, 20, .78); }
+.sunrise-actions { position: relative; display: flex; gap: 16px; opacity: 0; transition: opacity 1s; }
 .sunrise.ring .sunrise-actions, .sunrise:hover .sunrise-actions { opacity: 1; }
-.sunrise-actions button { padding: 16px 26px; border-radius: 999px; border: 1px solid rgba(80, 30, 5, .35); background: rgba(255, 255, 255, .25); color: #3c1a06; font-size: 17px; }
+.sunrise-actions button { padding: 16px 26px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .25); background: rgba(255, 255, 255, .14); color: inherit; font-size: 17px; color: #fff; backdrop-filter: blur(8px); }
+.sunrise.bright .sunrise-actions button { color: #3c1a06; background: rgba(255, 255, 255, .35); }
+.sunrise.night #sunriseSnooze, .sunrise.night #sunriseStop, .sunrise:not(.night) #nightExit { display: none; }
+
+/* Guard mode: watching eyes */
+.guard-screen { position: fixed; inset: 0; z-index: 7; background: radial-gradient(70% 60% at 50% 45%, #061018, #010204 70%); display: grid; place-items: center; overflow: hidden; }
+.guard-scan { position: absolute; left: 0; right: 0; height: 22vh; background: linear-gradient(transparent, rgba(80, 200, 255, .06), rgba(80, 200, 255, .14), transparent); animation: scan 4.5s linear infinite; }
+@keyframes scan { from { top: -25vh; } to { top: 105vh; } }
+.eyes { display: flex; gap: 9vw; transform: translateY(-4vh); --lx: 0px; --ly: 0px; }
+.eye { width: 15vw; height: 9vw; max-width: 260px; max-height: 156px; border-radius: 50%; background: radial-gradient(circle at 50% 50%, rgba(140, 225, 255, .16), rgba(10, 30, 45, .9) 70%); box-shadow: 0 0 40px rgba(80, 200, 255, .35), inset 0 0 30px rgba(80, 200, 255, .25); border: 1px solid rgba(120, 220, 255, .45); display: grid; place-items: center; overflow: hidden; transition: transform .12s; }
+.pupil { width: 34%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 40% 40%, #e8fbff, #6fd6ff 30%, #0b6f9a 70%); box-shadow: 0 0 30px #5fd0ff, 0 0 80px rgba(95, 208, 255, .6); transform: translate(var(--lx), var(--ly)); transition: transform .6s cubic-bezier(.3, .7, .2, 1); }
+.eyes.blink .eye { transform: scaleY(.06); }
+.guard-text { position: absolute; bottom: 14vh; text-align: center; display: grid; gap: 8px; }
+.guard-text b { font-size: clamp(18px, 2vw, 30px); letter-spacing: .5em; font-weight: 500; color: rgba(140, 225, 255, .85); }
+.guard-text span { color: rgba(200, 230, 255, .5); letter-spacing: .12em; }
+.guard-screen.intruder .eye, .guard-screen.alarm .eye { border-color: rgba(255, 80, 90, .7); box-shadow: 0 0 60px rgba(255, 50, 60, .6), inset 0 0 30px rgba(255, 50, 60, .35); background: radial-gradient(circle, rgba(255, 90, 90, .18), rgba(45, 5, 8, .92) 70%); }
+.guard-screen.intruder .pupil, .guard-screen.alarm .pupil { background: radial-gradient(circle at 40% 40%, #fff0f0, #ff5a64 30%, #8a0d16 70%); box-shadow: 0 0 40px #ff3b47, 0 0 100px rgba(255, 59, 71, .7); width: 26%; }
+.guard-screen.intruder .guard-text b, .guard-screen.alarm .guard-text b { color: #ff5a64; }
+.guard-screen.intruder .guard-scan, .guard-screen.alarm .guard-scan { background: linear-gradient(transparent, rgba(255, 60, 70, .12), rgba(255, 60, 70, .25), transparent); animation-duration: 1.4s; }
+.guard-screen.alarm .eyes { animation: shakeEyes .25s linear infinite; }
+@keyframes shakeEyes { 25% { transform: translate(-6px, -4vh); } 75% { transform: translate(6px, -4vh); } }
