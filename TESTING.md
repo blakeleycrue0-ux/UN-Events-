@@ -178,3 +178,8 @@ Nueva función `jarvis-brain` (SDK oficial de Anthropic, Claude Opus 5.5, esfuer
 ## Oído propio y caras de la familia — 2026-11-02
 
 En el iPhone, el reconocimiento de Safari abría el micrófono pero no recibía voz con la cámara activa (registro de diagnóstico del usuario). Jarvis graba ahora la frase él mismo (MediaRecorder + detector de voz por nivel de sonido) y la transcribe con ElevenLabs Speech to Text en la función `jarvis-hear`. El reconocimiento de Safari queda como opción, y la escucha continua con «Jarvis» pasa a ser experimental y desactivada por defecto. Caras: lista de personas (tú, mamá, papá, otras) con saludo propio o uno gracioso en inglés por defecto; la cara registrada con la versión anterior se conserva como la tuya. `tests/jarvis_hear.test.mjs` y `tests/jarvis.py` (incluido el grabador real con el micrófono simulado de Chromium) pasan. Sin probar en el iPhone.
+
+
+## Jarvis controla el Chromebook y envía emails — 2026-11-02
+
+Claude recibe herramientas estrictas (poner música en YouTube o Spotify, pausar/reanudar/siguiente, abrir Teams, Gmail, Classroom y otras webs fijas, buscar en Google y enviar un email al propio usuario). La función `jarvis-brain` ejecuta lo elegido: manda la orden por Supabase Realtime a un canal derivado de la clave de Jarvis, o envía el email con Resend solo a `JARVIS_EMAIL_TO`. La extensión `extension/` (empaquetada en `jarvis-chromebook.zip` al compilar) solo acepta acciones fijas y nunca abre una URL recibida; ignora mensajes antiguos, repetidos o de otro canal. `tests/extension.test.mjs` y `tests/jarvis_brain.test.mjs` lo cubren. Sin probar todavía en el Chromebook real ni con Resend real; el autoplay de YouTube/Spotify depende de la página y puede requerir pulsar play.

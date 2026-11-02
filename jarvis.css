@@ -138,3 +138,4 @@ body[data-state="speaking"] .bubble::after { opacity: .8; }
 .preview:not(.framing) .frame-box { display: none; }
 .frame-slot { touch-action: none; cursor: grab; }
 .sheet input[type="range"] { width: 100%; padding: 0; accent-color: #30d158; }
+.steps { padding-left: 20px; margin: 6px 0; } .steps li { margin: 6px 0; } .steps a { color: #30d158; }

@@ -16,13 +16,15 @@ function fakeSdk(behaviour){
  Object.assign(Anthropic,{APIError,AuthenticationError,PermissionDeniedError,RateLimitError,BadRequestError});
  return {Anthropic,calls};
 }
-function setup(behaviour=()=>({stop_reason:'end_turn',content:[{type:'thinking',thinking:''},{type:'text',text:'Good evening, Crew.'}]}),env={}){
- let handler;const sdk=fakeSdk(behaviour);
- const e={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',ANTHROPIC_API_KEY:'sk-ant-fixture',...env};
- new Function('Deno','Anthropic',code)({env:{get:n=>e[n]},serve:h=>handler=h},sdk.Anthropic);
- return {handler,calls:sdk.calls};
+function setup(behaviour=()=>({stop_reason:'end_turn',content:[{type:'thinking',thinking:''},{type:'text',text:'Good evening, Crew.'}]}),env={},status=200){
+ let handler;const sdk=fakeSdk(behaviour);const outbound=[];
+ const e={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',ANTHROPIC_API_KEY:'sk-ant-fixture',SUPABASE_URL:'https://fixture.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service-fixture',...env};
+ const fetch=async(url,opts)=>{outbound.push({url,opts,body:JSON.parse(opts.body)});return new Response('{}',{status})};
+ new Function('Deno','Anthropic','fetch',code)({env:{get:n=>e[n]},serve:h=>handler=h},sdk.Anthropic,fetch);
+ return {handler,calls:sdk.calls,outbound};
 }
 const req=(body,{origin='https://app.example.com',key='clave-larga-de-prueba'}={})=>new Request('https://fixture.supabase.co/functions/v1/jarvis-brain',{method:'POST',headers:{origin,'x-jarvis-key':key,'content-type':'application/json'},body:JSON.stringify(body)});
+const tool=(name,input,text='')=>()=>({stop_reason:'tool_use',content:[...(text?[{type:'text',text}]:[]),{type:'tool_use',id:'t1',name,input}]});
 const convo={messages:[{role:'user',content:'hola jarvis'}],lang:'en',name:'Crew',now:'Monday 2 November, 01:10'};
 test('brain requires origin, key and a well-formed short conversation before calling Claude',async()=>{
  const s=setup();
@@ -37,7 +39,7 @@ test('brain requires origin, key and a well-formed short conversation before cal
 });
 test('reply comes from text blocks of Claude Opus 5.5 at low effort with refusal fallback',async()=>{
  const s=setup();const r=await s.handler(req(convo));
- assert.equal(r.status,200);assert.deepEqual(await r.json(),{reply:'Good evening, Crew.'});
+ assert.equal(r.status,200);assert.deepEqual(await r.json(),{reply:'Good evening, Crew.',actions:[]});
  const p=s.calls.find(c=>c.params).params;
  assert.equal(p.model,'claude-opus-5-5');assert.deepEqual(p.output_config,{effort:'low'});
  assert.equal(p.fallbacks,'default');assert.deepEqual(p.betas,['server-side-fallback-2026-07-01']);
@@ -62,4 +64,32 @@ test('refusals and API errors become short, safe messages',async()=>{
  }
  const network=setup(()=>{throw new TypeError('fetch failed')});
  assert.equal((await network.handler(req(convo))).status,503);
+});
+test('Claude gets strict tools and its choices reach the Chromebook channel or the inbox',async()=>{
+ const s=setup(tool('play_music',{query:'lofi beats',service:'youtube'},'Playing lofi beats on YouTube.'));
+ const r=await s.handler(req(convo));assert.deepEqual(await r.json(),{reply:'Playing lofi beats on YouTube.',actions:['play']});
+ const p=s.calls.find(c=>c.params).params;
+ assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','email_me']);
+ assert.ok(p.tools.every(t=>t.strict===true&&t.input_schema.additionalProperties===false));
+ assert.ok(!('tool_choice' in p));
+ const call=s.outbound[0];assert.equal(call.url,'https://fixture.supabase.co/realtime/v1/api/broadcast');
+ assert.equal(call.opts.headers.apikey,'service-fixture');
+ const msg=call.body.messages[0];
+ const {createHash}=await import('node:crypto');
+ assert.equal(msg.topic,'jarvis-pc-'+createHash('sha256').update('jarvis-pc:clave-larga-de-prueba').digest('hex').slice(0,40));
+ assert.equal(msg.event,'command');assert.equal(msg.private,false);
+ assert.deepEqual({...msg.payload,at:0},{action:'play',service:'youtube',query:'lofi beats',at:0});
+ const open=setup(tool('open_site',{site:'teams'}));assert.deepEqual(await (await open.handler(req(convo))).json(),{reply:'Done.',actions:['open:teams']});
+ assert.equal(open.outbound[0].body.messages[0].payload.site,'teams');
+ const bad=setup(tool('open_site',{site:'evil.com'}));await bad.handler(req(convo));assert.equal(bad.outbound.length,0,'Unknown sites are never sent');
+ const pause=setup(tool('media_control',{action:'pause'}));await pause.handler(req(convo));assert.equal(pause.outbound[0].body.messages[0].payload.action,'pause');
+ const down=setup(tool('web_search',{query:'weather'}),{},500);
+ assert.equal((await (await down.handler(req(convo))).json()).reply,"I couldn't reach your Chromebook.");
+ // Email goes only to the configured inbox, through Resend.
+ const mail=setup(tool('email_me',{subject:'Study',body:'Maths at 6'},'Sent you a reminder.'),{RESEND_API_KEY:'re_fixture',JARVIS_EMAIL_TO:'me@example.com'});
+ assert.deepEqual(await (await mail.handler(req(convo))).json(),{reply:'Sent you a reminder.',actions:['email:sent']});
+ const m=mail.outbound[0];assert.equal(m.url,'https://api.resend.com/emails');assert.deepEqual(m.body.to,['me@example.com']);
+ assert.equal(m.body.subject,'Study');assert.equal(m.opts.headers.Authorization,'Bearer re_fixture');
+ const nomail=setup(tool('email_me',{subject:'x',body:'y'},'Sent!'));
+ assert.equal((await (await nomail.handler(req(convo))).json()).reply,"I can't send emails yet: email isn't set up.");
 });

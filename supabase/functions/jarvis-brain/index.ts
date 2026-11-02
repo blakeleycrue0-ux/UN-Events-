@@ -5,6 +5,75 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 
 const FALLBACK_MODELS = ["claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"];
 
+// What Jarvis can do on the user's Chromebook (through the Jarvis Chrome extension)
+// and by email. The extension only accepts these fixed actions; it never opens
+// an arbitrary URL from a message.
+const SITES = ["youtube", "spotify", "teams", "gmail", "classroom", "netflix", "google", "calendar"];
+const TOOLS = [
+  {
+    name: "play_music", strict: true,
+    description: "Play music or a video on the user's Chromebook. Use YouTube unless the user asks for Spotify.",
+    input_schema: { type: "object", additionalProperties: false, required: ["query", "service"], properties: {
+      query: { type: "string", description: "Song, artist, playlist, genre or video to search for." },
+      service: { type: "string", enum: ["youtube", "spotify"] },
+    } },
+  },
+  {
+    name: "media_control", strict: true,
+    description: "Pause, resume or skip whatever music or video is playing on the Chromebook.",
+    input_schema: { type: "object", additionalProperties: false, required: ["action"], properties: {
+      action: { type: "string", enum: ["pause", "resume", "next"] },
+    } },
+  },
+  {
+    name: "open_site", strict: true,
+    description: "Open a site on the Chromebook. 'teams' is Microsoft Teams (school assignments), 'classroom' is Google Classroom.",
+    input_schema: { type: "object", additionalProperties: false, required: ["site"], properties: {
+      site: { type: "string", enum: SITES },
+    } },
+  },
+  {
+    name: "web_search", strict: true,
+    description: "Search Google on the Chromebook and show the results.",
+    input_schema: { type: "object", additionalProperties: false, required: ["query"], properties: { query: { type: "string" } } },
+  },
+  {
+    name: "email_me", strict: true,
+    description: "Send an email to the user's own inbox, for reminders, notes, lists or anything they ask to receive by email.",
+    input_schema: { type: "object", additionalProperties: false, required: ["subject", "body"], properties: {
+      subject: { type: "string" }, body: { type: "string" },
+    } },
+  },
+];
+async function sha256(text: string) {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+// The Chromebook listens on a channel whose name is derived from the private Jarvis key.
+async function sendToChromebook(key: string, command: Record<string, unknown>) {
+  const url = Deno.env.get("SUPABASE_URL")!, service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const topic = "jarvis-pc-" + (await sha256("jarvis-pc:" + key)).slice(0, 40);
+  const response = await fetch(url + "/realtime/v1/api/broadcast", {
+    method: "POST",
+    headers: { apikey: service, Authorization: "Bearer " + service, "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: [{ topic, event: "command", payload: { ...command, at: Date.now() }, private: false }] }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) throw Error("broadcast " + response.status);
+}
+async function emailMe(subject: string, body: string) {
+  const key = (Deno.env.get("RESEND_API_KEY") || "").trim(), to = (Deno.env.get("JARVIS_EMAIL_TO") || "").trim();
+  if (!key || !to) return "not configured";
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: "Jarvis <onboarding@resend.dev>", to: [to], subject: subject.slice(0, 150), text: body.slice(0, 5000) }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) { console.log("jarvis-brain email status", response.status); return "failed"; }
+  return "sent";
+}
+
 Deno.serve(async (request: Request) => {
   const normalize = (x: string) => x.trim().replace(/^["']+|["']+$/g, "").replace(/\/+$/, "").toLowerCase();
   const origin = normalize(request.headers.get("origin") || "");
@@ -47,8 +116,10 @@ Deno.serve(async (request: Request) => {
     `You are Jarvis, the AI assistant that lives in ${name}'s bedroom, shown on a phone mounted on the wall facing the door. ` +
     `Your replies are spoken aloud by a voice synthesizer, so: answer in ${lang} only, in one to three short natural sentences, ` +
     `with no markdown, lists, emoji or URLs. Be warm, witty and a little dry, like a loyal butler AI. ${name} may talk to you in Spanish or English; ` +
-    `always reply in ${lang}. Smart-home control (lights, air conditioning, fan, TV, PlayStation) is not connected yet; ` +
-    `if asked, say it is coming soon rather than pretending. You cannot browse the web or see live data such as weather or news; say so briefly if asked.`;
+    `always reply in ${lang}. You can control ${name}'s Chromebook browser with your tools (music on YouTube or Spotify, pause or skip, ` +
+    `open sites such as Teams for school assignments, Google searches) and send ${name} emails. When you use a tool, say in a few words what you did. ` +
+    `You cannot read Teams assignments or emails yet: offer to open Teams or Gmail instead. Smart-home control (lights, air conditioning, fan, TV, PlayStation) ` +
+    `is not connected yet; if asked, say it is coming soon rather than pretending. You cannot see live data such as weather or news; offer a web search instead.`;
   const messages = turns.map((m, i) => ({
     role: m.role as "user" | "assistant",
     content: i === turns.length - 1 && now ? `[Local time: ${now}]\n${m.content.trim()}` : m.content.trim(),
@@ -63,16 +134,48 @@ Deno.serve(async (request: Request) => {
       output_config: { effort: "low" }, // quick conversational replies
       system,
       messages,
+      tools: TOOLS,
     };
     // Server-side refusal fallback: another model answers if this one declines.
     if (FALLBACK_MODELS.includes(model)) Object.assign(params, { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
     // deno-lint-ignore no-explicit-any
     const response: any = await client.beta.messages.create(params as any);
     if (response.stop_reason === "refusal") return json(200, { reply: "", refused: true });
-    const reply = (response.content || [])
+    let reply = (response.content || [])
       .filter((block: { type: string }) => block.type === "text")
       .map((block: { text: string }) => block.text).join(" ").replace(/\s+/g, " ").trim();
-    return json(200, { reply: reply.slice(0, 600) });
+    // Carry out the actions Claude chose. The reply already says what was done.
+    const actions: string[] = [];
+    for (const block of response.content || []) {
+      if (block.type !== "tool_use") continue;
+      const input = block.input || {};
+      try {
+        if (block.name === "email_me") {
+          const result = await emailMe(String(input.subject || "Jarvis"), String(input.body || ""));
+          actions.push("email:" + result);
+          if (result !== "sent") reply = lang === "English"
+            ? (result === "not configured" ? "I can't send emails yet: email isn't set up." : "I couldn't send the email, sorry.")
+            : (result === "not configured" ? "Todavía no puedo enviar emails: falta configurarlo." : "No he podido enviar el email, lo siento.");
+        } else if (block.name === "play_music") {
+          await sendToChromebook(given, { action: "play", service: input.service === "spotify" ? "spotify" : "youtube", query: String(input.query || "").slice(0, 200) });
+          actions.push("play");
+        } else if (block.name === "media_control" && ["pause", "resume", "next"].includes(input.action)) {
+          await sendToChromebook(given, { action: input.action });
+          actions.push(input.action);
+        } else if (block.name === "open_site" && SITES.includes(input.site)) {
+          await sendToChromebook(given, { action: "open", site: input.site });
+          actions.push("open:" + input.site);
+        } else if (block.name === "web_search") {
+          await sendToChromebook(given, { action: "search", query: String(input.query || "").slice(0, 200) });
+          actions.push("search");
+        }
+      } catch (error) {
+        console.log("jarvis-brain action failed", block.name, String((error as Error).message).slice(0, 120));
+        reply = lang === "English" ? "I couldn't reach your Chromebook." : "No he podido llegar a tu Chromebook.";
+      }
+    }
+    if (!reply) reply = lang === "English" ? "Done." : "Hecho.";
+    return json(200, { reply: reply.slice(0, 600), actions });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError)
       return json(502, { error: "Claude key rejected" });

@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Jarvis para Chromebook",
+  "version": "1.0.0",
+  "description": "Deja que Jarvis ponga música, abra webs y busque cosas en este Chromebook.",
+  "permissions": ["storage", "tabs", "scripting", "alarms"],
+  "host_permissions": ["https://www.youtube.com/*", "https://open.spotify.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Jarvis", "default_popup": "options.html" },
+  "options_page": "options.html",
+  "content_scripts": [
+    { "matches": ["https://www.youtube.com/results*", "https://open.spotify.com/search/*"], "js": ["autoplay.js"], "run_at": "document_idle" }
+  ]
+}
