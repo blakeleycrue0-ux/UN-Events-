@@ -69,7 +69,7 @@ test('Claude gets strict tools and its choices reach the Chromebook channel or t
  const s=setup(tool('play_music',{query:'lofi beats',service:'youtube'},'Playing lofi beats on YouTube.'));
  const r=await s.handler(req(convo));assert.deepEqual(await r.json(),{reply:'Playing lofi beats on YouTube.',actions:['play']});
  const p=s.calls.find(c=>c.params).params;
- assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','remember','email_me','browser_task','set_reminder','call_me']);
+ assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','remember','email_me','browser_task','set_reminder']);
  assert.ok(p.tools.every(t=>t.strict===true&&t.input_schema.additionalProperties===false));
  assert.ok(!('tool_choice' in p));
  const call=s.outbound[0];assert.equal(call.url,'https://fixture.supabase.co/realtime/v1/api/broadcast');
@@ -84,7 +84,7 @@ test('Claude gets strict tools and its choices reach the Chromebook channel or t
  const bad=setup(tool('open_site',{site:'evil.com'}));await bad.handler(req(convo));assert.equal(bad.outbound.length,0,'Unknown sites are never sent');
  const pause=setup(tool('media_control',{action:'pause'}));await pause.handler(req(convo));assert.equal(pause.outbound[0].body.messages[0].payload.action,'pause');
  const down=setup(tool('web_search',{query:'weather'}),{},500);
- assert.equal((await (await down.handler(req(convo))).json()).reply,"I couldn't reach your Chromebook.");
+ assert.equal((await (await down.handler(req(convo))).json()).reply,"I couldn't reach your computer.");
  // Email goes only to the configured inbox, through Resend.
  const mail=setup(tool('email_me',{subject:'Study',body:'Maths at 6'},'Sent you a reminder.'),{RESEND_API_KEY:'re_fixture',JARVIS_EMAIL_TO:'me@example.com'});
  assert.deepEqual(await (await mail.handler(req(convo))).json(),{reply:'Sent you a reminder.',actions:['email:sent']});
@@ -115,20 +115,12 @@ test('multi-step browser jobs go to the Chromebook agent; the phone side gets na
 });
 test('reminders are stored with an exact time; past or garbled times are refused',async()=>{
  const due=new Date(Date.now()+3600e3).toISOString().replace('Z','+00:00');
- const s=setup(tool('set_reminder',{due,text:'Time to study maths, Crew.',via:'call'},"I'll call you at eight."));
- assert.deepEqual(await (await s.handler(req(convo))).json(),{reply:"I'll call you at eight.",actions:['reminder:call']});
+ const s=setup(tool('set_reminder',{due,text:'Time to study maths, Crew.',via:'desk'},"I'll remind you at eight."));
+ assert.deepEqual(await (await s.handler(req(convo))).json(),{reply:"I'll remind you at eight.",actions:['reminder:chromebook']});
  const row=s.outbound[0];assert.equal(row.url,'https://fixture.supabase.co/rest/v1/jarvis_reminders');assert.equal(row.opts.headers.apikey,'service-fixture');
- assert.deepEqual(row.body,{due_at:new Date(due).toISOString(),text:'Time to study maths, Crew.',via:'call',lang:'en'});
+ assert.deepEqual(row.body,{due_at:new Date(due).toISOString(),text:'Time to study maths, Crew.',via:'chromebook',lang:'en'});
  for(const bad of ['tomorrow','2020-01-01T08:00:00+01:00']){
-  const b=setup(tool('set_reminder',{due:bad,text:'x',via:'call'},'Done.'));
+  const b=setup(tool('set_reminder',{due:bad,text:'x',via:'desk'},'Done.'));
   assert.deepEqual(await (await b.handler(req(convo))).json(),{reply:"I couldn't save that reminder.",actions:['reminder:failed']});assert.equal(b.outbound.length,0);
  }
-});
-test('call_me asks jarvis-call to ring the phone with the Jarvis key',async()=>{
- const s=setup(tool('call_me',{message:'Hey Crew, you asked me to call.'},'Calling you now.'));
- assert.deepEqual(await (await s.handler(req(convo))).json(),{reply:'Calling you now.',actions:['call:calling']});
- const c=s.outbound[0];assert.equal(c.url,'https://fixture.supabase.co/functions/v1/jarvis-call');
- assert.equal(c.opts.headers['x-jarvis-key'],'clave-larga-de-prueba');assert.deepEqual(c.body,{action:'call',message:'Hey Crew, you asked me to call.'});
- const off=setup(tool('call_me',{message:'hi'},'Calling.'),{},428);
- assert.equal((await (await off.handler(req(convo))).json()).reply,"I couldn't place the call, sorry.");
 });

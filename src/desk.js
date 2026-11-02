@@ -260,7 +260,7 @@ desk.addTimer = addTimer;
 async function onHome(event) {
   const at = +event.at || Date.now();
   if (event.action === "wall") { desk.wallSeen = at; render(); return; }
-  // From a phone call or a reminder that came due.
+  // A memory saved elsewhere, or a reminder that came due.
   if (event.action === "remember" && event.fact) { addMemory(String(event.fact).slice(0, 200)); return; }
   if (event.action === "remind" && event.text) {
     wakeUp(); orb.flash("alert"); chime("alert");
@@ -420,18 +420,6 @@ $("closeSettings").onclick = () => { $("settings").hidden = true; };
 const bind = (id, key, conv = (v) => v) => { $(id).onchange = () => { settings[key] = conv($(id).type === "checkbox" ? $(id).checked : $(id).value); settings.save(); render(); }; };
 bind("name", "name", (v) => v.trim() || "Crew"); bind("lang", "lang"); bind("hear", "hear"); bind("greetOn", "greet");
 bind("quietFrom", "quietFrom", Number); bind("quietTo", "quietTo", Number);
-$("testCall").onclick = async () => {
-  const es = settings.lang === "es";
-  if (!settings.key) { $("callInfo").textContent = "Primero pon tu clave de Jarvis."; return; }
-  $("callInfo").textContent = "Llamando…";
-  try {
-    const response = await call("jarvis-call", { action: "test" }, settings.key);
-    const data = await response.json().catch(() => ({}));
-    $("callInfo").textContent = response.ok ? "Te estoy llamando. Contesta y habla con Jarvis." :
-      response.status === 428 ? "Faltan los secretos de Twilio en Supabase (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, JARVIS_PHONE_TO)." :
-      response.status === 401 ? "La clave de Jarvis no coincide." : "No se pudo llamar" + (data.error ? ": " + data.error : ".");
-  } catch { $("callInfo").textContent = es ? "Sin conexión." : "Sin conexión."; }
-};
 $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); home?.stop(); if (desk.started && settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) }); };
 $("wakeOn").onchange = () => { settings.wake = $("wakeOn").checked; settings.save(); if (settings.wake) ears.resume(); else ears.pause(); render(); };
 $("city").onchange = async () => {

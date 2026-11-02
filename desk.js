@@ -1348,21 +1348,6 @@
   bind("greetOn", "greet");
   bind("quietFrom", "quietFrom", Number);
   bind("quietTo", "quietTo", Number);
-  $("testCall").onclick = async () => {
-    const es = settings.lang === "es";
-    if (!settings.key) {
-      $("callInfo").textContent = "Primero pon tu clave de Jarvis.";
-      return;
-    }
-    $("callInfo").textContent = "Llamando\u2026";
-    try {
-      const response = await call("jarvis-call", { action: "test" }, settings.key);
-      const data = await response.json().catch(() => ({}));
-      $("callInfo").textContent = response.ok ? "Te estoy llamando. Contesta y habla con Jarvis." : response.status === 428 ? "Faltan los secretos de Twilio en Supabase (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, JARVIS_PHONE_TO)." : response.status === 401 ? "La clave de Jarvis no coincide." : "No se pudo llamar" + (data.error ? ": " + data.error : ".");
-    } catch {
-      $("callInfo").textContent = es ? "Sin conexi\xF3n." : "Sin conexi\xF3n.";
-    }
-  };
   $("voiceKey").onchange = () => {
     settings.key = $("voiceKey").value.trim();
     settings.save();
