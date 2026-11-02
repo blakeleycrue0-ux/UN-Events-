@@ -211,6 +211,7 @@ wall.sendFrame = sendFrame;
 // Orders from the desk on the private channel.
 async function onDesk(e) {
   if (e.action === "peek") wall.peekUntil = Date.now() + 15000;
+  if (e.action === "snap") void snapPhoto(e);
   if (e.action === "speaking") { wall.ears.setDeskSpeaking(!!e.on, !e.on && wall.expectReply); if (!e.on) wall.expectReply = false; }
   if (e.action === "camera" && (e.facing === "user" || e.facing === "environment") && e.facing !== settings.facing) {
     settings.facing = e.facing; settings.save(); $("facing").value = e.facing;
@@ -218,6 +219,17 @@ async function onDesk(e) {
   }
 }
 wall.onDesk = onDesk;
+// Guard mode: a photo of whoever came in, saved privately and sent to your phone.
+async function snapPhoto(e) {
+  const video = $("video");
+  if (!video.videoWidth || !settings.key) return;
+  const w = Math.min(1280, video.videoWidth), h = Math.round(w * video.videoHeight / video.videoWidth);
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  c.getContext("2d").drawImage(video, 0, 0, w, h);
+  const img = c.toDataURL("image/jpeg", 0.72);
+  try { await call("jarvis-call", { action: "photo", img, who: String(e.who || "").slice(0, 40), reason: e.reason === "alarm" ? "alarm" : "entry" }, settings.key); } catch { /* offline */ }
+}
+wall.snapPhoto = snapPhoto;
 
 // ---------- Oído (este móvil hace de micrófono) ----------
 wall.ears = createWallEars({

@@ -190,6 +190,14 @@ with sync_playwright() as p:
     page.evaluate("""()=>{window.sent=0;const b=()=>new Float32Array(1600).fill(0.2);let t=Date.now();for(let i=0;i<8;i++){wall.ears.feed(b(),0.2,t);t+=100}for(let i=0;i<10;i++){wall.ears.feed(new Float32Array(1600),0,t);t+=100}}""")
     page.wait_for_timeout(300); assert page.evaluate('window.sent') == 0
     desk_says({'action': 'speaking', 'on': False}); page.wait_for_function("!wall.ears.muted")
+    # Guard mode: the desk asks for a photo of whoever came in; it goes, as a JPEG, to the private store.
+    photos = []
+    page.route('https://*.supabase.co/functions/v1/jarvis-call', lambda route: (photos.append(json.loads(route.request.post_data)), route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body='{"ok":true}')))
+    desk_says({'action': 'snap', 'reason': 'alarm', 'who': 'Desconocido'})
+    for _ in range(50):
+        if photos: break
+        page.wait_for_timeout(100)
+    assert photos[0]['action'] == 'photo' and photos[0]['img'].startswith('data:image/jpeg;base64,') and photos[0]['reason'] == 'alarm' and photos[0]['who'] == 'Desconocido'
 
     # A phone that registered a face with the very first version keeps it as yours.
     old = b.new_context(viewport={'width': 390, 'height': 844}).new_page()

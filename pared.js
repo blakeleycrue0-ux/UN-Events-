@@ -584,6 +584,7 @@
   wall.sendFrame = sendFrame;
   async function onDesk(e) {
     if (e.action === "peek") wall.peekUntil = Date.now() + 15e3;
+    if (e.action === "snap") void snapPhoto(e);
     if (e.action === "speaking") {
       wall.ears.setDeskSpeaking(!!e.on, !e.on && wall.expectReply);
       if (!e.on) wall.expectReply = false;
@@ -597,6 +598,21 @@
     }
   }
   wall.onDesk = onDesk;
+  async function snapPhoto(e) {
+    const video = $("video");
+    if (!video.videoWidth || !settings.key) return;
+    const w = Math.min(1280, video.videoWidth), h = Math.round(w * video.videoHeight / video.videoWidth);
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    c.getContext("2d").drawImage(video, 0, 0, w, h);
+    const img = c.toDataURL("image/jpeg", 0.72);
+    try {
+      await call("jarvis-call", { action: "photo", img, who: String(e.who || "").slice(0, 40), reason: e.reason === "alarm" ? "alarm" : "entry" }, settings.key);
+    } catch {
+    }
+  }
+  wall.snapPhoto = snapPhoto;
   wall.ears = createWallEars({
     settings,
     store,

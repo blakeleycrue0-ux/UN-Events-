@@ -117,3 +117,25 @@ test('notify signs with VAPID, sends to each phone and forgets dead ones; subscr
  assert.equal((await s.handler(desk({action:'subscribe',subscription:{endpoint:'http://evil',keys:{p256dh,auth}}}))).status,400);
  assert.equal((await s.handler(desk({action:'notify',title:'x'},{key:'nope'}))).status,401);
 });
+
+test('door photos: JPEG saved in the private bucket, listed with short-lived links, phone notified',async()=>{
+ const out=[];
+ const fetch=async(url,opts={})=>{url=String(url);out.push({url,opts});
+  if(url.includes('/storage/v1/object/sign/'))return Response.json({signedURL:'/object/sign/jarvis-photos/a.jpg?token=t'});
+  if(url.includes('/storage/v1/object/'))return Response.json({Key:'ok'});
+  if(url.includes('/rest/v1/jarvis_photos?order='))return Response.json([{path:'2026-11-02/a.jpg',who:'Mamá',reason:'alarm',created_at:'2026-11-02T18:00:00Z'}]);
+  if(url.includes('/rest/v1/jarvis_photos?created_at=lt'))return Response.json([{id:'x1',path:'2026-10-20/old.jpg'}]);
+  if(url.includes('/rest/v1/rpc/jarvis_vapid'))return Response.json(null);
+  return Response.json([]);};
+ let handler;const e={...ENV};
+ new Function('Deno','fetch',code)({env:{get:n=>e[n]},serve:h=>handler=h},fetch);
+ const img='data:image/jpeg;base64,'+Buffer.alloc(3000,7).toString('base64');
+ const r=await handler(desk({action:'photo',img,who:'Mamá',reason:'alarm'}));assert.equal(r.status,200);
+ const up=out.find(o=>o.opts.method==='POST'&&/storage\/v1\/object\/jarvis-photos\//.test(o.url));
+ assert.ok(up&&up.opts.headers['Content-Type']==='image/jpeg'&&up.opts.body.length===3000);
+ assert.ok(out.some(o=>o.opts.method==='DELETE'&&o.url.endsWith('/storage/v1/object/jarvis-photos/2026-10-20/old.jpg')),'week-old photos removed');
+ assert.equal((await handler(desk({action:'photo',img:'data:image/png;base64,AAAA'}))).status,400);
+ const list=await (await handler(desk({action:'photos'}))).json();
+ assert.deepEqual(list.photos,[{url:'https://fixture.supabase.co/storage/v1/object/sign/jarvis-photos/a.jpg?token=t',who:'Mamá',reason:'alarm',at:'2026-11-02T18:00:00Z'}]);
+ assert.equal((await handler(desk({action:'photos'},{key:'nope'}))).status,401);
+});

@@ -65,6 +65,31 @@ const TOOLS = [
       via: { type: "string", enum: ["desk", "email"], description: "desk = Jarvis says it out loud in the room (default); email = sent to their inbox." },
     } },
   },
+  {
+    name: "add_homework", strict: true,
+    description: "Add homework, an assignment or something to hand in to the user's list on screen, with its due date.",
+    input_schema: { type: "object", additionalProperties: false, required: ["title", "due"], properties: {
+      title: { type: "string", description: "Short, e.g. 'History essay' or 'Maths exercises p. 42', in the language of the conversation." },
+      due: { type: "string", description: "Due date as YYYY-MM-DD, worked out from the local date given." },
+    } },
+  },
+  {
+    name: "homework_done", strict: true,
+    description: "Remove homework from the list because it's done or cancelled. Use the exact title from the current list.",
+    input_schema: { type: "object", additionalProperties: false, required: ["title"], properties: { title: { type: "string" } } },
+  },
+  {
+    name: "add_countdown", strict: true,
+    description: "Show a countdown on screen to an event: exam, birthday, trip, holidays, a match.",
+    input_schema: { type: "object", additionalProperties: false, required: ["title", "date"], properties: {
+      title: { type: "string" }, date: { type: "string", description: "YYYY-MM-DD" },
+    } },
+  },
+  {
+    name: "remove_countdown", strict: true,
+    description: "Remove a countdown from the screen. Use the exact title from the current list.",
+    input_schema: { type: "object", additionalProperties: false, required: ["title"], properties: { title: { type: "string" } } },
+  },
 ];
 async function sha256(text: string) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -132,7 +157,7 @@ Deno.serve(async (request: Request) => {
   if (diff) return json(401, { error: "Wrong Jarvis key" });
 
   // Validate the short conversation the page keeps.
-  let body: { messages?: { role: string; content: string }[]; lang?: string; name?: string; now?: string; memory?: unknown; context?: string; hear?: string } = {};
+  let body: { messages?: { role: string; content: string }[]; lang?: string; name?: string; now?: string; memory?: unknown; context?: string; hear?: string; lists?: { homework?: unknown; countdowns?: unknown } } = {};
   try { body = await request.json(); } catch { /* handled below */ }
   const turns = Array.isArray(body.messages) ? body.messages : [];
   const valid = turns.length >= 1 && turns.length <= 20 && turns.every((m, i) =>
@@ -145,6 +170,11 @@ Deno.serve(async (request: Request) => {
   // Long-term memory and live context kept by the desk page.
   const memory = (Array.isArray(body.memory) ? body.memory : []).slice(-40).map((m) => String(m).replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean);
   const context = String(body.context || "").replace(/\s+/g, " ").slice(0, 300);
+  // The desk's homework list and countdowns, so Jarvis can talk about them.
+  const listOf = (x: unknown, key: string) => (Array.isArray(x) ? x : []).slice(0, 30)
+    // deno-lint-ignore no-explicit-any
+    .map((i: any) => `${String(i?.title || "").replace(/\s+/g, " ").slice(0, 80)} (${String(i?.[key] || "").slice(0, 10)})`).filter((t) => t.length > 4);
+  const homework = listOf(body.lists?.homework, "due"), countdowns = listOf(body.lists?.countdowns, "date");
   // Save name, language and memory so another computer can get them back.
   await db("jarvis_state", { method: "POST", body: JSON.stringify({ id: 1, name, lang: body.lang === "es" ? "es" : "en", hear: body.hear === "en-US" ? "en-US" : "es-ES", memory, updated_at: new Date().toISOString() }) }).catch(() => {});
 
@@ -155,6 +185,9 @@ Deno.serve(async (request: Request) => {
     `always reply in ${lang}. You can control ${name}'s Chrome browser with your tools (music on YouTube or Spotify, pause or skip, ` +
     `open sites, Google searches), send ${name} emails and set reminders. When you use a tool, say in a few words what you did. ` +
     `You can do almost anything in the browser with browser_task, which drives Chrome like a person (real clicks and typing): use it for anything beyond simply opening a site or playing music, e.g. a specific playlist or album, liking a song, a particular YouTube video, reading Teams or Classroom assignments, reading or searching emails, finding, downloading or handing in files, filling forms, comparing prices, booking or checking something on a website. Just say you're on it: the result is spoken when it's done. ` +
+    `You keep ${name}'s homework list and countdowns on screen (add_homework, homework_done, add_countdown, remove_countdown); work out dates from the local date given. ` +
+    (homework.length ? `Current homework: ${homework.join("; ")}. ` : `The homework list is empty. `) +
+    (countdowns.length ? `Current countdowns: ${countdowns.join("; ")}. ` : "") +
     `For reminders, work out the exact date and time from the local time given. You cannot make phone calls. Smart-home control (lights, air conditioning, fan, TV, PlayStation) ` +
     `is not connected yet; if asked, say it is coming soon rather than pretending. You cannot see news; offer a web search instead. ` +
     `Messages that start with [Event] come from the room's sensors, not from ${name}; respond to them as instructed, briefly. ` +
@@ -187,11 +220,18 @@ Deno.serve(async (request: Request) => {
       .map((block: { text: string }) => block.text).join(" ").replace(/\s+/g, " ").trim();
     // Carry out the actions Claude chose. The reply already says what was done.
     const actions: string[] = [], remembered: string[] = [];
+    const lists = { homeworkAdd: [] as { title: string; due: string }[], homeworkDone: [] as string[], countdownAdd: [] as { title: string; date: string }[], countdownRemove: [] as string[] };
+    const day = (v: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) && !isNaN(Date.parse(String(v))) ? String(v) : "";
+    const title = (v: unknown) => String(v || "").replace(/\s+/g, " ").trim().slice(0, 80);
     for (const block of response.content || []) {
       if (block.type !== "tool_use") continue;
       const input = block.input || {};
       try {
-        if (block.name === "remember") {
+        if (block.name === "add_homework" && title(input.title) && day(input.due)) { lists.homeworkAdd.push({ title: title(input.title), due: day(input.due) }); actions.push("homework"); }
+        else if (block.name === "homework_done" && title(input.title)) { lists.homeworkDone.push(title(input.title)); actions.push("homework"); }
+        else if (block.name === "add_countdown" && title(input.title) && day(input.date)) { lists.countdownAdd.push({ title: title(input.title), date: day(input.date) }); actions.push("countdown"); }
+        else if (block.name === "remove_countdown" && title(input.title)) { lists.countdownRemove.push(title(input.title)); actions.push("countdown"); }
+        else if (block.name === "remember") {
           const fact = String(input.fact || "").replace(/\s+/g, " ").trim().slice(0, 200);
           if (fact) { remembered.push(fact); actions.push("remember"); }
         } else if (block.name === "email_me") {
@@ -236,11 +276,12 @@ Deno.serve(async (request: Request) => {
         : has("agent") ? (en ? "On it. I'll tell you when it's done." : "Me pongo con ello. Te aviso al terminar.")
         : has("open:") ? (en ? "Opened." : "Abierto.")
         : has("search") ? (en ? "Here are the results." : "Aquí tienes los resultados.")
-        : has("remember") ? (en ? "Noted." : "Apuntado.")
+        : has("remember") || has("homework") || has("countdown") ? (en ? "Noted." : "Apuntado.")
         : actions.length ? (en ? "Done." : "Hecho.")
         : (en ? "Sorry, I didn't catch that. Could you say it again?" : "Perdona, no te he entendido. ¿Me lo repites?");
     }
-    return json(200, { reply: reply.slice(0, 600), actions, ...(remembered.length ? { remember: remembered } : {}) });
+    const changed = lists.homeworkAdd.length + lists.homeworkDone.length + lists.countdownAdd.length + lists.countdownRemove.length;
+    return json(200, { reply: reply.slice(0, 600), actions, ...(remembered.length ? { remember: remembered } : {}), ...(changed ? { lists } : {}) });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError)
       return json(502, { error: "Claude key rejected" });

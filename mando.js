@@ -128,6 +128,8 @@
       onEvent: (e) => {
         if (e.action === "guard-state") onState(e);
         if (e.action === "reply") onReply(e);
+        if (e.action === "ring") ring();
+        if (e.action === "snap") setTimeout(loadPhotos, 4e3);
       },
       onStatus: (s) => {
         $("link").textContent = s === "online" ? "Conectado" : "Sin conexi\xF3n";
@@ -242,6 +244,7 @@
     settings.key = $("key").value.trim();
     settings.save();
     connect();
+    void loadPhotos();
   };
   $("link").onclick = () => {
     $("key").value = settings.key;
@@ -395,7 +398,61 @@
     }
   };
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(() => renderPush()).catch(() => renderPush());
+  async function loadPhotos() {
+    if (!settings.key) return;
+    try {
+      const response = await call("jarvis-call", { action: "photos" }, settings.key);
+      const data = await response.json().catch(() => ({}));
+      const list = Array.isArray(data.photos) ? data.photos : [];
+      $("photosBox").hidden = !list.length;
+      $("photos").replaceChildren(...list.map((p) => {
+        const f = document.createElement("figure");
+        f.className = p.reason === "alarm" ? "alarm" : "";
+        const img = document.createElement("img");
+        img.src = p.url;
+        img.loading = "lazy";
+        img.alt = p.who || "";
+        img.onclick = () => {
+          $("viewerImg").src = p.url;
+          $("viewer").hidden = false;
+        };
+        const cap = document.createElement("figcaption");
+        cap.textContent = `${p.who || "Alguien"} \xB7 ${new Date(p.at).toLocaleString("es-ES", { weekday: "short", hour: "2-digit", minute: "2-digit" })}`;
+        f.append(img, cap);
+        return f;
+      }));
+      if (location.hash === "#fotos") $("photosBox").scrollIntoView({ behavior: "smooth" });
+    } catch {
+    }
+  }
+  mando.loadPhotos = loadPhotos;
+  $("viewer").onclick = () => {
+    $("viewer").hidden = true;
+  };
+  window.addEventListener("hashchange", () => {
+    if (location.hash === "#fotos") void loadPhotos();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void loadPhotos();
+  });
+  function ring() {
+    $("ringing").hidden = false;
+    clearInterval(mando.ringTimer);
+    let n = 0;
+    beep(true);
+    mando.ringTimer = setInterval(() => {
+      beep(true);
+      if (++n > 20) stopRing();
+    }, 1500);
+  }
+  function stopRing() {
+    clearInterval(mando.ringTimer);
+    $("ringing").hidden = true;
+  }
+  mando.ring = ring;
+  $("found").onclick = stopRing;
   mando.started = Date.now();
   connect();
   render();
+  void loadPhotos();
 })();

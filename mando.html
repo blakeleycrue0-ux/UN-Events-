@@ -31,10 +31,13 @@
         <button id="pushOn" class="btn">Activar notificaciones</button>
         <p id="pushInfo" class="muted"></p>
       </section>
+      <section id="photosBox" class="photos" hidden><h2>Fotos de la puerta</h2><div id="photos" class="photo-grid"></div></section>
       <section class="log"><h2>Últimos avisos</h2><ul id="log"><li class="muted">Nada todavía.</li></ul></section>
       <p class="hint">Mantén esta página abierta para enterarte al momento. Puedes añadirla a la pantalla de inicio desde Compartir → «Añadir a pantalla de inicio».</p>
     </main>
 
+    <div id="ringing" class="ring-sheet" hidden><b>¡Aquí estoy!</b><span>Jarvis te está buscando</span><button id="found" class="btn primary">Encontrado</button></div>
+    <div id="viewer" class="sheet" hidden><img id="viewerImg" alt="" /></div>
     <div id="setup" class="sheet" hidden>
       <div class="card">
         <h2>Mando de Jarvis</h2>

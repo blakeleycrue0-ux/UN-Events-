@@ -77,3 +77,17 @@ create table if not exists public.jarvis_push (
 );
 alter table public.jarvis_push enable row level security;
 revoke all on public.jarvis_push from anon, authenticated;
+
+-- Door photos (guard mode): private bucket, 2 MB JPEGs, kept a week by jarvis-call.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('jarvis-photos', 'jarvis-photos', false, 2097152, array['image/jpeg'])
+on conflict (id) do nothing;
+create table if not exists public.jarvis_photos (
+  id uuid primary key default gen_random_uuid(),
+  path text not null unique,
+  who text not null default '',
+  reason text not null default '' check (reason in ('', 'entry', 'alarm')),
+  created_at timestamptz not null default now()
+);
+alter table public.jarvis_photos enable row level security;
+revoke all on public.jarvis_photos from anon, authenticated;

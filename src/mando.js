@@ -12,7 +12,7 @@ function connect() {
   $("setup").hidden = true;
   mando.home = connectHome({
     key: settings.key,
-    onEvent: (e) => { if (e.action === "guard-state") onState(e); if (e.action === "reply") onReply(e); },
+    onEvent: (e) => { if (e.action === "guard-state") onState(e); if (e.action === "reply") onReply(e); if (e.action === "ring") ring(); if (e.action === "snap") setTimeout(loadPhotos, 4000); },
     onStatus: (s) => { $("link").textContent = s === "online" ? "Conectado" : "Sin conexión"; $("link").classList.toggle("on", s === "online"); if (s === "online") ask(); },
   });
 }
@@ -78,7 +78,7 @@ document.addEventListener("pointerdown", unlock, { once: true });
 $("leave").onclick = () => { mando.home?.send({ action: "guard", on: true }); $("stateSub").textContent = "Enviando…"; };
 $("home").onclick = () => { mando.home?.send({ action: "guard", on: false }); $("stateSub").textContent = "Enviando…"; };
 $("silence").onclick = () => mando.home?.send({ action: "guard-silence" });
-$("saveKey").onclick = () => { settings.key = $("key").value.trim(); settings.save(); connect(); };
+$("saveKey").onclick = () => { settings.key = $("key").value.trim(); settings.save(); connect(); void loadPhotos(); };
 $("link").onclick = () => { $("key").value = settings.key; $("setup").hidden = false; };
 // ---------- Hablar desde el móvil ----------
 // The phone's microphone is far better than a closed laptop's. Tap, speak,
@@ -173,5 +173,38 @@ $("pushOn").onclick = async () => {
 };
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(() => renderPush()).catch(() => renderPush());
 
+// ---------- Fotos de la puerta ----------
+async function loadPhotos() {
+  if (!settings.key) return;
+  try {
+    const response = await call("jarvis-call", { action: "photos" }, settings.key);
+    const data = await response.json().catch(() => ({}));
+    const list = Array.isArray(data.photos) ? data.photos : [];
+    $("photosBox").hidden = !list.length;
+    $("photos").replaceChildren(...list.map((p) => {
+      const f = document.createElement("figure"); f.className = p.reason === "alarm" ? "alarm" : "";
+      const img = document.createElement("img"); img.src = p.url; img.loading = "lazy"; img.alt = p.who || "";
+      img.onclick = () => { $("viewerImg").src = p.url; $("viewer").hidden = false; };
+      const cap = document.createElement("figcaption");
+      cap.textContent = `${p.who || "Alguien"} · ${new Date(p.at).toLocaleString("es-ES", { weekday: "short", hour: "2-digit", minute: "2-digit" })}`;
+      f.append(img, cap); return f;
+    }));
+    if (location.hash === "#fotos") $("photosBox").scrollIntoView({ behavior: "smooth" });
+  } catch { /* offline */ }
+}
+mando.loadPhotos = loadPhotos;
+$("viewer").onclick = () => { $("viewer").hidden = true; };
+window.addEventListener("hashchange", () => { if (location.hash === "#fotos") void loadPhotos(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadPhotos(); });
+// ---------- Busca mi móvil ----------
+function ring() {
+  $("ringing").hidden = false; clearInterval(mando.ringTimer);
+  let n = 0; beep(true);
+  mando.ringTimer = setInterval(() => { beep(true); if (++n > 20) stopRing(); }, 1500);
+}
+function stopRing() { clearInterval(mando.ringTimer); $("ringing").hidden = true; }
+mando.ring = ring;
+$("found").onclick = stopRing;
+
 mando.started = Date.now();
-connect(); render();
+connect(); render(); void loadPhotos();

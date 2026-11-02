@@ -31,6 +31,11 @@ with sync_playwright() as p:
     page = b.new_context(viewport={'width': 390, 'height': 844}).new_page(); errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.route_web_socket('wss://*.supabase.co/**', realtime)
+    def jarvis_call(route):
+        body = json.loads(route.request.post_data or '{}')
+        out = {'photos': [{'url': 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', 'who': 'Mamá', 'reason': 'alarm', 'at': '2026-11-02T18:00:00Z'}]} if body.get('action') == 'photos' else {'ok': True}
+        route.fulfill(status=200, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, body=json.dumps(out))
+    page.route('https://*.supabase.co/functions/v1/jarvis-call', jarvis_call)
     # Fake phone speech recognizer: whatever is in window.speech is "heard".
     page.add_init_script("""window.webkitSpeechRecognition=class{start(){setTimeout(()=>{this.onresult&&this.onresult({results:[[{transcript:window.speech||''}]]})},50);setTimeout(()=>this.stop(),150)} stop(){if(this.done)return;this.done=true;setTimeout(()=>this.onend&&this.onend(),10)} abort(){this.stop()}};window.SpeechRecognition=window.webkitSpeechRecognition;""")
     # The chooser offers the remote; the phone then remembers it.
@@ -60,6 +65,11 @@ with sync_playwright() as p:
     desk_says({'action': 'reply', 'id': ask['id'], 'text': 'Reminder saved for eight.'})
     page.wait_for_function("document.getElementById('reply').textContent.includes('Reminder saved')")
     page.click('#home'); wait_sent(page, lambda x: x == {'action': 'guard', 'on': False})
+    # Door photos and "find my phone".
+    page.wait_for_function("!document.getElementById('photosBox').hidden && document.querySelectorAll('#photos figure.alarm').length===1")
+    assert 'Mamá' in page.locator('#photos').inner_text()
+    desk_says({'action': 'ring'}); page.wait_for_function("!document.getElementById('ringing').hidden")
+    page.click('#found'); assert page.locator('#ringing').is_hidden()
     # Next visit to the home page goes straight to the remote.
     page.goto(URL); page.wait_for_url('**/mando*')
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')

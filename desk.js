@@ -1015,6 +1015,7 @@
       return;
     }
     if (await wakeVoice(raw)) return;
+    if (await freeVoice(raw)) return;
     if (await guardVoice(raw)) return;
     if (desk.agent && /^\s*(stop|para|parar|cancela|cancel|d[ée]jalo|basta)\b/i.test(raw)) {
       await extension("agent-stop");
@@ -1050,7 +1051,7 @@
       const timers = desk.timers.map((tm) => `${tm.label} timer, ${Math.ceil((tm.end - Date.now()) / 6e4)} min left`).join("; ");
       const context = [weatherText(), timers, desk.music ? `Last music: ${desk.music.query}` : ""].filter(Boolean).join(". ");
       const off = -(/* @__PURE__ */ new Date()).getTimezoneOffset(), tz = `UTC${off < 0 ? "-" : "+"}${String(Math.floor(Math.abs(off) / 60)).padStart(2, "0")}:${String(Math.abs(off) % 60).padStart(2, "0")}`;
-      const response = await call("jarvis-brain", { messages: history, lang: settings.lang, name: settings.name, now: `${now} (${tz}, ${(/* @__PURE__ */ new Date()).getFullYear()})`, memory: desk.memory, context, hear: settings.hear }, settings.key);
+      const response = await call("jarvis-brain", { messages: history, lang: settings.lang, name: settings.name, now: `${now} (${tz}, ${ymd()})`, memory: desk.memory, context, hear: settings.hear, lists: { homework: desk.lists.homework, countdowns: desk.lists.countdowns } }, settings.key);
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw Error(t().thinkErr[data.error] || t().thinkDown);
       const reply = data.refused || !data.reply ? t().refused : data.reply;
@@ -1059,6 +1060,7 @@
         for (const fact of data.remember) addMemory(fact);
       }
       if ((data.actions || []).some((a) => String(a).startsWith("reminder:"))) void loadReminders();
+      if (data.lists) applyLists(data.lists);
       const play = (data.actions || []).includes("play");
       if (play) {
         const m = /play(?:ing)? (.+?)(?: on (?:youtube|spotify))?[.!]?$/i.exec(reply);
@@ -1073,6 +1075,110 @@
     }
   }
   desk.think = think;
+  var ymd = (d = /* @__PURE__ */ new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  desk.ymd = ymd;
+  desk.lists = store.get("jarvis-lists", { homework: [], countdowns: [] });
+  var daysTo = (date) => Math.round((/* @__PURE__ */ new Date(date + "T00:00:00") - /* @__PURE__ */ new Date(ymd() + "T00:00:00")) / 864e5);
+  var same = (a, b) => a.toLowerCase().replace(/[^a-z0-9áéíóúñü]/g, "") === b.toLowerCase().replace(/[^a-z0-9áéíóúñü]/g, "");
+  function applyLists(l) {
+    const L = desk.lists;
+    for (const h of l.homeworkAdd || []) if (!L.homework.some((x) => same(x.title, h.title))) L.homework.push({ title: h.title, due: h.due });
+    for (const t2 of l.homeworkDone || []) L.homework = L.homework.filter((x) => !same(x.title, t2) && !x.title.toLowerCase().includes(t2.toLowerCase()));
+    for (const c of l.countdownAdd || []) {
+      L.countdowns = L.countdowns.filter((x) => !same(x.title, c.title));
+      L.countdowns.push({ title: c.title, date: c.date });
+    }
+    for (const t2 of l.countdownRemove || []) L.countdowns = L.countdowns.filter((x) => !same(x.title, t2) && !x.title.toLowerCase().includes(t2.toLowerCase()));
+    saveLists();
+  }
+  desk.applyLists = applyLists;
+  function saveLists() {
+    store.set("jarvis-lists", desk.lists);
+    renderLists();
+  }
+  function renderLists() {
+    const es = settings.lang === "es", L = desk.lists;
+    L.countdowns = L.countdowns.filter((c) => daysTo(c.date) >= 0);
+    const hw = [...L.homework].sort((a, b) => a.due.localeCompare(b.due));
+    $("homeworkCard").hidden = !hw.length;
+    $("homeworkSub").textContent = hw.length ? String(hw.length) : "";
+    $("homework").replaceChildren(...hw.map((h) => {
+      const n = daysTo(h.due), li = document.createElement("li");
+      li.className = n < 0 ? "late" : n <= 1 ? "soon" : "";
+      const t2 = document.createElement("span");
+      t2.textContent = h.title;
+      const d = document.createElement("b");
+      d.textContent = n < 0 ? es ? "atrasado" : "overdue" : n === 0 ? es ? "hoy" : "today" : n === 1 ? es ? "ma\xF1ana" : "tomorrow" : (/* @__PURE__ */ new Date(h.due + "T12:00:00")).toLocaleDateString(es ? "es-ES" : "en-GB", { weekday: "short", day: "numeric" });
+      const x = document.createElement("button");
+      x.textContent = "\u2713";
+      x.title = es ? "Hecho" : "Done";
+      x.onclick = () => {
+        desk.lists.homework = desk.lists.homework.filter((y) => y !== h);
+        saveLists();
+      };
+      li.append(t2, d, x);
+      return li;
+    }));
+    const cd = [...L.countdowns].sort((a, b) => a.date.localeCompare(b.date));
+    $("countdownCard").hidden = !cd.length;
+    $("countdowns").replaceChildren(...cd.map((c) => {
+      const n = daysTo(c.date), li = document.createElement("li");
+      const t2 = document.createElement("span");
+      t2.textContent = c.title;
+      const d = document.createElement("b");
+      d.textContent = n === 0 ? es ? "\xA1hoy!" : "today!" : n === 1 ? es ? "ma\xF1ana" : "tomorrow" : `${n} ${es ? "d\xEDas" : "days"}`;
+      const x = document.createElement("button");
+      x.textContent = "\u2715";
+      x.onclick = () => {
+        desk.lists.countdowns = desk.lists.countdowns.filter((y) => y !== c);
+        saveLists();
+      };
+      li.append(t2, d, x);
+      return li;
+    }));
+  }
+  desk.renderLists = renderLists;
+  setInterval(async () => {
+    const now = /* @__PURE__ */ new Date();
+    if (!desk.started || now.getHours() < 19 || quietNow() || store.get("jarvis-hw-told", "") === ymd()) return;
+    const due = desk.lists.homework.filter((h) => daysTo(h.due) === 1);
+    store.set("jarvis-hw-told", ymd());
+    if (!due.length || desk.voice.speaking) return;
+    const es = settings.lang === "es", list = due.map((h) => h.title).join(es ? " y " : " and ");
+    orb.flash("alert");
+    chime("alert");
+    await talk(es ? `Recordatorio: ma\xF1ana tienes que entregar ${list}.` : `Heads up: ${list} ${due.length === 1 ? "is" : "are"} due tomorrow.`);
+    ears.resume();
+  }, 6e4);
+  function whoCameIn(since) {
+    const es = settings.lang === "es";
+    const list = desk.arrivals.filter((a) => a.at >= since && a.role !== "me");
+    const hm = (t2) => new Date(t2).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    if (!list.length) return es ? "No ha entrado nadie." : "Nobody came in.";
+    const parts = list.slice(-5).map((a) => `${a.role === "unknown" ? es ? "alguien que no conozco" : "someone I don't know" : a.name} ${es ? "a las" : "at"} ${hm(a.at)}`);
+    const more = list.length > 5 ? es ? ` y ${list.length - 5} m\xE1s` : ` and ${list.length - 5} more` : "";
+    return (es ? "Entr\xF3 " : "In came ") + parts.join(", ") + more + ".";
+  }
+  desk.whoCameIn = whoCameIn;
+  async function freeVoice(raw) {
+    const text = normalize(raw).replace(/'/g, ""), es = settings.lang === "es";
+    if (/(quien|alguien) (ha )?entrad|ha entrado alguien|quien ha venido|who came in|anyone (come|came) in|did anyone come/.test(text)) {
+      const since = desk.guard.leftAt && desk.guard.backAt >= desk.guard.leftAt && Date.now() - desk.guard.backAt < 6 * 36e5 ? desk.guard.leftAt : (/* @__PURE__ */ new Date()).setHours(0, 0, 0, 0);
+      const label = since === desk.guard.leftAt ? es ? "Mientras no estabas: " : "While you were out: " : es ? "Hoy: " : "Today: ";
+      await talk(label + whoCameIn(since));
+      ears.resume(true);
+      return true;
+    }
+    if (/donde (esta|estara|he dejado) (mi|el) (movil|telefono)|encuentra (mi|el) (movil|telefono)|busca (mi|el) (movil|telefono)|find my phone|where is my phone|wheres my phone/.test(text)) {
+      notifyPhone(es ? "\u{1F4CD} \xA1Estoy aqu\xED!" : "\u{1F4CD} Here I am!", es ? "Jarvis te est\xE1 buscando" : "Jarvis is looking for you", "find");
+      home?.send({ action: "ring" });
+      await talk(es ? "Hago sonar tu m\xF3vil. Escucha." : "Ringing your phone. Listen.");
+      ears.resume();
+      return true;
+    }
+    return false;
+  }
+  desk.freeVoice = freeVoice;
   function whenLabel(iso) {
     const d = new Date(iso), now = /* @__PURE__ */ new Date(), es = settings.lang === "es";
     const hm = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
@@ -1400,9 +1506,10 @@
     $("sunrise").classList.add("ring");
     const es = settings.lang === "es", hm = (/* @__PURE__ */ new Date()).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
     const today = (/* @__PURE__ */ new Date()).toDateString(), due = (desk.reminders || []).filter((r) => new Date(r.due_at).toDateString() === today).length;
-    const w = weatherText();
+    const w = weatherText(), hwToday = desk.lists.homework.filter((h) => daysTo(h.due) <= 0).map((h) => h.title);
+    const hwLine = hwToday.length ? es ? ` Hoy entregas: ${hwToday.join(", ")}.` : ` Due today: ${hwToday.join(", ")}.` : "";
     $("sunriseMsg").textContent = es ? `Buenos d\xEDas, ${settings.name}` : `Good morning, ${settings.name}`;
-    const text = es ? `Buenos d\xEDas, ${settings.name}. Son las ${hm}. ${w ? w + "." : ""} ${due ? `Hoy tienes ${due} ${due === 1 ? "recordatorio" : "recordatorios"}.` : "Hoy no tienes nada apuntado."} Arriba, que el d\xEDa no se conquista solo.` : `Good morning, ${settings.name}. It's ${hm}. ${w ? w + "." : ""} ${due ? `You have ${due} ${due === 1 ? "reminder" : "reminders"} today.` : "Nothing on the list today."} Up you get, the day won't conquer itself.`;
+    const text = es ? `Buenos d\xEDas, ${settings.name}. Son las ${hm}. ${w ? w + "." : ""} ${due ? `Hoy tienes ${due} ${due === 1 ? "recordatorio" : "recordatorios"}.` : "Hoy no tienes nada apuntado."} Arriba, que el d\xEDa no se conquista solo.${hwLine}` : `Good morning, ${settings.name}. It's ${hm}. ${w ? w + "." : ""} ${due ? `You have ${due} ${due === 1 ? "reminder" : "reminders"} today.` : "Nothing on the list today."} Up you get, the day won't conquer itself.${hwLine}`;
     await talk(text.replace(/\s+/g, " ").trim(), es ? "es" : "en");
     ears.resume(true);
   }
@@ -1596,6 +1703,8 @@
   }
   desk.renderGuard = renderGuard;
   function setGuard(on, why = "") {
+    if (on) desk.guard.leftAt = Date.now();
+    else if (desk.guard.on) desk.guard.backAt = Date.now();
     stopAlarm();
     closeKeypad();
     desk.intruder = null;
@@ -1624,6 +1733,7 @@
     desk.intruder = { who: action === "unknown" ? settings.lang === "es" ? "Desconocido" : "Unknown" : p.name, at: Date.now() };
     guardLog("Ha entrado: " + desk.intruder.who);
     saveGuard({ alert: "entry" });
+    home?.send({ action: "snap", reason: "entry", who: desk.intruder.who });
     notifyPhone(settings.lang === "es" ? "Alguien ha entrado" : "Someone came in", settings.lang === "es" ? `${desk.intruder.who} tiene 10 segundos para poner el c\xF3digo.` : `${desk.intruder.who} has 10 seconds to enter the code.`);
     openKeypad();
     const line = guardLine(p, action);
@@ -1642,6 +1752,7 @@
     desk.alarm = true;
     document.body.classList.add("alarm");
     saveGuard({ alert: "alarm" });
+    home?.send({ action: "snap", reason: "alarm", who: desk.intruder?.who || "" });
     notifyPhone(settings.lang === "es" ? "\xA1ALARMA!" : "ALARM!", settings.lang === "es" ? `${desk.intruder?.who || "Alguien"} no ha puesto el c\xF3digo.` : `${desk.intruder?.who || "Someone"} didn't enter the code.`);
     const es = settings.lang === "es";
     $("intruderBanner").hidden = false;
@@ -1726,8 +1837,9 @@
     if (ok) {
       const who = desk.intruder?.who || "";
       setGuard(false, "c\xF3digo" + (who ? " \xB7 " + who : ""));
+      const since = desk.guard.leftAt || 0, summary = since ? whoCameIn(since) : "";
       voice.stop();
-      await talk(settings.lang === "es" ? "C\xF3digo correcto. Todo tuyo." : "Code accepted. Carry on.");
+      await talk((settings.lang === "es" ? "C\xF3digo correcto. Todo tuyo. " : "Code accepted. Carry on. ") + (summary ? (settings.lang === "es" ? "Mientras no estabas: " : "While you were out: ") + summary : ""));
       ears.resume();
       return;
     }
@@ -2255,4 +2367,5 @@
   };
   render();
   connectDesk();
+  renderLists();
 })();

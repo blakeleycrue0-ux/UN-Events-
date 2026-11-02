@@ -207,9 +207,10 @@ with sync_playwright() as p:
     assert page.locator('#keypad').is_visible() and any(x.get('alert') == 'entry' and x.get('intruder') == 'Mamá' for x in to_wall)
     assert page.evaluate("document.getElementById('guardScreen').classList.contains('intruder')")
     assert any(c.get('action') == 'notify' and 'Mamá' in c.get('body', '') for c in calls), 'phone notified'
+    assert any(x.get('action') == 'snap' and x.get('reason') == 'entry' and x.get('who') == 'Mamá' for x in to_wall), 'wall asked for a photo'
     page.keyboard.type('1111'); page.wait_for_timeout(200)
     assert page.evaluate("desk.guard.on && !desk.alarm"), 'a wrong code keeps it armed'
-    page.keyboard.type('2580'); wait_voice(page, 'Code accepted')
+    page.keyboard.type('2580'); wait_voice(page, 'While you were out: In came Mamá at')
     assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden() and page.locator('#guardScreen').is_hidden()
     calm(page)
     # Armed from the phone; a stranger with no code sets off the gentle alarm; the phone can silence it.
@@ -292,6 +293,27 @@ with sync_playwright() as p:
     wait_voice(page, 'Good morning. Lights on'); assert page.locator('#sunrise').is_hidden(); calm(page)
     page.evaluate("recQueue.push({results:[['Jarvis quita el despertador',true]],end:true})"); page.keyboard.press('Space')
     wait_voice(page, 'Alarm clock off'); assert page.locator('#alarmInfo').is_hidden(); calm(page)
+
+    # Homework and countdowns: Claude edits the lists, the screen shows them, Jarvis sends them back as context.
+    from datetime import date, timedelta
+    d1, d18 = (date.today() + timedelta(days=1)).isoformat(), (date.today() + timedelta(days=18)).isoformat()
+    brain_replies['history essay'] = {'reply': 'Noted.', 'actions': ['homework', 'countdown'], 'lists': {'homeworkAdd': [{'title': 'History essay', 'due': d1}], 'homeworkDone': [], 'countdownAdd': [{'title': 'Maths exam', 'date': d18}], 'countdownRemove': []}}
+    page.evaluate("recQueue.push({results:[['Jarvis apunta el history essay para mañana y cuenta atrás examen',true]],end:true})"); page.keyboard.press('Space')
+    page.wait_for_function("!document.getElementById('homeworkCard').hidden && !document.getElementById('countdownCard').hidden")
+    assert 'tomorrow' in page.locator('#homework').inner_text() and '18 days' in page.locator('#countdowns').inner_text()
+    calm(page)
+    page.evaluate("recQueue.push({results:[['what do I have',true]],end:true})"); page.keyboard.press('Space'); wait_voice(page, 'what do I have')
+    assert brain[-1]['lists']['homework'] == [{'title': 'History essay', 'due': d1}] and brain[-1]['lists']['countdowns'][0]['title'] == 'Maths exam'
+    calm(page); page.screenshot(path='/tmp/desk-lists.png')
+    page.locator('#homework button').click(); page.wait_for_function("document.getElementById('homeworkCard').hidden")
+    # Free voice commands: who came in today, find my phone (push + ring on the remote).
+    page.evaluate("recQueue.push({results:[['Jarvis quién ha entrado',true]],end:true})"); page.keyboard.press('Space')
+    wait_voice(page, 'In came'); calm(page)
+    calls.clear(); to_wall.clear()
+    page.evaluate("recQueue.push({results:[['Jarvis dónde está mi móvil',true]],end:true})"); page.keyboard.press('Space')
+    wait_voice(page, 'Ringing your phone')
+    assert any(c.get('action') == 'notify' and c.get('tag') == 'find' for c in calls) and {'action': 'ring'} in to_wall
+    calm(page)
 
     # A reminder that comes due is spoken on the desk.
     home({'action': 'remind', 'text': 'Time to study maths, Crew.', 'lang': 'en'})

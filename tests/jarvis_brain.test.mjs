@@ -71,7 +71,7 @@ test('Claude gets strict tools and its choices reach the Chromebook channel or t
  const s=setup(tool('play_music',{query:'lofi beats',service:'youtube'},'Playing lofi beats on YouTube.'));
  const r=await s.handler(req(convo));assert.deepEqual(await r.json(),{reply:'Playing lofi beats on YouTube.',actions:['play']});
  const p=s.calls.find(c=>c.params).params;
- assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','remember','email_me','browser_task','set_reminder']);
+ assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','remember','email_me','browser_task','set_reminder','add_homework','homework_done','add_countdown','remove_countdown']);
  assert.ok(p.tools.every(t=>t.strict===true&&t.input_schema.additionalProperties===false));
  assert.ok(!('tool_choice' in p));
  const call=s.outbound[0];assert.equal(call.url,'https://fixture.supabase.co/realtime/v1/api/broadcast');
@@ -135,4 +135,13 @@ test('with no words from Claude, Jarvis says what it actually did',async()=>{
  assert.equal(await say('set_reminder',{due:new Date(Date.now()+3600e3).toISOString(),text:'Study',via:'desk'}),'Reminder saved.');
  const empty=setup(()=>({stop_reason:'end_turn',content:[]}));
  assert.equal((await (await empty.handler(req(convo))).json()).reply,"Sorry, I didn't catch that. Could you say it again?");
+});
+
+test('homework and countdowns: Claude edits the lists on screen, with valid dates only',async()=>{
+ const two=()=>({stop_reason:'tool_use',content:[{type:'tool_use',name:'add_homework',input:{title:'History essay',due:'2026-11-05'}},{type:'tool_use',name:'add_countdown',input:{title:'Maths exam',date:'2026-11-20'}},{type:'tool_use',name:'homework_done',input:{title:'Maths p. 42'}},{type:'tool_use',name:'add_homework',input:{title:'Bad',due:'Thursday'}}]});
+ const s=setup(two);
+ const r=await (await s.handler(req({...convo,lists:{homework:[{title:'Maths p. 42',due:'2026-11-03'}],countdowns:[]}}))).json();
+ assert.deepEqual(r.lists,{homeworkAdd:[{title:'History essay',due:'2026-11-05'}],homeworkDone:['Maths p. 42'],countdownAdd:[{title:'Maths exam',date:'2026-11-20'}],countdownRemove:[]});
+ assert.equal(r.reply,'Noted.');
+ assert.match(s.calls.find(c=>c.params).params.system,/Current homework: Maths p\. 42 \(2026-11-03\)/);
 });

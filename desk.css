@@ -250,3 +250,11 @@ a.choice { text-decoration: none; }
 .guard-screen.intruder .guard-scan, .guard-screen.alarm .guard-scan { background: linear-gradient(transparent, rgba(255, 60, 70, .12), rgba(255, 60, 70, .25), transparent); animation-duration: 1.4s; }
 .guard-screen.alarm .eyes { animation: shakeEyes .25s linear infinite; }
 @keyframes shakeEyes { 25% { transform: translate(-6px, -4vh); } 75% { transform: translate(6px, -4vh); } }
+
+/* Homework and countdowns */
+.items { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(var(--u) * .7); }
+.items li { display: grid; grid-template-columns: 1fr auto auto; gap: calc(var(--u) * .8); align-items: baseline; }
+.items span { font-size: calc(var(--u) * .95); font-weight: 300; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.items b { font-size: calc(var(--u) * .85); font-weight: 400; color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.items li.soon b { color: #f5a524; } .items li.late b { color: #ff5a64; }
+.items button { color: var(--faint); font-size: calc(var(--u) * .8); padding: 0 4px; }

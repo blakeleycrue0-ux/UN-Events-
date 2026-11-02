@@ -6,6 +6,8 @@
 // - POST {action: "pin", pin}: save the 4-digit guard code (kept private here).
 // - POST {action: "subscribe", subscription} / {action: "notify", title, body}:
 //   Web Push notifications to the phone remote (installed on the home screen).
+// - POST {action: "photo", img, who, reason} (from the wall when someone comes in
+//   while guarded) / {action: "photos"}: door photos, private bucket, 7 days.
 // - POST {action: "reminders"} / {action: "forget", id}: the pending reminders
 //   as saved in the database, for the desk's panel.
 // (The name is historical: it once handled phone calls too.)
@@ -100,6 +102,38 @@ async function notifyAll(message: { title: string; body: string; tag?: string; u
   return { sent };
 }
 
+// ---------- Door photos (private storage bucket "jarvis-photos") ----------
+function storage(path: string, init: RequestInit = {}) {
+  const service = env("SUPABASE_SERVICE_ROLE_KEY");
+  return fetch(env("SUPABASE_URL") + "/storage/v1/" + path, { ...init, headers: { apikey: service, Authorization: "Bearer " + service, ...(init.headers || {}) }, signal: AbortSignal.timeout(10000) });
+}
+async function savePhoto(dataUrl: string, who: string, reason: string) {
+  const b64 = dataUrl.replace(/^data:image\/jpeg;base64,/, "");
+  if (!/^[A-Za-z0-9+/=]{1000,2800000}$/.test(b64)) return null;
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const path = `${new Date().toISOString().slice(0, 10)}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.jpg`;
+  const up = await storage("object/jarvis-photos/" + path, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: bytes });
+  if (!up.ok) { console.log("jarvis-call photo upload", up.status); return null; }
+  await db("jarvis_photos", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ path, who, reason }) });
+  // Keep a week of photos.
+  const old = await rows(`jarvis_photos?created_at=lt.${encodeURIComponent(new Date(Date.now() - 7 * 86400000).toISOString())}&select=id,path&limit=50`);
+  for (const p of old) {
+    await storage("object/jarvis-photos/" + p.path, { method: "DELETE" }).catch(() => null);
+    await db(`jarvis_photos?id=eq.${p.id}`, { method: "DELETE" });
+  }
+  return path;
+}
+async function listPhotos() {
+  const list = await rows("jarvis_photos?order=created_at.desc&limit=8&select=path,who,reason,created_at");
+  const out = [];
+  for (const p of list) {
+    const signed = await storage("object/sign/jarvis-photos/" + p.path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expiresIn: 3600 }) });
+    const data = await signed.json().catch(() => ({}));
+    if (signed.ok && data.signedURL) out.push({ url: env("SUPABASE_URL") + "/storage/v1" + data.signedURL, who: p.who, reason: p.reason, at: p.created_at });
+  }
+  return out;
+}
+
 async function deliverDue() {
   const due = await rows(`jarvis_reminders?done=eq.false&due_at=lte.${encodeURIComponent(new Date().toISOString())}&order=due_at.asc&limit=10&select=id,text,via,lang`);
   const results: string[] = [];
@@ -172,6 +206,14 @@ Deno.serve(async (request: Request) => {
       if (!title) return json(400, { error: "Missing title" });
       return json(200, await notifyAll({ title, body: text, tag: clean(body.tag, 40) || "jarvis", url: "/mando" }));
     }
+    if (body.action === "photo") {
+      const who = clean(body.who, 40), reason = body.reason === "alarm" ? "alarm" : body.reason === "entry" ? "entry" : "";
+      const path = await savePhoto(String(body.img || ""), who, reason);
+      if (!path) return json(400, { error: "Invalid photo" });
+      await notifyAll({ title: reason === "alarm" ? "📸 Foto del intruso" : "📸 Foto de la puerta", body: (who || "Alguien") + " · toca para verla", tag: "photo", url: "/mando#fotos" });
+      return json(200, { ok: true });
+    }
+    if (body.action === "photos") return json(200, { photos: await listPhotos() });
     // The desk shows what is really saved, straight from the database.
     if (body.action === "reminders") {
       const list = await rows("jarvis_reminders?done=eq.false&order=due_at.asc&limit=12&select=id,due_at,text,via");
