@@ -20,9 +20,9 @@ const TOOLS = [
   },
   {
     name: "media_control", strict: true,
-    description: "Pause, resume or skip whatever music or video is playing on the Chromebook.",
+    description: "Pause, resume, skip, go back, or change the volume of the music or video playing on the Chromebook.",
     input_schema: { type: "object", additionalProperties: false, required: ["action"], properties: {
-      action: { type: "string", enum: ["pause", "resume", "next"] },
+      action: { type: "string", enum: ["pause", "resume", "next", "previous", "louder", "quieter"] },
     } },
   },
   {
@@ -36,6 +36,11 @@ const TOOLS = [
     name: "web_search", strict: true,
     description: "Search Google on the Chromebook and show the results.",
     input_schema: { type: "object", additionalProperties: false, required: ["query"], properties: { query: { type: "string" } } },
+  },
+  {
+    name: "remember", strict: true,
+    description: "Save a short fact about the user to your long-term memory (plans, exams, likes, people, promises). Use it whenever they tell you something worth remembering later.",
+    input_schema: { type: "object", additionalProperties: false, required: ["fact"], properties: { fact: { type: "string", description: "One short sentence, in English." } } },
   },
   {
     name: "email_me", strict: true,
@@ -101,7 +106,7 @@ Deno.serve(async (request: Request) => {
   if (diff) return json(401, { error: "Wrong Jarvis key" });
 
   // Validate the short conversation the page keeps.
-  let body: { messages?: { role: string; content: string }[]; lang?: string; name?: string; now?: string } = {};
+  let body: { messages?: { role: string; content: string }[]; lang?: string; name?: string; now?: string; memory?: unknown; context?: string } = {};
   try { body = await request.json(); } catch { /* handled below */ }
   const turns = Array.isArray(body.messages) ? body.messages : [];
   const valid = turns.length >= 1 && turns.length <= 20 && turns.every((m, i) =>
@@ -111,15 +116,21 @@ Deno.serve(async (request: Request) => {
   const lang = body.lang === "es" ? "Spanish (Spain)" : "English";
   const name = String(body.name || "Crew").slice(0, 30);
   const now = String(body.now || "").slice(0, 80);
+  // Long-term memory and live context kept by the desk page.
+  const memory = (Array.isArray(body.memory) ? body.memory : []).slice(-40).map((m) => String(m).replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean);
+  const context = String(body.context || "").replace(/\s+/g, " ").slice(0, 300);
 
   const system =
-    `You are Jarvis, the AI assistant that lives in ${name}'s bedroom, shown on a phone mounted on the wall facing the door. ` +
+    `You are Jarvis, the AI assistant of ${name}'s bedroom: you live on the Chromebook on the desk, with a camera on the wall that tells you who comes through the door. ` +
     `Your replies are spoken aloud by a voice synthesizer, so: answer in ${lang} only, in one to three short natural sentences, ` +
     `with no markdown, lists, emoji or URLs. Be warm, witty and a little dry, like a loyal butler AI. ${name} may talk to you in Spanish or English; ` +
     `always reply in ${lang}. You can control ${name}'s Chromebook browser with your tools (music on YouTube or Spotify, pause or skip, ` +
     `open sites such as Teams for school assignments, Google searches) and send ${name} emails. When you use a tool, say in a few words what you did. ` +
     `You cannot read Teams assignments or emails yet: offer to open Teams or Gmail instead. Smart-home control (lights, air conditioning, fan, TV, PlayStation) ` +
-    `is not connected yet; if asked, say it is coming soon rather than pretending. You cannot see live data such as weather or news; offer a web search instead.`;
+    `is not connected yet; if asked, say it is coming soon rather than pretending. You cannot see news; offer a web search instead. ` +
+    `Messages that start with [Event] come from the room's sensors, not from ${name}; respond to them as instructed, briefly. ` +
+    (context ? `Live context: ${context}. ` : "") +
+    (memory.length ? `What you remember about ${name} (use it naturally, never recite it): ${memory.join(" | ")}.` : "");
   const messages = turns.map((m, i) => ({
     role: m.role as "user" | "assistant",
     content: i === turns.length - 1 && now ? `[Local time: ${now}]\n${m.content.trim()}` : m.content.trim(),
@@ -145,12 +156,15 @@ Deno.serve(async (request: Request) => {
       .filter((block: { type: string }) => block.type === "text")
       .map((block: { text: string }) => block.text).join(" ").replace(/\s+/g, " ").trim();
     // Carry out the actions Claude chose. The reply already says what was done.
-    const actions: string[] = [];
+    const actions: string[] = [], remembered: string[] = [];
     for (const block of response.content || []) {
       if (block.type !== "tool_use") continue;
       const input = block.input || {};
       try {
-        if (block.name === "email_me") {
+        if (block.name === "remember") {
+          const fact = String(input.fact || "").replace(/\s+/g, " ").trim().slice(0, 200);
+          if (fact) { remembered.push(fact); actions.push("remember"); }
+        } else if (block.name === "email_me") {
           const result = await emailMe(String(input.subject || "Jarvis"), String(input.body || ""));
           actions.push("email:" + result);
           if (result !== "sent") reply = lang === "English"
@@ -159,7 +173,7 @@ Deno.serve(async (request: Request) => {
         } else if (block.name === "play_music") {
           await sendToChromebook(given, { action: "play", service: input.service === "spotify" ? "spotify" : "youtube", query: String(input.query || "").slice(0, 200) });
           actions.push("play");
-        } else if (block.name === "media_control" && ["pause", "resume", "next"].includes(input.action)) {
+        } else if (block.name === "media_control" && ["pause", "resume", "next", "previous", "louder", "quieter"].includes(input.action)) {
           await sendToChromebook(given, { action: input.action });
           actions.push(input.action);
         } else if (block.name === "open_site" && SITES.includes(input.site)) {
@@ -175,7 +189,7 @@ Deno.serve(async (request: Request) => {
       }
     }
     if (!reply) reply = lang === "English" ? "Done." : "Hecho.";
-    return json(200, { reply: reply.slice(0, 600), actions });
+    return json(200, { reply: reply.slice(0, 600), actions, ...(remembered.length ? { remember: remembered } : {}) });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError)
       return json(502, { error: "Claude key rejected" });

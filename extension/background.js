@@ -3,7 +3,8 @@
 importScripts("config.js", "commands.js");
 
 let socket = null, heartbeat = null, ref = 0, topic = "", lastAt = 0;
-const status = (state, detail = "") => chrome.storage.local.set({ status: { state, detail, at: Date.now() } });
+let lastStatus = "";
+const status = (state, detail = "") => { lastStatus = state; chrome.storage.local.set({ status: { state, detail, at: Date.now() } }); };
 
 async function connect() {
   const { key } = await chrome.storage.local.get("key");
@@ -51,7 +52,7 @@ async function run(command) {
 // Pause / resume / next on YouTube and Spotify tabs.
 async function media(action) {
   const tabs = await chrome.tabs.query({ url: ["https://www.youtube.com/*", "https://open.spotify.com/*"] });
-  const targets = action === "resume" ? tabs.slice(-1) : tabs.filter((t) => t.audible || action === "pause");
+  const targets = action === "resume" ? tabs.slice(-1) : tabs.filter((t) => t.audible || action === "pause" || action === "previous");
   for (const tab of targets) {
     try {
       await chrome.scripting.executeScript({
@@ -62,11 +63,15 @@ async function media(action) {
           if (location.host === "open.spotify.com") {
             const playing = !!document.querySelector('[data-testid="control-button-playpause"][aria-label*="ause"]');
             if (what === "next") click('[data-testid="control-button-skip-forward"]');
+            else if (what === "previous") click('[data-testid="control-button-skip-back"]');
+            else if (what === "louder" || what === "quieter") return;
             else if ((what === "pause") === playing) click('[data-testid="control-button-playpause"]');
             return;
           }
           const video = document.querySelector("video");
           if (what === "next") click(".ytp-next-button");
+          else if (what === "previous") history.back();
+          else if (video && (what === "louder" || what === "quieter")) video.volume = Math.max(0, Math.min(1, video.volume + (what === "louder" ? 0.15 : -0.15)));
           else if (video) what === "pause" ? video.pause() : video.play();
         },
       });
@@ -78,5 +83,16 @@ chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create("jarvis", { 
 chrome.runtime.onStartup.addListener(connect);
 chrome.alarms.onAlarm.addListener(connect);
 chrome.storage.onChanged.addListener((changes) => { if (changes.key) { topic = ""; connect(); } });
-chrome.runtime.onMessage.addListener((message) => { if (message === "reconnect") { topic = ""; connect(); } });
+chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if (message === "reconnect") { topic = ""; connect(); return; }
+  // From the Jarvis desk page on this Chromebook (bridge.js): instant, no internet.
+  if (message?.bridge) {
+    if (message.action === "ping") { reply({ ok: true, state: lastStatus }); return; }
+    const plan = jarvisPlan({ action: message.action, query: message.query, site: message.site, service: message.service });
+    if (plan?.kind === "media") void media(plan.action).then(() => reply({ ok: true }));
+    else if (plan) void chrome.tabs.create({ url: plan.url }).then(() => reply({ ok: true }));
+    else reply({ ok: false });
+    return true;
+  }
+});
 connect();

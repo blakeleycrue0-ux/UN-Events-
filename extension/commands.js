@@ -24,7 +24,7 @@ function jarvisPlan(command) {
     return { kind: "open", url: JARVIS_SITES[command.site] };
   if (command.action === "search" && text(command.query))
     return { kind: "open", url: "https://www.google.com/search?q=" + encodeURIComponent(text(command.query)) };
-  if (["pause", "resume", "next"].includes(command.action)) return { kind: "media", action: command.action };
+  if (["pause", "resume", "next", "previous", "louder", "quieter"].includes(command.action)) return { kind: "media", action: command.action };
   return null;
 }
 async function jarvisTopic(key) {

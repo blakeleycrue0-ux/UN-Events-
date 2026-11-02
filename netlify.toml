@@ -4,6 +4,11 @@
 
 # The camera app lives at a quiet address; the home page is the room assistant.
 [[redirects]]
+  from = "/pared"
+  to = "/pared.html"
+  status = 200
+
+[[redirects]]
   from = "/camara"
   to = "/camara.html"
   status = 200
@@ -19,7 +24,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
     X-Frame-Options = "DENY"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss: ws://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co https://api.open-meteo.com https://geocoding-api.open-meteo.com wss: ws://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 
 # The surveillance camera never gets the microphone.
 [[headers]]
@@ -37,3 +42,9 @@
   for = "/index.html"
   [headers.values]
     Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"
+
+# The wall camera watches the door; it never needs the microphone.
+[[headers]]
+  for = "/pared*"
+  [headers.values]
+    Permissions-Policy = "camera=(self), microphone=(), geolocation=()"

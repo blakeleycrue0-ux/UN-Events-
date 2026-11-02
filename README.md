@@ -1,6 +1,11 @@
 # Jarvis + SECURITY CAM
 
-**Portada (`/`): Jarvis**, asistente del cuarto que funciona en el navegador: reloj, reconocimiento local de tu cara con saludo por voz, órdenes por voz o texto (hora, día, temporizadores, chistes) y huecos preparados para luces, aire, ventilador, tele y PS5 cuando haya hardware. Las caras se guardan solo en ese móvil. Modelos blazeface/facemesh/faceres de Human 3.3.6 (`models/PROVENANCE.json`).
+**Jarvis** tiene dos piezas que se eligen en el primer arranque de `/`:
+
+- **Escritorio (`/`, Chromebook):** el cerebro y la voz. Esfera de partículas que reacciona a la voz, reloj, tiempo (Open-Meteo), registro de la puerta, música, temporizadores y memoria. Escucha siempre «Jarvis…» con el reconocedor de Chrome (o Espacio / clic), conversa con Claude (`jarvis-brain`), habla con ElevenLabs (`jarvis-voice`), saluda a quien entra (briefing de la mañana para ti, frases propias para mamá y papá), tiene modo noche y gestos con la webcam (✋ pausa, 👉 siguiente, 👍/👎 volumen, ☝️ hablar). La extensión `extension/` (`jarvis-chromebook.zip`) ejecuta música y webs; la página habla con ella directamente con `bridge.js`.
+- **Pared (`/pared`, móvil):** pantalla negra casi apagada que solo mira la puerta (zoom digital al encuadre de la puerta, modelos de caras locales) y avisa al escritorio con `jarvis-event`. Nunca habla.
+
+Código: `src/desk.js`, `src/pared.js`, `src/jarvis/*.js` (empaquetados con esbuild en `desk.js` y `pared.js`). Caras y memoria se guardan solo en el dispositivo.
 
 **Cámara de vigilancia: `/camara`** (lo que sigue).
 

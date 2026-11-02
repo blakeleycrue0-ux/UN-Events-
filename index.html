@@ -4,99 +4,120 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <meta name="theme-color" content="#000000" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Jarvis</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="jarvis.css" />
+    <link rel="stylesheet" href="desk.css" />
   </head>
   <body data-state="off">
     <div class="grid" aria-hidden="true"></div>
+    <div class="aurora" aria-hidden="true"></div>
 
-    <button id="openSettings" class="corner" aria-label="Ajustes">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-    </button>
-    <span id="eye" class="eye" hidden aria-label="Cámara activa"></span>
-
-    <main class="stage">
-      <button id="bubble" class="bubble" aria-label="Toca para hablar">
-        <span class="lens" aria-hidden="true"></span>
-        <span class="rim" aria-hidden="true"></span>
-        <span class="content">
+    <div class="hud">
+      <!-- Left: time and weather -->
+      <section class="col left">
+        <div class="panel time-panel">
           <time id="clock" class="clock">--:--</time>
-          <span id="date" class="date"></span>
-        </span>
-      </button>
-      <p id="say" class="say" aria-live="polite"></p>
-      <p id="heard" class="heard"></p>
-    </main>
-
-    <form id="typeForm" class="type-form" hidden>
-      <input id="typeInput" autocomplete="off" placeholder="Escríbeme…" aria-label="Escribe una orden" />
-    </form>
-
-    <div id="settings" class="sheet" hidden>
-      <div class="sheet-card">
-        <div class="sheet-head"><h2>Ajustes</h2><button id="closeSettings" class="corner static" aria-label="Cerrar">✕</button></div>
-        <label>Tu nombre<input id="name" maxlength="30" autocomplete="off" /></label>
-
-        <h3>Caras</h3>
-        <div id="people"></div>
-        <p id="faceInfo" class="muted"></p>
-        <div id="enrollSlot"></div>
-        <details class="add-person">
-          <summary>Añadir persona</summary>
-          <label>Quién es<select id="personRole"><option value="me">Yo</option><option value="mom">Mamá</option><option value="dad">Papá</option><option value="other">Otra persona</option></select></label>
-          <label>Nombre<input id="personName" maxlength="30" autocomplete="off" placeholder="Ej.: Mamá" /></label>
-          <label>Saludo especial (opcional)<textarea id="personGreeting" maxlength="300" rows="2" placeholder="Si lo dejas vacío, Jarvis elige uno gracioso en inglés"></textarea></label>
-          <div class="row"><button id="addPerson" class="pill">Añadir y registrar cara</button></div>
-        </details>
-        <p class="muted">Cada persona se pone delante de la cámara, sola y con buena luz. Las caras se guardan solo en este móvil.</p>
-
-        <h3>Conversación</h3>
-        <label>Jarvis habla en<select id="lang"><option value="en">English</option><option value="es">Español</option></select></label>
-        <label>Yo le hablo en<select id="hear"><option value="es-ES">Español</option><option value="en-US">English</option></select></label>
-        <label>Cómo te oye<select id="engine"><option value="cloud">Grabación + ElevenLabs (recomendado)</option><option value="native">Reconocimiento de Safari</option></select></label>
-        <label class="check"><input id="always" type="checkbox" /> Escuchar siempre (di «Jarvis…») · experimental</label>
-
-        <h3>Micrófono</h3>
-        <div class="row"><button id="micTest" class="pill ghost">Probar micrófono</button></div>
-        <pre id="micLog" class="mic-log"></pre>
-
-        <h3>Voz</h3>
-        <label>Clave de Jarvis<input id="voiceKey" type="password" autocomplete="off" placeholder="La que pusiste en Supabase" /></label>
-        <div class="row"><button id="testVoice" class="pill">Probar voz</button></div>
-        <p id="voiceInfo" class="muted"></p>
-
-        <h3>Chromebook</h3>
-        <p class="muted">Para que Jarvis ponga música, abra Teams, Gmail o busque cosas en tu Chromebook:</p>
-        <ol class="steps muted">
-          <li>En el Chromebook, descarga <a href="/jarvis-chromebook.zip" download>jarvis-chromebook.zip</a>, ábrelo y copia la carpeta <b>jarvis-chromebook</b> a Descargas.</li>
-          <li>Abre <b>chrome://extensions</b>, activa <b>Modo de desarrollador</b> y pulsa <b>Cargar descomprimida</b>. Elige esa carpeta.</li>
-          <li>Pulsa el icono de Jarvis (la pieza de puzle) y escribe tu clave de Jarvis.</li>
-        </ol>
-
-        <h3>Encuadre de la puerta</h3>
-        <p class="muted">Para reconocer caras lejos (por ejemplo a 5 m): haz zoom y arrastra el recuadro hasta la puerta, a la altura de las caras. Se queda guardado.</p>
-        <div class="row"><button id="frameToggle" class="pill ghost">Ajustar encuadre</button></div>
-        <div id="frameEditor" hidden>
-          <div id="frameSlot" class="frame-slot"></div>
-          <label>Zoom <span id="zoomValue">1.0×</span><input id="zoom" type="range" min="1" max="6" step="0.1" value="1" /></label>
-          <div class="row"><button id="frameReset" class="pill ghost small">Quitar zoom</button></div>
+          <div id="date" class="date"></div>
+          <div id="quiet" class="quiet" hidden>☾ Modo noche · saludos en silencio</div>
         </div>
-        <p id="frameInfo" class="muted"></p>
+        <div class="panel weather">
+          <div class="wx-top"><span id="wxIcon" class="wx-icon">·</span><span id="wxTemp" class="wx-temp">--°</span></div>
+          <div id="wxText" class="wx-text"></div>
+          <div id="wxCity" class="wx-city"></div>
+        </div>
+        <div id="timersCard" class="panel" hidden>
+          <h3>Temporizadores</h3>
+          <ul id="timers" class="timers"></ul>
+        </div>
+      </section>
 
-        <h3>Cámara</h3>
-        <label>Usar<select id="facing"><option value="user">Delantera</option><option value="environment">Trasera</option></select></label>
-        <label class="check"><input id="greetOn" type="checkbox" /> Saludarme al verme</label>
-        <label class="check"><input id="showType" type="checkbox" /> Mostrar teclado para escribir</label>
-        <a class="quiet-link" href="/camara">Cámara del jardín</a>
-      </div>
+      <!-- Centre: the orb -->
+      <main class="core">
+        <canvas id="orb" class="orb" aria-label="Jarvis: haz clic o pulsa Espacio para hablar"></canvas>
+        <p id="say" class="say" aria-live="polite"></p>
+        <p id="heard" class="heard"></p>
+      </main>
+
+      <!-- Right: door, music, memory -->
+      <section class="col right">
+        <div class="panel">
+          <h3>Puerta</h3>
+          <div class="wall-line"><span id="wallDot" class="dot"></span><span id="wallText"></span></div>
+          <ul id="arrivals" class="arrivals"></ul>
+        </div>
+        <div class="panel music">
+          <h3>Música <span id="musicSvc" class="svc"></span></h3>
+          <div id="musicNow" class="music-now"></div>
+          <div class="music-buttons">
+            <button id="mPrev" aria-label="Anterior">⏮</button><button id="mPlay" aria-label="Pausa o reproducir">⏯</button><button id="mNext" aria-label="Siguiente">⏭</button>
+          </div>
+        </div>
+        <div id="memoryCard" class="panel" hidden>
+          <h3>Memoria</h3>
+          <ul id="memory" class="memory"></ul>
+        </div>
+      </section>
     </div>
 
-    <div id="preview" class="preview stash"><video id="video" autoplay muted playsinline></video><div id="frameBox" class="frame-box" hidden></div><span id="faceState" class="face-state"></span></div>
+    <footer class="bar">
+      <span class="chip"><span id="earDot" class="dot"></span>Di «Jarvis…» · Espacio</span>
+      <span class="chip"><span id="handDot" class="dot"></span>✋ pausa · 👉 siguiente · 👍 volumen · ☝️ hablar</span>
+      <span class="chip"><span id="extDot" class="dot"></span>Chromebook</span>
+      <button id="openSettings" class="gear" aria-label="Ajustes">⚙︎</button>
+    </footer>
+
+    <form id="typeForm" class="type-form" hidden><input id="typeInput" autocomplete="off" placeholder="Escríbele a Jarvis…" /></form>
+    <div id="toasts" class="toasts"></div>
+    <div id="hand" class="hand" hidden></div>
+    <video id="handVideo" class="hand-video" autoplay muted playsinline></video>
+
+    <!-- First run: what is this device? -->
+    <div id="chooser" class="overlay" hidden>
+      <div class="choose">
+        <h1>Jarvis</h1>
+        <p>¿Qué hace este dispositivo?</p>
+        <div class="choices">
+          <button id="asDesk" class="choice"><b>💻 Escritorio</b><span>El Chromebook: habla, escucha, pone música y saluda.</span></button>
+          <button id="asWall" class="choice"><b>📱 Pared</b><span>El móvil de la pared: solo mira quién entra por la puerta.</span></button>
+        </div>
+      </div>
+    </div>
+    <button id="wake" class="overlay wake" hidden><span class="wake-ring"></span><span>Haz clic para despertar a Jarvis</span></button>
+
+    <aside id="settings" class="drawer" hidden>
+      <div class="drawer-head"><h2>Ajustes</h2><button id="closeSettings" class="close" aria-label="Cerrar">✕</button></div>
+      <label>Tu nombre<input id="name" maxlength="30" autocomplete="off" /></label>
+      <label>Clave de Jarvis<input id="voiceKey" type="password" autocomplete="off" placeholder="La que pusiste en Supabase" /></label>
+      <div class="row"><button id="testVoice" class="pill">Probar voz</button></div>
+      <p id="voiceInfo" class="muted"></p>
+
+      <h3>Conversación</h3>
+      <label>Jarvis habla en<select id="lang"><option value="en">English</option><option value="es">Español</option></select></label>
+      <label>Yo le hablo en<select id="hear"><option value="es-ES">Español</option><option value="en-US">English</option></select></label>
+      <label class="check"><input id="wakeOn" type="checkbox" /> Escuchar siempre «Jarvis…»</label>
+      <label class="check"><input id="gesturesOn" type="checkbox" /> Gestos con las manos (webcam)</label>
+      <label class="check"><input id="greetOn" type="checkbox" /> Saludar a quien entra</label>
+      <label class="check"><input id="showType" type="checkbox" /> Escribir en vez de hablar</label>
+      <div class="two"><label>Modo noche desde<input id="quietFrom" type="number" min="0" max="23" /></label><label>hasta<input id="quietTo" type="number" min="0" max="23" /></label></div>
+      <label>Ciudad del tiempo<input id="city" autocomplete="off" /></label>
+
+      <h3>Memoria</h3>
+      <ul id="memoryList" class="memory-list"></ul>
+
+      <h3>Extensión del Chromebook</h3>
+      <ol class="steps">
+        <li>Descarga <a href="/jarvis-chromebook.zip" download>jarvis-chromebook.zip</a>, ábrelo y copia la carpeta <b>jarvis-chromebook</b> a Descargas.</li>
+        <li>En <b>chrome://extensions</b> activa <b>Modo de desarrollador</b> → <b>Cargar descomprimida</b> → esa carpeta.</li>
+        <li>Pulsa el icono de Jarvis 🧩 y escribe tu clave. Si ya la tenías, pulsa ↻ en la extensión para actualizarla.</li>
+      </ol>
+
+      <h3>Diagnóstico</h3>
+      <pre id="micLog" class="log"></pre>
+      <a id="toWall" class="quiet-link" href="/pared">Usar este dispositivo como cámara de la pared</a>
+      <a class="quiet-link" href="/camara">Cámara del jardín</a>
+    </aside>
 
     <script src="supabase-config.js"></script>
-    <script src="jarvis.js"></script>
+    <script src="desk.js"></script>
   </body>
 </html>

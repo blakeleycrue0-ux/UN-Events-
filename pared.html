@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Jarvis · Pared</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="pared.css" />
+  </head>
+  <body>
+    <main id="wall" class="wall">
+      <div id="wallFace" class="wall-face">
+        <time id="clock" class="wall-clock">--:--</time>
+        <div id="date" class="wall-date"></div>
+        <div class="wall-status"><span id="camDot" class="dot" title="Cámara"></span><span id="linkDot" class="dot" title="Chromebook"></span><span id="wallState">Toca para empezar</span></div>
+        <div id="wallSeen" class="wall-seen"></div>
+      </div>
+      <button id="wallStart" class="wall-start">Empezar a vigilar la puerta</button>
+    </main>
+
+    <div id="settings" class="sheet" hidden>
+      <div class="sheet-card">
+        <div class="sheet-head"><h2>Pared</h2><button id="closeSettings" class="close" aria-label="Cerrar">✕</button></div>
+        <p class="muted">Este móvil solo mira quién entra y se lo dice al Chromebook. No habla.</p>
+        <label>Clave de Jarvis<input id="voiceKey" type="password" autocomplete="off" placeholder="La misma que en el Chromebook" /></label>
+        <div class="row"><button id="testLink" class="pill ghost">Probar aviso al Chromebook</button></div>
+        <p id="linkInfo" class="muted"></p>
+        <label>Tu nombre<input id="name" maxlength="30" autocomplete="off" /></label>
+
+        <h3>Caras</h3>
+        <div id="people"></div>
+        <p id="faceInfo" class="muted"></p>
+        <div id="enrollSlot"></div>
+        <details class="add-person">
+          <summary>Añadir persona</summary>
+          <label>Quién es<select id="personRole"><option value="me">Yo</option><option value="mom">Mamá</option><option value="dad">Papá</option><option value="other">Otra persona</option></select></label>
+          <label>Nombre<input id="personName" maxlength="30" autocomplete="off" placeholder="Ej.: Mamá" /></label>
+          <label>Saludo especial (opcional)<textarea id="personGreeting" maxlength="300" rows="2" placeholder="Si lo dejas vacío, Jarvis elige uno gracioso en inglés"></textarea></label>
+          <div class="row"><button id="addPerson" class="pill">Añadir y registrar cara</button></div>
+        </details>
+
+        <h3>Encuadre de la puerta</h3>
+        <p class="muted">Haz zoom y arrastra el recuadro hasta la puerta, a la altura de las caras. Registra las caras de pie en la puerta.</p>
+        <div class="row"><button id="frameToggle" class="pill ghost">Ajustar encuadre</button></div>
+        <div id="frameEditor" hidden>
+          <div id="frameSlot" class="frame-slot"></div>
+          <label>Zoom <span id="zoomValue">1.0×</span><input id="zoom" type="range" min="1" max="6" step="0.1" value="1" /></label>
+          <div class="row"><button id="frameReset" class="pill ghost small">Quitar zoom</button></div>
+        </div>
+        <p id="frameInfo" class="muted"></p>
+
+        <h3>Cámara</h3>
+        <label>Usar<select id="facing"><option value="user">Delantera</option><option value="environment">Trasera</option></select></label>
+        <a id="toDesk" class="quiet-link" href="/">Usar este dispositivo como escritorio</a>
+        <a class="quiet-link" href="/camara">Cámara del jardín</a>
+      </div>
+    </div>
+
+    <div id="preview" class="preview stash"><video id="video" autoplay muted playsinline></video><div id="frameBox" class="frame-box" hidden></div><span id="faceState" class="face-state"></span></div>
+
+    <script src="supabase-config.js"></script>
+    <script src="pared.js"></script>
+  </body>
+</html>

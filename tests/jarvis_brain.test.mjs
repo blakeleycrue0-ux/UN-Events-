@@ -69,7 +69,7 @@ test('Claude gets strict tools and its choices reach the Chromebook channel or t
  const s=setup(tool('play_music',{query:'lofi beats',service:'youtube'},'Playing lofi beats on YouTube.'));
  const r=await s.handler(req(convo));assert.deepEqual(await r.json(),{reply:'Playing lofi beats on YouTube.',actions:['play']});
  const p=s.calls.find(c=>c.params).params;
- assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','email_me']);
+ assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','remember','email_me']);
  assert.ok(p.tools.every(t=>t.strict===true&&t.input_schema.additionalProperties===false));
  assert.ok(!('tool_choice' in p));
  const call=s.outbound[0];assert.equal(call.url,'https://fixture.supabase.co/realtime/v1/api/broadcast');
@@ -92,4 +92,14 @@ test('Claude gets strict tools and its choices reach the Chromebook channel or t
  assert.equal(m.body.subject,'Study');assert.equal(m.opts.headers.Authorization,'Bearer re_fixture');
  const nomail=setup(tool('email_me',{subject:'x',body:'y'},'Sent!'));
  assert.equal((await (await nomail.handler(req(convo))).json()).reply,"I can't send emails yet: email isn't set up.");
+});
+test('memory and live context reach Claude; remember comes back to the desk',async()=>{
+ const s=setup(tool('remember',{fact:'Crew has a maths exam on Friday.'},'Noted.'));
+ const r=await s.handler(req({...convo,memory:['Crew likes lofi.','x'.repeat(500)],context:'18°C, sunny in Calvià'}));
+ assert.deepEqual(await r.json(),{reply:'Noted.',actions:['remember'],remember:['Crew has a maths exam on Friday.']});
+ const p=s.calls.find(c=>c.params).params;
+ assert.match(p.system,/Live context: 18°C, sunny in Calvià/);assert.match(p.system,/Crew likes lofi\./);
+ assert.ok(!p.system.includes('x'.repeat(201)),'each memory is capped');
+ assert.equal(s.outbound.length,0,'remembering sends nothing anywhere');
+ const louder=setup(tool('media_control',{action:'louder'}));await louder.handler(req(convo));assert.equal(louder.outbound[0].body.messages[0].payload.action,'louder');
 });
