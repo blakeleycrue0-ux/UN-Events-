@@ -11,10 +11,6 @@
     "models/facemesh.json": "b60ca26f404724f43bd2b1575761d8265180e1f053cc0731caa68462927309e7",
     "models/facemesh.bin": "3826da640b0a3021161605369ee6af293f75d518040355b960ec71a3390c1c0b",
     "models/faceres.json": "5b83d49c0385d2e68a05122441b94226313677cae9fcc40b9587ad50079eb4df",
-    "models/faceres.bin": "2c7d2d62b76c97528b736527aa09d310ea71743c9e3e79fb6c62d4b2d73af79b",
-    "models/handtrack.json": "a27d86daea1799c65dd0ad99ea1855a6b6dc721bf7ba4d4eb1a138c9e51d5755",
-    "models/handtrack.bin": "70164f725aefbbf8094a8ef4150dc10e906b6f0976b484ef8ec882d3eae4b812",
-    "models/handlandmark-lite.json": "8478ec3224129957f1436194738ad26ac78bbac8ea3be1730399ccad6964a27f",
-    "models/handlandmark-lite.bin": "3dbf92db39720eac7f88aff322a24d3f4ed3ba1f54aa7a8a37b704f14cb76c0e"
+    "models/faceres.bin": "2c7d2d62b76c97528b736527aa09d310ea71743c9e3e79fb6c62d4b2d73af79b"
   }
 }

@@ -29,7 +29,6 @@
       greet: true,
       crop: { cx: 0.5, cy: 0.5, zoom: 1 },
       wake: true,
-      gestures: true,
       quietFrom: 23,
       quietTo: 8,
       city: "Calvi\xE0",
@@ -46,15 +45,6 @@
   var pick = (list) => list[Math.floor(Math.random() * list.length)];
   var normalize = (x) => x.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!.,]/g, " ").replace(/\s+/g, " ").trim();
   var has = (text, ...words) => words.some((w) => new RegExp(`(^| )${w}( |$)`).test(text));
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = () => reject(Error("No se pudo cargar " + src));
-      document.head.append(s);
-    });
-  }
   async function sha256hex(text) {
     const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
     return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -154,7 +144,7 @@
       thinkDown: "I can't reach my brain right now.",
       devices: { luz: "the lights", aire: "the air conditioning", ventilador: "the fan", tele: "the TV" },
       stranger: "Someone I don't recognise is at the door.",
-      gesture: { pause: "Paused.", resume: "Playing.", next: "Next one.", louder: "Louder.", quieter: "Quieter." }
+      media: { pause: "Paused.", resume: "Playing.", next: "Next one.", louder: "Louder.", quieter: "Quieter." }
     },
     es: {
       start: "Haz clic para despertarme",
@@ -188,7 +178,7 @@
       thinkDown: "Ahora no puedo conectar con mi cerebro.",
       devices: { luz: "las luces", aire: "el aire acondicionado", ventilador: "el ventilador", tele: "la tele" },
       stranger: "Hay alguien en la puerta que no reconozco.",
-      gesture: { pause: "Pausa.", resume: "Seguimos.", next: "Siguiente.", louder: "M\xE1s alto.", quieter: "M\xE1s bajo." }
+      media: { pause: "Pausa.", resume: "Seguimos.", next: "Siguiente.", louder: "M\xE1s alto.", quieter: "M\xE1s bajo." }
     }
   };
   var FAMILY = {
@@ -588,102 +578,6 @@
     return ears2;
   }
 
-  // src/jarvis/hands.js
-  var FINGERS = ["index", "middle", "ring", "pinky"];
-  function pose(landmarks) {
-    if (!landmarks?.thumb) return "";
-    const curls = FINGERS.map((f) => landmarks[f]?.curl);
-    const thumb = landmarks.thumb;
-    if (curls.every((c) => c === "none")) return "palm";
-    if (curls.every((c) => c !== "none")) {
-      if (thumb.curl === "none" && /^(verticalUp|diagonalUp)/.test(thumb.direction)) return "thumbUp";
-      if (thumb.curl === "none" && /^(verticalDown|diagonalDown)/.test(thumb.direction)) return "thumbDown";
-      return "fist";
-    }
-    if (curls[0] === "none" && curls.slice(1).every((c) => c !== "none") && /Up/.test(landmarks.index.direction || "")) return "point";
-    return "";
-  }
-  function createGestureReader({ holdMS = 600, cooldownMS = 1400, swipe = 0.22, swipeMS = 450 } = {}) {
-    let current = "", since = 0, fired = false, until = 0, trail = [];
-    return (p, x, now) => {
-      if (x != null) {
-        trail.push({ x, now });
-        trail = trail.filter((t2) => now - t2.now <= swipeMS);
-      } else trail = [];
-      if (now < until) {
-        current = p;
-        since = now;
-        return "";
-      }
-      if (p === "palm" && trail.length > 2 && Math.abs(trail[trail.length - 1].x - trail[0].x) > swipe) {
-        const dir = trail[trail.length - 1].x > trail[0].x ? "right" : "left";
-        until = now + cooldownMS;
-        trail = [];
-        fired = true;
-        return dir === "right" ? "next" : "previous";
-      }
-      if (p !== current) {
-        current = p;
-        since = now;
-        fired = false;
-        return "";
-      }
-      if (!p || fired || now - since < holdMS) return "";
-      if (trail.length > 1 && Math.abs(trail[trail.length - 1].x - trail[0].x) > swipe / 3) return "";
-      fired = true;
-      until = now + cooldownMS;
-      return { palm: "toggle", thumbUp: "louder", thumbDown: "quieter", point: "talk" }[p] || "";
-    };
-  }
-  async function createHandDetector() {
-    if (!window.Human) await loadScript("vendor/human.js");
-    const human = new Human.Human({
-      backend: "webgl",
-      modelBasePath: new URL("models/", location.href).href,
-      cacheModels: false,
-      debug: false,
-      async: false,
-      warmup: "none",
-      filter: { enabled: false, return: false },
-      face: { enabled: false },
-      body: { enabled: false },
-      object: { enabled: false },
-      segmentation: { enabled: false },
-      gesture: { enabled: false },
-      hand: {
-        enabled: true,
-        rotation: false,
-        maxDetected: 1,
-        minConfidence: 0.55,
-        skipFrames: 0,
-        skipTime: 0,
-        landmarks: true,
-        detector: { modelPath: "handtrack.json" },
-        skeleton: { modelPath: "handlandmark-lite.json" }
-      }
-    });
-    await human.load();
-    const stats = human.models.stats();
-    const missing = ["handtrack", "handskeleton"].filter((n) => {
-      const m = stats.modelStats.find((s) => s.name === n);
-      return m && (!m.loaded || m.sizeLoadedWeights <= 0);
-    });
-    if (!stats.numLoadedModels || missing.length) {
-      human.reset();
-      throw Error("No se cargaron los modelos de manos.");
-    }
-    return {
-      async detect(video) {
-        const result = await human.detect(video);
-        const hand = result?.hand?.[0];
-        if (!hand?.landmarks) return null;
-        const [bx, by, bw, bh] = hand.box || [0, 0, 0, 0];
-        const w = video.videoWidth || video.width || 1, h = video.videoHeight || video.height || 1;
-        return { pose: pose(hand.landmarks), x: 1 - (bx + bw / 2) / w, y: (by + bh / 2) / h };
-      }
-    };
-  }
-
   // src/jarvis/orb.js
   var PALETTE = {
     off: [120, 130, 150],
@@ -693,8 +587,7 @@
     speaking: [120, 210, 255],
     blocked: [255, 170, 80],
     alert: [255, 80, 90],
-    arrival: [90, 255, 170],
-    gesture: [255, 220, 120]
+    arrival: [90, 255, 170]
   };
   function createOrb(canvas, { count = 900 } = {}) {
     const ctx = canvas.getContext("2d");
@@ -799,7 +692,6 @@
     door: svg('<path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21M4 21h16"/><circle cx="14.5" cy="12" r=".6" fill="currentColor"/>'),
     laptop: svg('<rect x="4.5" y="5" width="15" height="10" rx="1.4"/><path d="M2.5 19h19"/>'),
     mic: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>'),
-    hand: svg('<path d="M8 12.5V6a1.5 1.5 0 0 1 3 0v5.5M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v7.5a7 7 0 0 1-7 7h-.6a6 6 0 0 1-4.6-2.2L2.7 15a1.5 1.5 0 0 1 2.3-1.9l3 3"/>'),
     moon: svg('<path d="M19.5 14.6A7.6 7.6 0 1 1 9.4 4.5a6 6 0 0 0 10.1 10.1z"/>')
   };
   function weatherKind(code, night = false) {
@@ -836,7 +728,6 @@
     activeAt: Date.now(),
     extension: false,
     music: store.get("jarvis-music", null),
-    gestures: [],
     settings,
     log: []
   };
@@ -1021,7 +912,6 @@
     }
     $("memoryCard").hidden = !desk.memory.length;
     $("extDot").classList.toggle("on", desk.extension);
-    $("handDot").classList.toggle("on", !!desk.handsOn);
     $("earDot").classList.toggle("on", settings.wake && !ears.blocked && desk.started);
     document.body.classList.toggle("ambient", desk.started && Date.now() - desk.activeAt > 18e4);
   }
@@ -1143,6 +1033,21 @@
     }
   }
   desk.think = think;
+  async function restoreMemory() {
+    if (desk.memory.length || !settings.key) return;
+    try {
+      const response = await call("jarvis-call", { action: "state" }, settings.key);
+      const data = await response.json().catch(() => ({}));
+      const facts = Array.isArray(data.memory) ? data.memory.map((m) => String(m).slice(0, 200)).filter(Boolean) : [];
+      if (!response.ok || !facts.length || desk.memory.length) return;
+      desk.memory = facts.slice(-40);
+      store.set("jarvis-memory", desk.memory);
+      render();
+      toast(settings.lang === "es" ? `He recuperado ${facts.length} recuerdos.` : `Restored ${facts.length} memories.`);
+    } catch {
+    }
+  }
+  desk.restoreMemory = restoreMemory;
   function addMemory(fact) {
     if (!fact || desk.memory.includes(fact)) return;
     desk.memory.push(fact);
@@ -1318,66 +1223,13 @@
     if (action === "resume") playing = true;
     $("mPlayIcon").innerHTML = ICONS[playing ? "pause" : "play"];
     const ok = await extension(action);
-    toast(ok ? t().gesture[action] || action : settings.lang === "es" ? "Instala la extensi\xF3n de Jarvis en este Chromebook" : "Install the Jarvis extension on this Chromebook");
+    toast(ok ? t().media[action] || action : settings.lang === "es" ? "Instala la extensi\xF3n de Jarvis en este ordenador" : "Install the Jarvis extension on this computer");
     return ok;
   }
   desk.media = media;
   $("mPrev").onclick = () => media("previous");
   $("mPlay").onclick = () => media("toggle");
   $("mNext").onclick = () => media("next");
-  var reader = createGestureReader();
-  desk.handPose = "";
-  async function startHands() {
-    if (!settings.gestures || desk.handsOn) return;
-    try {
-      const cam = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } });
-      $("handVideo").srcObject = cam;
-      await $("handVideo").play().catch(() => {
-      });
-      desk.handDetector = desk.handDetector || await (desk.createHandDetector || createHandDetector)();
-      desk.handsOn = true;
-      render();
-      handLoop();
-    } catch (e) {
-      log("manos: " + e.message);
-      toast(settings.lang === "es" ? "Gestos no disponibles: " + e.message : "Gestures unavailable: " + e.message);
-    }
-  }
-  desk.startHands = startHands;
-  async function handLoop() {
-    if (!desk.handsOn) return;
-    if (!document.hidden && $("handVideo").readyState >= 2) {
-      try {
-        const hand = await desk.handDetector.detect($("handVideo"));
-        desk.handPose = hand?.pose || "";
-        $("hand").hidden = !hand;
-        if (hand) {
-          $("hand").style.left = hand.x * 100 + "%";
-          $("hand").style.top = hand.y * 100 + "%";
-          $("hand").dataset.pose = hand.pose;
-        }
-        const action = reader(hand?.pose || "", hand ? hand.x : null, Date.now());
-        if (action) {
-          desk.gestures.push(action);
-          log("gesto: " + action);
-          onGesture(action);
-        }
-      } catch (e) {
-        log("manos: " + e.message);
-      }
-    }
-    setTimeout(handLoop, 110);
-  }
-  function onGesture(action) {
-    orb.flash("gesture");
-    if (action === "talk") {
-      voice.stop();
-      ears.direct();
-      return;
-    }
-    void media(action);
-  }
-  desk.onGesture = onGesture;
   var home = null;
   async function start() {
     if (desk.started) return;
@@ -1389,9 +1241,9 @@
     say(t().waking);
     await ears.openMeter();
     if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
+    void restoreMemory();
     void loadWeather();
     setInterval(loadWeather, 20 * 6e4);
-    void startHands();
     try {
       if (navigator.wakeLock) await navigator.wakeLock.request("screen");
     } catch {
@@ -1458,7 +1310,6 @@
     for (const id of ["name", "lang", "hear", "city"]) $(id).value = settings[id];
     $("voiceKey").value = settings.key;
     $("wakeOn").checked = settings.wake;
-    $("gesturesOn").checked = settings.gestures;
     $("greetOn").checked = settings.greet;
     $("quietFrom").value = settings.quietFrom;
     $("quietTo").value = settings.quietTo;
@@ -1524,17 +1375,6 @@
     if (settings.wake) ears.resume();
     else ears.pause();
     render();
-  };
-  $("gesturesOn").onchange = () => {
-    settings.gestures = $("gesturesOn").checked;
-    settings.save();
-    if (settings.gestures) void startHands();
-    else {
-      desk.handsOn = false;
-      $("handVideo").srcObject?.getTracks().forEach((t2) => t2.stop());
-      $("hand").hidden = true;
-      render();
-    }
   };
   $("city").onchange = async () => {
     const name = $("city").value.trim();

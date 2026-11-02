@@ -84,3 +84,11 @@ test('cron needs the Vault secret and delivers due reminders by call or on the C
  const n=setup({env:{TWILIO_ACCOUNT_SID:''},db:{due:[{id:1,text:'Study',via:'call',lang:'en'}]}});
  assert.deepEqual(await (await n.handler(cron('cron-secret-1234567890'))).json(),{delivered:['chromebook']});
 });
+
+test('a new desk gets its memory back with the Jarvis key, even before calls are set up',async()=>{
+ const s=setup({env:{TWILIO_ACCOUNT_SID:''}});
+ const r=await s.handler(desk({action:'state'}));
+ assert.deepEqual(await r.json(),{name:'Crew',memory:['Maths exam Friday'],calls:false});
+ assert.equal((await setup().handler(desk({action:'state'},{key:'nope'}))).status,401);
+ assert.ok(!s.out.some(o=>o.url.includes('twilio')));
+});

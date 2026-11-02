@@ -122,9 +122,6 @@ body.night .side { opacity: .5; }
 .toasts { position: fixed; top: calc(var(--u) * 5.5); left: 50%; transform: translateX(-50%); display: grid; gap: 8px; z-index: 6; justify-items: center; }
 .toast { padding: calc(var(--u) * .55) calc(var(--u) * 1.3); border-radius: 999px; border: 1px solid var(--hair); background: rgba(16, 18, 24, .82); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); font-size: calc(var(--u) * .85); letter-spacing: .04em; color: var(--soft); animation: rise .4s ease; transition: opacity .6s, transform .6s; }
 .toast.out { opacity: 0; transform: translateY(-6px); }
-.hand { position: fixed; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 1px solid var(--accent); box-shadow: 0 0 22px rgba(169, 207, 255, .7); pointer-events: none; transition: left .12s linear, top .12s linear, transform .2s; z-index: 4; }
-.hand[data-pose="palm"] { transform: scale(1.5); }
-.hand-video { position: fixed; width: 2px; height: 2px; opacity: .01; pointer-events: none; left: 0; bottom: 0; }
 .type-form { position: fixed; left: 50%; bottom: calc(var(--u) * 3); transform: translateX(-50%); width: min(560px, 80vw); z-index: 3; }
 .type-form input { width: 100%; padding: calc(var(--u) * .9) calc(var(--u) * 1.4); border-radius: 999px; border: 1px solid var(--hair); background: rgba(255, 255, 255, .04); outline: none; user-select: text; }
 
@@ -159,8 +156,6 @@ body.night .side { opacity: .5; }
 .row { display: flex; gap: 10px; margin-top: 14px; }
 .pill { padding: 10px 20px; border-radius: 999px; background: var(--text); color: #000; font-weight: 500; font-size: 14px; }
 .muted { color: var(--muted); font-size: 13px; }
-.gestures { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; font-size: 14px; color: var(--soft); }
-.gestures li { display: flex; justify-content: space-between; gap: 12px; } .gestures b { font-weight: 500; } .gestures span { color: var(--muted); }
 .steps { padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; } .steps li { margin: 6px 0; } .steps a { color: var(--accent); } .steps b { color: var(--soft); font-weight: 500; }
 .memory-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 14px; }
 .memory-list li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--hair); color: var(--soft); }

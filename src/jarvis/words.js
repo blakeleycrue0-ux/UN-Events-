@@ -23,7 +23,7 @@ export const T = {
     thinkDown: "I can't reach my brain right now.",
     devices: { luz: "the lights", aire: "the air conditioning", ventilador: "the fan", tele: "the TV" },
     stranger: "Someone I don't recognise is at the door.",
-    gesture: { pause: "Paused.", resume: "Playing.", next: "Next one.", louder: "Louder.", quieter: "Quieter." },
+    media: { pause: "Paused.", resume: "Playing.", next: "Next one.", louder: "Louder.", quieter: "Quieter." },
   },
   es: {
     start: "Haz clic para despertarme", waking: "Arrancando…", listening: "Te escucho…", idleHint: "Di «Jarvis…» o pulsa Espacio",
@@ -46,7 +46,7 @@ export const T = {
     thinkDown: "Ahora no puedo conectar con mi cerebro.",
     devices: { luz: "las luces", aire: "el aire acondicionado", ventilador: "el ventilador", tele: "la tele" },
     stranger: "Hay alguien en la puerta que no reconozco.",
-    gesture: { pause: "Pausa.", resume: "Seguimos.", next: "Siguiente.", louder: "Más alto.", quieter: "Más bajo." },
+    media: { pause: "Pausa.", resume: "Seguimos.", next: "Siguiente.", louder: "Más alto.", quieter: "Más bajo." },
   },
 };
 

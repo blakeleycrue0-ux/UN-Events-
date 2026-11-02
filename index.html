@@ -17,8 +17,7 @@
       <div class="status">
         <span class="stat" title="Cámara de la puerta"><span id="wallDot" class="dot"></span><span class="ico" data-icon="door"></span><span>Door</span></span>
         <span class="stat" title="Escuchar «Jarvis…»"><span id="earDot" class="dot"></span><span class="ico" data-icon="mic"></span><span>Voice</span></span>
-        <span class="stat" title="Gestos con la webcam"><span id="handDot" class="dot"></span><span class="ico" data-icon="hand"></span><span>Gestures</span></span>
-        <span class="stat" title="Extensión del Chromebook"><span id="extDot" class="dot"></span><span class="ico" data-icon="laptop"></span><span>Chromebook</span></span>
+        <span class="stat" title="Extensión de Jarvis en Chrome"><span id="extDot" class="dot"></span><span class="ico" data-icon="laptop"></span><span>Extension</span></span>
         <button id="openSettings" class="icon-btn" aria-label="Ajustes"><span class="ico" data-icon="gear"></span></button>
       </div>
     </header>
@@ -80,8 +79,6 @@
 
     <form id="typeForm" class="type-form" hidden><input id="typeInput" autocomplete="off" placeholder="Type to Jarvis…" /></form>
     <div id="toasts" class="toasts"></div>
-    <div id="hand" class="hand" hidden></div>
-    <video id="handVideo" class="hand-video" autoplay muted playsinline></video>
 
     <div id="chooser" class="overlay" hidden>
       <div class="choose">
@@ -107,19 +104,11 @@
       <label>Jarvis habla en<select id="lang"><option value="en">English</option><option value="es">Español</option></select></label>
       <label>Yo le hablo en<select id="hear"><option value="es-ES">Español</option><option value="en-US">English</option></select></label>
       <label class="check"><input id="wakeOn" type="checkbox" /> Escuchar siempre «Jarvis…»</label>
-      <label class="check"><input id="gesturesOn" type="checkbox" /> Gestos con las manos (webcam)</label>
       <label class="check"><input id="greetOn" type="checkbox" /> Saludar a quien entra</label>
       <label class="check"><input id="showType" type="checkbox" /> Escribir en vez de hablar</label>
       <div class="two"><label>Modo noche desde<input id="quietFrom" type="number" min="0" max="23" /></label><label>hasta<input id="quietTo" type="number" min="0" max="23" /></label></div>
       <label>Ciudad del tiempo<input id="city" autocomplete="off" /></label>
 
-      <h3>Gestos</h3>
-      <ul class="gestures">
-        <li><b>Mano abierta</b> quieta un segundo<span>Pausa / reproducir</span></li>
-        <li><b>Deslizar la mano</b> a un lado<span>Siguiente / anterior</span></li>
-        <li><b>Pulgar arriba / abajo</b><span>Volumen</span></li>
-        <li><b>Índice hacia arriba</b><span>Hablar sin decir «Jarvis»</span></li>
-      </ul>
 
       <h3>Llamadas y recordatorios</h3>
       <p class="muted">Jarvis puede llamarte al móvil para recordarte cosas y hablar contigo («Jarvis, llámame mañana a las 8 para el examen»). Necesita Twilio configurado en Supabase.</p>
@@ -129,11 +118,11 @@
       <h3>Memoria</h3>
       <ul id="memoryList" class="memory-list"></ul>
 
-      <h3>Extensión del Chromebook</h3>
+      <h3>Extensión de Jarvis (Chrome)</h3>
       <ol class="steps">
         <li>Descarga <a href="/jarvis-chromebook.zip" download>jarvis-chromebook.zip</a>, ábrelo y copia la carpeta <b>jarvis-chromebook</b> a Descargas.</li>
         <li>En <b>chrome://extensions</b> activa <b>Modo de desarrollador</b> → <b>Cargar descomprimida</b> → esa carpeta.</li>
-        <li>Pulsa el icono de Jarvis y escribe tu clave. Si ya la tenías, pulsa ↻ en la extensión para actualizarla.</li>
+        <li>Pulsa el icono de Jarvis (la pieza de puzle) y escribe tu clave. Si ya la tenías, pulsa ↻ en la extensión para actualizarla.</li>
       </ol>
 
       <h3>Diagnóstico</h3>

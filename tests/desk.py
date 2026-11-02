@@ -1,6 +1,6 @@
 """Jarvis desk (Chromebook). External services are fixtures: home channel
 (Supabase Realtime), Claude brain, ElevenLabs voice, Open-Meteo, Chrome's
-speech recognizer, the hand detector and the Chromebook extension bridge."""
+speech recognizer and the Chrome extension bridge."""
 import json, pathlib, re, time
 from playwright.sync_api import sync_playwright
 
@@ -28,9 +28,6 @@ window.extCalls=[];
 window.extMsgs=[];
 window.addEventListener('message',e=>{if(e.data?.source!=='jarvis-desk')return;extCalls.push(e.data.action);extMsgs.push(e.data);
   window.postMessage({source:'jarvis-extension',id:e.data.id,ok:true},'*')});
-// Fake hand detector fed from handQueue.
-window.handQueue=[];
-document.addEventListener('DOMContentLoaded',()=>{if(window.desk)desk.createHandDetector=async()=>({detect:async()=>{const h=handQueue.shift();return h===undefined||h===null?null:h}})});
 """
 voice, brain, sockets = [], [], []
 brain_replies = {}
@@ -90,6 +87,11 @@ with sync_playwright() as p:
     page.add_init_script(INIT)
     page.route('https://*.supabase.co/functions/v1/jarvis-voice', tts)
     page.route('https://*.supabase.co/functions/v1/jarvis-brain', think)
+    calls = []
+    def jarvis_call(route):
+        calls.append(json.loads(route.request.post_data or '{}'))
+        route.fulfill(status=200, headers={'Access-Control-Allow-Origin': '*'}, content_type='application/json', body=json.dumps({'name': 'Crew', 'memory': ['Crew supports Real Mallorca.'], 'calls': False}))
+    page.route('https://*.supabase.co/functions/v1/jarvis-call', jarvis_call)
     page.route('https://api.open-meteo.com/**', weather)
     page.route_web_socket('wss://*.supabase.co/**', realtime)
 
@@ -107,6 +109,9 @@ with sync_playwright() as p:
     page.wait_for_function("document.getElementById('wxTemp').textContent==='21°'", timeout=8000)
     assert page.locator('#wxHours li').count() == 5 and page.locator('#wxHours li svg').count() == 5
     assert 'Calvià' in page.locator('#wxCity').inner_text()
+    # A new computer gets Jarvis's memory back from Supabase.
+    page.wait_for_function("desk.memory.includes('Crew supports Real Mallorca.')", timeout=8000)
+    assert calls[0] == {'action': 'state'}
     page.wait_for_function("recLog.length>=1", timeout=8000)
     for _ in range(50):
         if sockets and sockets[0]['topic']: break
@@ -120,7 +125,7 @@ with sync_playwright() as p:
     wait_voice(page, '^Brain says: what is the meaning of life$')
     wait_voice(page, '^Brain says: and why$')
     assert [m['role'] for m in brain[-1]['messages']] == ['user', 'assistant', 'user']
-    assert 'Calvià: 21°C' in brain[-1]['context'] and brain[-1]['lang'] == 'en' and brain[-1]['memory'] == []
+    assert 'Calvià: 21°C' in brain[-1]['context'] and brain[-1]['lang'] == 'en' and brain[-1]['memory'] == ['Crew supports Real Mallorca.']
     calm(page)
     n = len(brain)
     page.evaluate("recQueue.push({results:[['so I told my friend',false]],end:false})"); page.wait_for_timeout(3500)
@@ -135,11 +140,11 @@ with sync_playwright() as p:
     calm(page)
     page.evaluate("recQueue.push({results:[['I have a maths exam on Friday',true]],end:true})"); page.keyboard.press('Space')
     page.wait_for_function("document.getElementById('memory').textContent.includes('maths exam')", timeout=8000)
-    assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == ['Crew has a maths exam on Friday.']
+    assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == ['Crew supports Real Mallorca.', 'Crew has a maths exam on Friday.']
     calm(page)
     page.evaluate("recQueue.push({results:[['what do you know about me',true]],end:true})"); page.keyboard.press('Space')
     wait_voice(page, 'what do you know')
-    assert brain[-1]['memory'] == ['Crew has a maths exam on Friday.']
+    assert brain[-1]['memory'] == ['Crew supports Real Mallorca.', 'Crew has a maths exam on Friday.']
     calm(page)
 
     # Timers are local and instant.
@@ -198,29 +203,20 @@ with sync_playwright() as p:
     assert len(voice) == n and page.locator('#quiet').is_visible()
     page.evaluate("()=>{desk.settings.quietFrom=3;desk.settings.quietTo=3}")
 
-    # Hand gestures → Chromebook extension (instant, local).
-    page.wait_for_function("desk.handsOn===true", timeout=8000)
-    page.evaluate("extCalls.length=0; for(let i=0;i<12;i++) handQueue.push({pose:'palm',x:0.5,y:0.5})")
-    page.wait_for_function("extCalls.includes('pause')", timeout=5000)
-    page.evaluate("handQueue.length=0"); page.wait_for_timeout(1700)
-    page.evaluate("for(const x of [0.2,0.3,0.42,0.55,0.62]) handQueue.push({pose:'palm',x,y:0.5})")
-    page.wait_for_function("extCalls.includes('next')", timeout=5000)
-    page.wait_for_timeout(1700)
-    page.evaluate("for(let i=0;i<10;i++) handQueue.push({pose:'thumbUp',x:0.5,y:0.5})")
-    page.wait_for_function("extCalls.includes('louder')", timeout=5000)
-    page.wait_for_timeout(1700)
-    page.evaluate("recQueue.length=0; recQueue.push({results:[['Jarvis no hace falta',true]],end:true}); for(let i=0;i<10;i++) handQueue.push({pose:'point',x:0.5,y:0.5})")
-    page.wait_for_function("desk.gestures.includes('talk')", timeout=5000)
-    wait_voice(page, 'no hace falta'); calm(page)
+    # Music buttons → extension (instant, local); no camera is used on the desk.
+    page.evaluate("extCalls.length=0")
+    page.click('#mPlay'); page.wait_for_function("extCalls.includes('pause')")
+    page.click('#mPlay'); page.wait_for_function("extCalls.includes('resume')")
     assert page.evaluate("document.getElementById('extDot').classList.contains('on')")
-    page.click('#mNext'); page.wait_for_function("extCalls.filter(x=>x==='next').length>=2")
+    assert page.evaluate("!document.getElementById('handVideo') && !('handsOn' in desk)")
+    page.click('#mNext'); page.wait_for_function("extCalls.includes('next')")
 
     page.evaluate("document.getElementById('say').textContent='Good evening, Crew. 21 degrees and clear in Calvià.'")
     page.screenshot(path='/tmp/desk-live.png')
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth && document.documentElement.scrollHeight<=innerHeight')
     page.click('#openSettings'); page.wait_for_timeout(400); page.screenshot(path='/tmp/desk-settings.png')
     assert 'maths exam' in page.locator('#memoryList').inner_text()
-    page.locator('#memoryList button').first.click()
+    page.locator('#memoryList button').first.click(); page.locator('#memoryList button').first.click()
     assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == []
     page.click('#closeSettings')
 
@@ -231,5 +227,5 @@ with sync_playwright() as p:
     # A device that chose "wall" goes to the wall page.
     page.goto(URL); page.evaluate("localStorage.setItem('jarvis-role','\"wall\"')"); page.goto(URL); page.wait_for_url('**/pared.html')
     assert not errors, errors
-    print('PASS Jarvis desk: device chooser; wake greeting; home channel on the key-derived topic; weather; "Jarvis…" background listening with follow-up; Space to talk; music card; long-term memory sent to Claude and editable; local timers; door events (Mum, Dad custom, stranger, your daily briefing then welcome back, silent at night); hand gestures (pause, swipe next, louder, point to talk) through the extension bridge; fits 1366×768')
+    print('PASS Jarvis desk: device chooser; wake greeting; home channel on the key-derived topic; weather; "Jarvis…" background listening with follow-up; Space to talk; music card; long-term memory sent to Claude and editable; local timers; door events (Mum, Dad custom, stranger, your daily briefing then welcome back, silent at night); agent task card with spoken confirmation; reminders; music buttons through the extension bridge; fits 1366×768')
     b.close()

@@ -15,7 +15,7 @@ export const store = {
 export function loadSettings() {
   const settings = Object.assign({
     name: "Crew", key: "", lang: "en", hear: "es-ES", facing: "user", greet: true,
-    crop: { cx: 0.5, cy: 0.5, zoom: 1 }, wake: true, gestures: true, quietFrom: 23, quietTo: 8,
+    crop: { cx: 0.5, cy: 0.5, zoom: 1 }, wake: true, quietFrom: 23, quietTo: 8,
     city: "Calvià", lat: 39.56, lon: 2.51,
   }, store.get("jarvis-settings", {}));
   settings.save = () => { const { save, ...plain } = settings; void save; store.set("jarvis-settings", plain); };

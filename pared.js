@@ -29,7 +29,6 @@
       greet: true,
       crop: { cx: 0.5, cy: 0.5, zoom: 1 },
       wake: true,
-      gestures: true,
       quietFrom: 23,
       quietTo: 8,
       city: "Calvi\xE0",

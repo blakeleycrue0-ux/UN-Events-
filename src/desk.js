@@ -1,11 +1,10 @@
 // Jarvis · Escritorio: the Chromebook is the brain and the voice. It listens,
-// talks, plays music, reacts to hand gestures, and greets whoever the wall
+// talks, plays music, runs browser jobs, and greets whoever the wall
 // camera (the phone) sees coming in.
 import { $, store, loadSettings, call, connectHome, clockParts, pick, normalize } from "./jarvis/common.js";
 import { T, FAMILY, greeting, quick, offline } from "./jarvis/words.js";
 import { createVoice } from "./jarvis/voice.js";
 import { createEars, afterWake } from "./jarvis/ears.js";
-import { createGestureReader, createHandDetector } from "./jarvis/hands.js";
 import { createOrb } from "./jarvis/orb.js";
 import { ICONS, weatherKind } from "./jarvis/icons.js";
 
@@ -19,7 +18,7 @@ const t = () => T[settings.lang] || T.en;
 const desk = window.desk = {
   started: false, state: "off", history: [], lastTalk: 0, memory: store.get("jarvis-memory", []),
   arrivals: store.get("jarvis-arrivals", []), timers: [], weather: null, wallSeen: 0, activeAt: Date.now(),
-  extension: false, music: store.get("jarvis-music", null), gestures: [], settings, log: [],
+  extension: false, music: store.get("jarvis-music", null), settings, log: [],
 };
 const log = (m) => {
   const d = new Date();
@@ -146,7 +145,6 @@ function render() {
   for (const m of desk.memory.slice(-4).reverse()) { const li = document.createElement("li"); li.textContent = m; mem.append(li); }
   $("memoryCard").hidden = !desk.memory.length;
   $("extDot").classList.toggle("on", desk.extension);
-  $("handDot").classList.toggle("on", !!desk.handsOn);
   $("earDot").classList.toggle("on", settings.wake && !ears.blocked && desk.started);
   // Ambient: after a few quiet minutes the side panels step back.
   document.body.classList.toggle("ambient", desk.started && Date.now() - desk.activeAt > 180000);
@@ -228,6 +226,19 @@ async function think(raw, { remember = true, event = false } = {}) {
   }
 }
 desk.think = think;
+// New computer: bring back what Jarvis remembers from Supabase.
+async function restoreMemory() {
+  if (desk.memory.length || !settings.key) return;
+  try {
+    const response = await call("jarvis-call", { action: "state" }, settings.key);
+    const data = await response.json().catch(() => ({}));
+    const facts = Array.isArray(data.memory) ? data.memory.map((m) => String(m).slice(0, 200)).filter(Boolean) : [];
+    if (!response.ok || !facts.length || desk.memory.length) return;
+    desk.memory = facts.slice(-40); store.set("jarvis-memory", desk.memory); render();
+    toast(settings.lang === "es" ? `He recuperado ${facts.length} recuerdos.` : `Restored ${facts.length} memories.`);
+  } catch { /* offline: start fresh */ }
+}
+desk.restoreMemory = restoreMemory;
 function addMemory(fact) {
   if (!fact || desk.memory.includes(fact)) return;
   desk.memory.push(fact); while (desk.memory.length > 40) desk.memory.shift();
@@ -348,44 +359,11 @@ async function media(action) {
   if (action === "pause") playing = false; if (action === "resume") playing = true;
   $("mPlayIcon").innerHTML = ICONS[playing ? "pause" : "play"];
   const ok = await extension(action);
-  toast(ok ? t().gesture[action] || action : (settings.lang === "es" ? "Instala la extensión de Jarvis en este Chromebook" : "Install the Jarvis extension on this Chromebook"));
+  toast(ok ? t().media[action] || action : (settings.lang === "es" ? "Instala la extensión de Jarvis en este ordenador" : "Install the Jarvis extension on this computer"));
   return ok;
 }
 desk.media = media;
 $("mPrev").onclick = () => media("previous"); $("mPlay").onclick = () => media("toggle"); $("mNext").onclick = () => media("next");
-
-// ---------- Gestos ----------
-const reader = createGestureReader();
-desk.handPose = "";
-async function startHands() {
-  if (!settings.gestures || desk.handsOn) return;
-  try {
-    const cam = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } });
-    $("handVideo").srcObject = cam; await $("handVideo").play().catch(() => {});
-    desk.handDetector = desk.handDetector || await (desk.createHandDetector || createHandDetector)();
-    desk.handsOn = true; render(); handLoop();
-  } catch (e) { log("manos: " + e.message); toast(settings.lang === "es" ? "Gestos no disponibles: " + e.message : "Gestures unavailable: " + e.message); }
-}
-desk.startHands = startHands;
-async function handLoop() {
-  if (!desk.handsOn) return;
-  if (!document.hidden && $("handVideo").readyState >= 2) {
-    try {
-      const hand = await desk.handDetector.detect($("handVideo"));
-      desk.handPose = hand?.pose || "";
-      $("hand").hidden = !hand; if (hand) { $("hand").style.left = (hand.x * 100) + "%"; $("hand").style.top = (hand.y * 100) + "%"; $("hand").dataset.pose = hand.pose; }
-      const action = reader(hand?.pose || "", hand ? hand.x : null, Date.now());
-      if (action) { desk.gestures.push(action); log("gesto: " + action); onGesture(action); }
-    } catch (e) { log("manos: " + e.message); }
-  }
-  setTimeout(handLoop, 110);
-}
-function onGesture(action) {
-  orb.flash("gesture");
-  if (action === "talk") { voice.stop(); ears.direct(); return; }
-  void media(action);
-}
-desk.onGesture = onGesture;
 
 // ---------- Arranque ----------
 let home = null;
@@ -396,8 +374,8 @@ async function start() {
   setState("thinking"); say(t().waking);
   await ears.openMeter();
   if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
+  void restoreMemory();
   void loadWeather(); setInterval(loadWeather, 20 * 60000);
-  void startHands();
   try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch {}
   if (!settings.key) { say(t().needKey); setState("idle"); ears.background(); return; }
   await talk(t().online(settings.name)); ears.resume();
@@ -426,7 +404,7 @@ $("typeForm").onsubmit = (e) => { e.preventDefault(); const v = $("typeInput").v
 // ---------- Ajustes ----------
 function openSettings() {
   for (const id of ["name", "lang", "hear", "city"]) $(id).value = settings[id];
-  $("voiceKey").value = settings.key; $("wakeOn").checked = settings.wake; $("gesturesOn").checked = settings.gestures; $("greetOn").checked = settings.greet;
+  $("voiceKey").value = settings.key; $("wakeOn").checked = settings.wake; $("greetOn").checked = settings.greet;
   $("quietFrom").value = settings.quietFrom; $("quietTo").value = settings.quietTo;
   $("memoryList").replaceChildren(...desk.memory.map((m, i) => {
     const li = document.createElement("li"); li.textContent = m;
@@ -456,7 +434,6 @@ $("testCall").onclick = async () => {
 };
 $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); home?.stop(); if (desk.started && settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) }); };
 $("wakeOn").onchange = () => { settings.wake = $("wakeOn").checked; settings.save(); if (settings.wake) ears.resume(); else ears.pause(); render(); };
-$("gesturesOn").onchange = () => { settings.gestures = $("gesturesOn").checked; settings.save(); if (settings.gestures) void startHands(); else { desk.handsOn = false; $("handVideo").srcObject?.getTracks().forEach((t) => t.stop()); $("hand").hidden = true; render(); } };
 $("city").onchange = async () => {
   const name = $("city").value.trim(); if (!name) return;
   try {

@@ -265,10 +265,12 @@ Deno.serve(async (request: Request) => {
     if (request.method !== "POST") return json(405, { error: "POST required" });
     const expected = env("JARVIS_KEY");
     if (expected.length < 6 || !same((request.headers.get("x-jarvis-key") || "").trim(), expected)) return json(401, { error: "Wrong Jarvis key" });
-    if (!callsReady()) return json(428, { error: "Calls not configured" });
     // deno-lint-ignore no-explicit-any
     let body: any = {};
     try { body = await request.json(); } catch { /* defaults */ }
+    // A new computer running the desk gets back what Jarvis remembers.
+    if (body.action === "state") { const who = await profile(); return json(200, { name: who.name, memory: who.memory, calls: callsReady() }); }
+    if (!callsReady()) return json(428, { error: "Calls not configured" });
     const who = await profile();
     const message = clean(body.message, 300) || (who.lang === "es" ? `Hola ${who.name}, soy Jarvis. Esto es una prueba: ya puedo llamarte.` : `Hello ${who.name}, Jarvis here. Just testing: I can call you now.`);
     if (body.action === "test") await connectInbound().catch(() => false);

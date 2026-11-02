@@ -3,7 +3,7 @@
 // fast orbit rings · speaking: pulses with every word · alert: red flash.
 const PALETTE = {
   off: [120, 130, 150], idle: [140, 190, 255], listening: [60, 230, 255], thinking: [170, 140, 255],
-  speaking: [120, 210, 255], blocked: [255, 170, 80], alert: [255, 80, 90], arrival: [90, 255, 170], gesture: [255, 220, 120],
+  speaking: [120, 210, 255], blocked: [255, 170, 80], alert: [255, 80, 90], arrival: [90, 255, 170],
 };
 export function createOrb(canvas, { count = 900 } = {}) {
   const ctx = canvas.getContext("2d");

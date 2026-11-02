@@ -20,7 +20,6 @@ export const ICONS = {
   door: svg('<path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21M4 21h16"/><circle cx="14.5" cy="12" r=".6" fill="currentColor"/>'),
   laptop: svg('<rect x="4.5" y="5" width="15" height="10" rx="1.4"/><path d="M2.5 19h19"/>'),
   mic: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>'),
-  hand: svg('<path d="M8 12.5V6a1.5 1.5 0 0 1 3 0v5.5M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v7.5a7 7 0 0 1-7 7h-.6a6 6 0 0 1-4.6-2.2L2.7 15a1.5 1.5 0 0 1 2.3-1.9l3 3"/>'),
   moon: svg('<path d="M19.5 14.6A7.6 7.6 0 1 1 9.4 4.5a6 6 0 0 0 10.1 10.1z"/>'),
 };
 // WMO weather code → [English, Spanish, icon]
