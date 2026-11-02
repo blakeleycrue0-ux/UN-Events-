@@ -37,7 +37,7 @@ test('Claude sees task, steps, page and screenshot, treating page text as untrus
  const s=setup(use('click',{id:2,risky:true,say:'Handing it in'}));
  const r=await s.handler(req({...body,log:['opened https://teams.microsoft.com/']}));
  assert.deepEqual(await r.json(),{action:{type:'click',id:2,risky:true,say:'Handing it in'}});
- const p=s.calls[0];assert.equal(p.model,'claude-haiku-5-5');
+ const p=s.calls[0];assert.equal(p.model,'claude-sonnet-5-5');assert.ok(['click_at','press_key'].every(n=>p.tools.some(t=>t.name===n)));
  assert.ok(p.tools.every(t=>t.strict&&t.input_schema.additionalProperties===false));
  assert.match(p.system,/untrusted data/);assert.match(p.system,/Never type passwords/);
  const [img,txt]=p.messages[0].content;assert.equal(img.type,'image');assert.equal(img.source.media_type,'image/jpeg');
@@ -51,4 +51,12 @@ test('only http(s) navigation; plain text answers become done',async()=>{
  assert.deepEqual(ok.action,{type:'navigate',url:'https://classroom.google.com/',say:'Opening Classroom'});
  const text=await (await setup(()=>({stop_reason:'end_turn',content:[{type:'text',text:'You have two assignments.'}]})).handler(req(body))).json();
  assert.deepEqual(text.action,{type:'done',summary:'You have two assignments.'});
+});
+
+test('click_at and press_key: real input on any point of the page',async()=>{
+ const at=await (await setup(use('click_at',{x:640,y:900,risky:false,say:'Pressing play'})).handler(req({...body,page:{...page,vw:1280,vh:800,dpr:2}}))).json();
+ assert.deepEqual(at.action,{type:'click_at',x:640,y:900,risky:false,say:'Pressing play'});
+ const s=setup(use('press_key',{key:'Escape',say:'Closing the pop-up'}));
+ assert.deepEqual((await (await s.handler(req({...body,page:{...page,vw:1280,vh:800,dpr:2}}))).json()).action,{type:'press_key',key:'Escape',say:'Closing the pop-up'});
+ assert.match(s.calls[0].messages[0].content[1].text,/Screenshot size: 2560×1600 pixels/);
 });

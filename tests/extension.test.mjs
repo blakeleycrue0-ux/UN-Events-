@@ -83,3 +83,22 @@ test('agent: risky steps wait for a spoken yes; a no is passed back to Claude; s
  const done=desk.at(-1);assert.equal(done.kind,'done');assert.equal(done.summary,'Handed in your maths homework.');
  assert.ok(bodies[0].screenshot.startsWith('data:image/jpeg'));assert.equal(bodies[0].lang,'es');
 });
+test('agent clicks and types for real (DevTools input), like a person; falls back to page scripts',async()=>{
+ const cmds=[];let attached=0;
+ const chrome={debugger:{attach:async()=>{attached++},detach:async()=>{},sendCommand:async(t,m,p)=>{cmds.push([m,p])}},
+  storage:{local:{get:async()=>({key:'clave-larga'})}},windows:{create:async()=>({id:9,tabs:[{id:5}]})},
+  tabs:{get:async(id)=>({id,status:'complete',url:'https://open.spotify.com/',title:'Spotify'}),update:async()=>{},captureVisibleTab:async()=>'',query:async()=>[{id:1,url:'https://unevents.netlify.app/'}],sendMessage:async()=>{}},
+  scripting:{executeScript:async({func,args})=>{if(func.name==='agentSnapshot')return[{result:{url:'https://open.spotify.com/',title:'Spotify',text:'',elements:['[3] input Search'],vw:1280,vh:800,dpr:2}}];
+   if(args[0].peek)return[{result:{ok:true,label:'Search',x:400,y:60}}];return[{result:{ok:true}}]}},downloads:{download:async()=>{}}};
+ const steps=[{type:'type',id:3,text:'Bohemian Rhapsody',submit:true,say:'Searching'},{type:'click_at',x:1200,y:700,risky:false,say:'Play'},{type:'press_key',key:'Escape',say:'Close'},{type:'done',summary:'Playing it.'}];
+ const fetch=async()=>Response.json({action:steps.shift()});
+ const ctx=vm.createContext({chrome,fetch,Response,console,setTimeout:(f,ms)=>{const t=setTimeout(f,ms>5000?ms:Math.min(ms,5));if(ms>5000)t.unref();return t},JARVIS_CONFIG:{url:'https://x.supabase.co',anonKey:'anon'},Date,String,Promise,Map,Math});
+ vm.runInContext(fs.readFileSync('extension/agent.js','utf8'),ctx);
+ await vm.runInContext('runAgent("Play Bohemian Rhapsody on Spotify","en")',ctx);
+ const clicks=cmds.filter(([m,p])=>m==='Input.dispatchMouseEvent'&&p.type==='mousePressed').map(([,p])=>[p.x,p.y]);
+ assert.deepEqual(clicks,[[400,60],[600,350]],'element centre, then screenshot pixels / dpr');
+ assert.ok(cmds.some(([m,p])=>m==='Input.insertText'&&p.text==='Bohemian Rhapsody'));
+ assert.ok(cmds.some(([m,p])=>m==='Input.dispatchKeyEvent'&&p.key==='Enter'&&p.type==='keyDown'));
+ assert.ok(cmds.some(([m,p])=>m==='Input.dispatchKeyEvent'&&p.key==='Escape'));
+ assert.equal(attached,1,'attached once per job');
+});

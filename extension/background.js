@@ -45,10 +45,26 @@ async function run(command) {
   if (!plan) return;
   chrome.storage.local.set({ last: { command: { ...command }, at: Date.now() } });
   if (plan.kind === "open") await chrome.tabs.create({ url: plan.url });
-  if (plan.kind === "play") { await media("pause"); await chrome.tabs.create({ url: plan.url }); }
+  if (plan.kind === "play") await play(plan, command);
   if (plan.kind === "media") await media(plan.action);
   if (plan.kind === "agent") void runAgent(plan.task, plan.lang);
   if (plan.kind === "agent-stop") stopAgent();
+}
+
+// Music: open the search and try the quick autoplay; if nothing is playing a few
+// seconds later, the agent takes over and picks the song like a person would.
+async function play(plan, command) {
+  await media("pause");
+  const tab = await chrome.tabs.create({ url: plan.url });
+  setTimeout(() => void ensurePlaying(tab.id, command), 9000);
+}
+async function ensurePlaying(tabId, command) {
+  try { if ((await chrome.tabs.get(tabId)).audible) return; } catch { /* closed */ }
+  if ((await chrome.tabs.query({ audible: true })).length || agent.job) return;
+  try { await chrome.tabs.remove(tabId); } catch { /* already gone */ }
+  const query = String(command.query || "").slice(0, 200), es = command.lang === "es";
+  const where = command.service === "spotify" ? "Spotify (https://open.spotify.com)" : "YouTube (https://www.youtube.com)";
+  void runAgent(`Play "${query}" on ${where}: search for it, start the best matching song or video, and make sure it is actually playing (close any pop-up first). Then finish with a one-line summary.`, es ? "es" : "en");
 }
 
 // Pause / resume / next on YouTube and Spotify tabs.
@@ -92,6 +108,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message.action === "ping") { reply({ ok: true, state: lastStatus, agent: !!agent.job }); return; }
     if (message.action === "agent-answer") { agentAnswer(+message.ask, message.text); reply({ ok: true }); return; }
     const plan = jarvisPlan({ action: message.action, query: message.query, site: message.site, service: message.service, task: message.task, lang: message.lang });
+    if (plan?.kind === "play") { void play(plan, message).then(() => reply({ ok: true })); return true; }
     if (plan?.kind === "agent") { void runAgent(plan.task, plan.lang); reply({ ok: true }); }
     else if (plan?.kind === "agent-stop") { stopAgent(); reply({ ok: true }); }
     else if (plan?.kind === "media") void media(plan.action).then(() => reply({ ok: true }));

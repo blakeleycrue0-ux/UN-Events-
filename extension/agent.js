@@ -10,6 +10,7 @@ const YES = /^\s*(s[ií]|yes|yeah|yep|vale|dale|ok|okay|claro|venga|hazlo|do it|
 function agentNeedsConfirm(action, label = "") {
   if (!action) return false;
   if (action.type === "click") return !!action.risky || RISKY_WORDS.test(label);
+  if (action.type === "click_at") return !!action.risky;
   if (action.type === "type") return !!action.submit && RISKY_WORDS.test(label);
   return false;
 }
@@ -33,13 +34,19 @@ function agentSnapshot() {
     if (n >= 180) break;
   }
   const text = (document.body?.innerText || "").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").slice(0, 6000);
-  return { url: location.href, title: document.title, text, elements };
+  return { url: location.href, title: document.title, text, elements, vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1 };
 }
 // Runs inside the page: one action on a numbered element.
 function agentAct(action) {
   const el = action.id ? document.querySelector(`[data-jarvis-id="${action.id}"]`) : null;
   const label = el ? (el.getAttribute("aria-label") || el.innerText || el.value || el.title || "").replace(/\s+/g, " ").trim().slice(0, 90) : "";
-  if (action.peek) return { ok: !!el, label, href: el?.href || "" };
+  if (action.peek) {
+    // Where to click for real: bring it into view and give its centre.
+    if (el && action.scroll) el.scrollIntoView({ block: "center", behavior: "instant" });
+    const r = el?.getBoundingClientRect();
+    return { ok: !!el, label, href: el?.href || "", x: r ? Math.round(r.left + r.width / 2) : 0, y: r ? Math.round(r.top + r.height / 2) : 0, editable: !!el && (el.isContentEditable || /^(INPUT|TEXTAREA)$/.test(el.tagName)) };
+  }
+  if (action.type === "select-all") { if (el?.select) el.select(); else if (el?.isContentEditable) { el.focus(); document.execCommand("selectAll"); } return { ok: !!el }; }
   if (action.type === "scroll") { scrollBy({ top: (action.direction === "up" ? -0.8 : 0.8) * innerHeight, behavior: "instant" }); return { ok: true }; }
   if (!el) return { ok: false, error: "element " + action.id + " not found (the page changed)" };
   el.scrollIntoView({ block: "center", behavior: "instant" });
@@ -64,7 +71,40 @@ function agentAct(action) {
   return { ok: false, error: "unknown action" };
 }
 
-const agent = { job: null, windowId: 0, tabId: 0, asks: new Map(), askId: 0 };
+const agent = { job: null, windowId: 0, tabId: 0, asks: new Map(), askId: 0, cdp: 0 };
+
+// ---------- Real mouse and keyboard ----------
+// Like Claude in Chrome: input goes through Chrome's DevTools protocol, so to
+// the website it is a real click or key press (Spotify, YouTube, Teams… accept
+// it, and sound may start). Falls back to page scripts if that's not allowed.
+const cdpSend = (tabId, method, params = {}) => chrome.debugger.sendCommand({ tabId }, method, params);
+async function attach(tabId) {
+  if (!chrome.debugger) return false;
+  if (agent.cdp === tabId) return true;
+  try {
+    if (agent.cdp) await chrome.debugger.detach({ tabId: agent.cdp }).catch(() => {});
+    await chrome.debugger.attach({ tabId }, "1.3"); agent.cdp = tabId; return true;
+  } catch { agent.cdp = 0; return false; }
+}
+async function detach() { if (agent.cdp && chrome.debugger) { const t = agent.cdp; agent.cdp = 0; await chrome.debugger.detach({ tabId: t }).catch(() => {}); } }
+async function realClick(tabId, x, y) {
+  if (!(await attach(tabId))) return false;
+  await cdpSend(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+  await cdpSend(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+  await cdpSend(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+  return true;
+}
+const KEYS = { Enter: [13, "\r"], Escape: [27], Tab: [9], Backspace: [8], Delete: [46], ArrowDown: [40], ArrowUp: [38], ArrowLeft: [37], ArrowRight: [39], Space: [32, " "], PageDown: [34], PageUp: [33], Home: [36], End: [35] };
+async function realKey(tabId, key) {
+  const k = KEYS[key];
+  if (!k || !(await attach(tabId))) return false;
+  const code = key === "Space" ? "Space" : key, name = key === "Space" ? " " : key;
+  await cdpSend(tabId, "Input.dispatchKeyEvent", { type: "keyDown", key: name, code, windowsVirtualKeyCode: k[0], ...(k[1] ? { text: k[1] } : {}) });
+  await cdpSend(tabId, "Input.dispatchKeyEvent", { type: "keyUp", key: name, code, windowsVirtualKeyCode: k[0] });
+  return true;
+}
+async function realType(tabId, text) { if (!(await attach(tabId))) return false; await cdpSend(tabId, "Input.insertText", { text }); return true; }
+const actOn = async (tabId, args) => (await chrome.scripting.executeScript({ target: { tabId }, args: [args], func: agentAct }))[0].result;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Tell the Jarvis desk tab (bridge.js) what's happening.
@@ -115,7 +155,7 @@ async function runAgent(task, lang = "en") {
   if (agent.job) agent.job.cancel = true;
   const job = agent.job = { task, lang, log: [], cancel: false };
   const es = lang === "es";
-  const finish = async (summary, ok = true) => { if (agent.job === job) agent.job = null; await toDesk({ kind: "done", ok, summary, task }); };
+  const finish = async (summary, ok = true) => { if (agent.job === job) agent.job = null; await detach(); await toDesk({ kind: "done", ok, summary, task }); };
   try {
     const tab = await agentWindow();
     await toDesk({ kind: "start", task });
@@ -149,17 +189,43 @@ async function runAgent(task, lang = "en") {
       approved = false;
       let result = { ok: true };
       if (action.type === "navigate") await chrome.tabs.update(tab.id, { url: action.url });
+      else if (action.type === "click_at") {
+        // Screenshot pixels → page pixels.
+        const dpr = page.dpr || 1;
+        result = (await realClick(tab.id, Math.round(action.x / dpr), Math.round(action.y / dpr))) ? { ok: true } : { ok: false, error: "can't click by position here" };
+      } else if (action.type === "press_key") {
+        result = (await realKey(tab.id, action.key)) ? { ok: true } : { ok: false, error: "can't press keys here" };
+      } else if (action.type === "click" || action.type === "type") {
+        // Real input first; page scripts as a fallback.
+        let done = false;
+        try {
+          const spot = await actOn(tab.id, { ...action, peek: true, scroll: true });
+          if (spot?.ok && (await realClick(tab.id, spot.x, spot.y))) {
+            if (action.type === "type") {
+              await actOn(tab.id, { type: "select-all", id: action.id });
+              await realType(tab.id, action.text);
+              if (action.submit) await realKey(tab.id, "Enter");
+            }
+            done = true; result = { ok: true, label: spot.label };
+          }
+        } catch { /* fall back below */ }
+        if (!done) {
+          try { result = await actOn(tab.id, action); }
+          catch (e) { result = { ok: false, error: String(e.message || e).slice(0, 100) }; }
+        }
+      }
       else if (action.type === "back") { try { await chrome.tabs.goBack(tab.id); } catch { result = { ok: false, error: "no previous page" }; } }
       else if (action.type === "wait") await pause(2000);
       else if (action.type === "download") {
         const [{ result: info }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, args: [{ ...action, peek: true }], func: agentAct });
         if (/^https?:/.test(info?.href || "")) await chrome.downloads.download({ url: info.href });
         else { await chrome.scripting.executeScript({ target: { tabId: tab.id }, args: [{ type: "click", id: action.id }], func: agentAct }); }
-      } else {
-        try { [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, args: [action], func: agentAct }); }
-        catch (e) { result = { ok: false, error: String(e.message || e).slice(0, 100) }; }
+      } else if (action.type === "scroll") {
+        try { result = await actOn(tab.id, action); } catch (e) { result = { ok: false, error: String(e.message || e).slice(0, 100) }; }
       }
-      const what = action.type === "navigate" ? `opened ${action.url}` : action.type === "type" ? `typed "${action.text.slice(0, 60)}" into [${action.id}] ${label}` : `${action.type}${action.id ? ` [${action.id}] ${label}` : action.direction ? " " + action.direction : ""}`;
+      const what = action.type === "navigate" ? `opened ${action.url}` : action.type === "type" ? `typed "${action.text.slice(0, 60)}" into [${action.id}] ${label}`
+        : action.type === "click_at" ? `clicked at (${action.x}, ${action.y}) on the screenshot` : action.type === "press_key" ? `pressed ${action.key}`
+        : `${action.type}${action.id ? ` [${action.id}] ${label}` : action.direction ? " " + action.direction : ""}`;
       job.log.push(what + (result?.ok === false ? ` — failed: ${result.error}` : ""));
     }
     await finish(es ? "He llegado al límite de pasos sin terminar. Te lo dejo abierto en la ventana de Jarvis." : "I ran out of steps before finishing. I've left it open in the Jarvis window.", false);
@@ -168,6 +234,6 @@ async function runAgent(task, lang = "en") {
     await finish(es ? "No he podido terminar la tarea: " + (e.message || "error") : "I couldn't finish the task: " + (e.message || "error"), false);
   }
 }
-function stopAgent() { if (agent.job) { agent.job.cancel = true; agent.job = null; void toDesk({ kind: "done", ok: false, summary: "", stopped: true }); } }
+function stopAgent() { if (agent.job) { agent.job.cancel = true; agent.job = null; void detach(); void toDesk({ kind: "done", ok: false, summary: "", stopped: true }); } }
 
-if (typeof module !== "undefined") module.exports = { agentNeedsConfirm, agentSaidYes, agentSnapshot, agentAct, runAgent, stopAgent, agentAnswer, agent };
+if (typeof module !== "undefined") module.exports = { agentNeedsConfirm, agentSaidYes, agentSnapshot, agentAct, runAgent, stopAgent, agentAnswer, agent, realClick, realKey };

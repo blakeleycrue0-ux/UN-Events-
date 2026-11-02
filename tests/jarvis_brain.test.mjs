@@ -80,7 +80,7 @@ test('Claude gets strict tools and its choices reach the Chromebook channel or t
  const {createHash}=await import('node:crypto');
  assert.equal(msg.topic,'jarvis-pc-'+createHash('sha256').update('jarvis-pc:clave-larga-de-prueba').digest('hex').slice(0,40));
  assert.equal(msg.event,'command');assert.equal(msg.private,false);
- assert.deepEqual({...msg.payload,at:0},{action:'play',service:'youtube',query:'lofi beats',at:0});
+ assert.deepEqual({...msg.payload,at:0},{action:'play',service:'youtube',query:'lofi beats',lang:'en',at:0});
  const open=setup(tool('open_site',{site:'teams'}));assert.deepEqual(await (await open.handler(req(convo))).json(),{reply:'Opened.',actions:['open:teams']});
  assert.equal(open.outbound[0].body.messages[0].payload.site,'teams');
  const bad=setup(tool('open_site',{site:'evil.com'}));await bad.handler(req(convo));assert.equal(bad.outbound.length,0,'Unknown sites are never sent');

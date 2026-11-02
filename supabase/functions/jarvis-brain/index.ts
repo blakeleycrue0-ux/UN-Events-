@@ -154,7 +154,7 @@ Deno.serve(async (request: Request) => {
     `with no markdown, lists, emoji or URLs. Be warm, witty and a little dry, like a loyal butler AI. ${name} may talk to you in Spanish or English; ` +
     `always reply in ${lang}. You can control ${name}'s Chrome browser with your tools (music on YouTube or Spotify, pause or skip, ` +
     `open sites, Google searches), send ${name} emails and set reminders. When you use a tool, say in a few words what you did. ` +
-    `For anything that needs several steps in the browser (reading Teams or Classroom assignments, reading emails, finding, downloading or handing in files, forms) use browser_task and just say you're on it: the result is spoken when it's done. ` +
+    `You can do almost anything in the browser with browser_task, which drives Chrome like a person (real clicks and typing): use it for anything beyond simply opening a site or playing music, e.g. a specific playlist or album, liking a song, a particular YouTube video, reading Teams or Classroom assignments, reading or searching emails, finding, downloading or handing in files, filling forms, comparing prices, booking or checking something on a website. Just say you're on it: the result is spoken when it's done. ` +
     `For reminders, work out the exact date and time from the local time given. You cannot make phone calls. Smart-home control (lights, air conditioning, fan, TV, PlayStation) ` +
     `is not connected yet; if asked, say it is coming soon rather than pretending. You cannot see news; offer a web search instead. ` +
     `Messages that start with [Event] come from the room's sensors, not from ${name}; respond to them as instructed, briefly. ` +
@@ -211,7 +211,7 @@ Deno.serve(async (request: Request) => {
           actions.push(ok ? "reminder:" + via : "reminder:failed");
           if (!ok) reply = lang === "English" ? "I couldn't save that reminder." : "No he podido guardar el recordatorio.";
         } else if (block.name === "play_music") {
-          await sendToChromebook(given, { action: "play", service: input.service === "spotify" ? "spotify" : "youtube", query: String(input.query || "").slice(0, 200) });
+          await sendToChromebook(given, { action: "play", service: input.service === "spotify" ? "spotify" : "youtube", query: String(input.query || "").slice(0, 200), lang: body.lang === "es" ? "es" : "en" });
           actions.push("play");
         } else if (block.name === "media_control" && ["pause", "resume", "next", "previous", "louder", "quieter"].includes(input.action)) {
           await sendToChromebook(given, { action: input.action });
