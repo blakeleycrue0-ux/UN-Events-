@@ -756,6 +756,14 @@
     orb.setState(state);
     $("stateLabel").textContent = STATE_LABEL[state] || "STANDBY";
     duck(state);
+    const talking = state === "speaking";
+    if (talking !== !!desk.talkingSent) {
+      desk.talkingSent = talking;
+      try {
+        home?.send({ action: "speaking", on: talking });
+      } catch {
+      }
+    }
     if (state !== "idle") wakeUp();
     if (state === "listening") $("heard").textContent = text || "";
   }
@@ -965,6 +973,10 @@
     if (via === "error") {
       say(t().notHeard);
       setState("idle");
+      ears.resume();
+      return;
+    }
+    if (via === "wake" && Date.now() - (desk.wallEarsAt || 0) < 15e4) {
       ears.resume();
       return;
     }
@@ -1361,6 +1373,17 @@
       guardSend();
       return;
     }
+    if (event.action === "ears") {
+      desk.wallEarsAt = Date.now();
+      return;
+    }
+    if (event.action === "ask-wake") {
+      voice.stop();
+      await talk(pick(t().yes));
+      ears.pause();
+      ears.resume();
+      return;
+    }
     if (event.action === "ask" && event.text) {
       const text = String(event.text).replace(/\s+/g, " ").trim().slice(0, 500);
       if (!text) return;
@@ -1368,6 +1391,10 @@
       ears.pause();
       desk.lastSaid = "";
       await respond(text);
+      if (event.from === "wall") {
+        ears.pause();
+        ears.resume();
+      }
       home?.send({ action: "reply", id: event.id || 0, text: desk.lastSaid || "" });
       return;
     }

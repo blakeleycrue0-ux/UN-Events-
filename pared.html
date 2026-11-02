@@ -15,8 +15,9 @@
       <div id="wallFace" class="wall-face">
         <time id="clock" class="wall-clock">--:--</time>
         <div id="date" class="wall-date"></div>
-        <div class="wall-status"><span id="camDot" class="dot" title="Cámara"></span><span id="linkDot" class="dot" title="Chromebook"></span><span id="wallState">Toca para empezar</span></div>
+        <div class="wall-status"><span id="camDot" class="dot" title="Cámara"></span><span id="linkDot" class="dot" title="Ordenador"></span><span id="earDot" class="dot" title="Escuchando «Jarvis…»"></span><span id="wallState">Toca para empezar</span></div>
         <div id="wallSeen" class="wall-seen"></div>
+        <div id="wallHeard" class="wall-heard"></div>
       </div>
       <button id="wallStart" class="wall-start">Empezar a vigilar la puerta</button>
     </main>
@@ -53,6 +54,8 @@
         <p id="frameInfo" class="muted"></p>
 
         <h3>Cámara</h3>
+        <label class="check"><input id="listenOn" type="checkbox" /> Escuchar «Jarvis…» con este móvil (hace de micrófono del ordenador)</label>
+        <p id="earInfo" class="muted"></p>
         <label>Usar<select id="facing"><option value="user">Delantera</option><option value="environment">Trasera</option></select></label>
         <a id="toDesk" class="quiet-link" href="/">Usar este dispositivo como escritorio</a>
         <a class="quiet-link" href="/camara">Cámara del jardín</a>

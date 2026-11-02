@@ -48,11 +48,11 @@
   [headers.values]
     Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"
 
-# The wall camera watches the door; it never needs the microphone.
+# The wall camera watches the door; its microphone (optional) listens for "Jarvis…".
 [[headers]]
   for = "/pared*"
   [headers.values]
-    Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
+    Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"
 
 # Your phone's remote: microphone for talking to Jarvis, never the camera.
 [[headers]]

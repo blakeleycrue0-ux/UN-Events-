@@ -55,3 +55,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .face-box.unknown span { background: #fbbf24; color: #1a1203; }
 .preview.spot { pointer-events: none; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(86vw, 640px); margin: 0; z-index: 30; box-shadow: 0 30px 80px rgba(0,0,0,.6); animation: spotIn .25s ease-out; }
 @keyframes spotIn { from { opacity: 0; transform: translate(-50%, -48%) scale(.97); } }
+
+.wall-heard { color: rgba(169, 207, 255, .55); font-size: 14px; min-height: 1.3em; max-width: 80vw; }
+.check { display: flex; gap: 10px; align-items: flex-start; }
+.check input { width: auto; margin-top: 3px; }

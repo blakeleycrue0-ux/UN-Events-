@@ -234,6 +234,15 @@ with sync_playwright() as p:
     r = next(x for x in to_wall if x.get('action') == 'reply')
     assert 'Timer set for 3 seconds' in r['text'], r
     calm(page); wait_voice(page, "time's up"); calm(page)
+    # The wall phone as microphone: "Jarvis" alone gets a "yes?", and the desk stops answering its own wake word.
+    n = len(voice); home({'action': 'ask-wake'})
+    for _ in range(50):
+        if len(voice) > n: break
+        page.wait_for_timeout(100)
+    assert len(voice) > n; calm(page)
+    home({'action': 'ears', 'on': True}); page.wait_for_function("desk.wallEarsAt>0")
+    page.evaluate("desk.wallEarsAt=0")
+
     # Music pauses while Jarvis listens and comes back after.
     page.evaluate("extCalls.length=0")
     page.evaluate("recQueue.push({results:[['what time is it',true]],end:true})"); page.keyboard.press('Space')

@@ -27,6 +27,8 @@ def realtime(ws):
             ws.send(json.dumps({'topic': m['topic'], 'event': 'phx_reply', 'ref': m['ref'], 'payload': {'status': 'ok', 'response': {}}}))
         if m['event'] == 'broadcast' and m['payload']['payload'].get('action') == 'frame':
             channel['frames'].append(m['payload']['payload'])
+        elif m['event'] == 'broadcast':
+            channel.setdefault('other', []).append(m['payload']['payload'])
     ws.on_message(receive)
 
 def desk_says(payload):
@@ -51,7 +53,7 @@ def wait_event(page, kind, n=1, timeout=6000):
 
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'])
-    c = b.new_context(viewport={'width': 390, 'height': 844}, permissions=['camera'])
+    c = b.new_context(viewport={'width': 390, 'height': 844}, permissions=['camera', 'microphone'])
     page = c.new_page(); errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.add_init_script(INIT)
@@ -150,11 +152,48 @@ with sync_playwright() as p:
     page.click('#closeSettings')
     assert not forbidden, f'the wall must never talk: {forbidden}'
 
+    # The wall as a microphone: off by default; once on, phrases starting with "Jarvis" go to the desk.
+    assert not page.evaluate("wall.ears.on"), 'listening is opt-in'
+    heard = []
+    def hear(route):
+        heard.append(route.request.headers.get('content-type'))
+        route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body=json.dumps({'text': page_text['next']}))
+    page_text = {'next': 'Jarvis, pon música lofi'}
+    page.unroute('https://*.supabase.co/functions/v1/jarvis-hear'); page.route('https://*.supabase.co/functions/v1/jarvis-hear', hear)
+    page.click('#wall', position={'x': 50, 'y': 100}); page.check('#listenOn'); page.click('#closeSettings')
+    page.wait_for_function("wall.ears.on && document.getElementById('earDot').classList.contains('on')")
+    # The fake microphone plays a steady tone: continuous sound (like music) is never sent.
+    page.wait_for_timeout(9000); assert not heard, 'continuous sound is skipped'
+    page.evaluate("()=>{wall.ears.stop(); window.sent=0; const real=wall.ears.finish; wall.ears._finish=real; wall.ears.finish=async(p)=>{window.sent++; return real(p)}}")
+    # A spoken phrase: quiet, ~0.8 s of voice, quiet again -> one clip with a lead-in.
+    page.evaluate("""()=>{const b=(a)=>{const x=new Float32Array(1600);for(let i=0;i<x.length;i++)x[i]=(Math.random()*2-1)*a;return x};
+      let t=Date.now()+10000; for(let i=0;i<20;i++){wall.ears.feed(b(0.002),0.002,t);t+=100}
+      for(let i=0;i<8;i++){wall.ears.feed(b(0.2),0.2,t);t+=100}
+      for(let i=0;i<10;i++){wall.ears.feed(b(0.002),0.002,t);t+=100}}""")
+    for _ in range(50):
+        if any(x.get('action') == 'ask' for x in channel.get('other', [])): break
+        page.wait_for_timeout(100)
+    ask = next(x for x in channel['other'] if x.get('action') == 'ask')
+    assert ask['text'] == 'pon música lofi' and ask['from'] == 'wall' and heard == ['audio/wav'] and page.evaluate('window.sent') == 1
+    assert 'pon música lofi' in page.locator('#wallHeard').inner_text()
+    # No wake word: ignored. "Jarvis" alone: the desk answers "yes?" and the next phrase needs no wake word.
+    n = len(channel['other'])
+    page.evaluate("wall.ears.handle('hola qué tal')"); page.wait_for_timeout(200); assert len(channel['other']) == n
+    page.evaluate("wall.ears.handle('Yarvis')"); page.wait_for_timeout(200)
+    assert channel['other'][-1] == {'action': 'ask-wake'}
+    page.evaluate("wall.ears.handle('qué hora es')"); page.wait_for_timeout(200)
+    assert channel['other'][-1]['text'] == 'qué hora es'
+    # Deaf while the desk talks: nothing is captured.
+    desk_says({'action': 'speaking', 'on': True}); page.wait_for_function("wall.ears.muted")
+    page.evaluate("""()=>{window.sent=0;const b=()=>new Float32Array(1600).fill(0.2);let t=Date.now();for(let i=0;i<8;i++){wall.ears.feed(b(),0.2,t);t+=100}for(let i=0;i<10;i++){wall.ears.feed(new Float32Array(1600),0,t);t+=100}}""")
+    page.wait_for_timeout(300); assert page.evaluate('window.sent') == 0
+    desk_says({'action': 'speaking', 'on': False}); page.wait_for_function("!wall.ears.muted")
+
     # A phone that registered a face with the very first version keeps it as yours.
     old = b.new_context(viewport={'width': 390, 'height': 844}).new_page()
     old.add_init_script("localStorage.setItem('jarvis-faces', JSON.stringify([[1,0,0,0]]))")
     old.goto(URL + 'pared.html'); old.click('#wall', position={'x': 50, 'y': 100})
     assert 'cara registrada' in old.locator('#people').inner_text()
     assert not errors, errors
-    print('PASS Jarvis wall: phone chooses "Pared"; real face models on camera without microphone; you/Mum/Dad enrolment; door framing crop; arrivals relayed once per visit with custom greetings; strangers rate-limited; online status; link test and wrong-key message; burn-in drift; never calls voice/brain/hearing; first-version face kept')
+    print('PASS Jarvis wall: phone chooses "Pared"; real face models on camera without microphone; you/Mum/Dad enrolment; door framing crop; arrivals relayed once per visit with custom greetings; strangers rate-limited; online status; link test and wrong-key message; burn-in drift; never calls voice/brain (hearing only when its microphone is switched on, skipping music and Jarvis own voice); first-version face kept')
     b.close()

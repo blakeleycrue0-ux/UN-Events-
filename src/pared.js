@@ -1,6 +1,7 @@
 // Jarvis · Pared: the phone on the wall. It never talks: it watches the door,
 // recognises who comes in and tells the desk (Chromebook), which does the talking.
 import { $, store, loadSettings, loadScript, call, clockParts, connectHome } from "./jarvis/common.js";
+import { createWallEars } from "./jarvis/wallears.js";
 
 const settings = loadSettings();
 const wall = window.wall = {
@@ -210,12 +211,40 @@ wall.sendFrame = sendFrame;
 // Orders from the desk on the private channel.
 async function onDesk(e) {
   if (e.action === "peek") wall.peekUntil = Date.now() + 15000;
+  if (e.action === "speaking") { wall.ears.setDeskSpeaking(!!e.on, !e.on && wall.expectReply); if (!e.on) wall.expectReply = false; }
   if (e.action === "camera" && (e.facing === "user" || e.facing === "environment") && e.facing !== settings.facing) {
     settings.facing = e.facing; settings.save(); $("facing").value = e.facing;
     if (wall.started) await startCamera().catch(() => {});
   }
 }
 wall.onDesk = onDesk;
+
+// ---------- Oído (este móvil hace de micrófono) ----------
+wall.ears = createWallEars({
+  settings, store,
+  onCommand: (text, via) => {
+    if (!wall.home) return;
+    wall.expectReply = true;
+    if (via === "wake-only") wall.home.send({ action: "ask-wake" });
+    else wall.home.send({ action: "ask", text, id: Date.now(), from: "wall" });
+    $("wallHeard").textContent = "«" + (via === "wake-only" ? "Jarvis" : text) + "»";
+    clearTimeout(wall.heardTimer); wall.heardTimer = setTimeout(() => { $("wallHeard").textContent = ""; }, 6000);
+  },
+  onStatus: (s, detail) => {
+    $("earDot").classList.toggle("on", s === "listening" || (s === "error" && wall.ears.on));
+    if (s === "error") $("earInfo").textContent = "Error al transcribir: " + detail;
+  },
+});
+async function startEars() {
+  if (!settings.listen || wall.ears.on) return;
+  try { await wall.ears.start(); $("earInfo").textContent = "Escuchando. Di «Jarvis…» y lo que quieras."; }
+  catch (e) { $("earInfo").textContent = e.name === "NotAllowedError" ? "Permite el micrófono en Safari para esta página." : "No puedo usar el micrófono: " + e.message; }
+}
+wall.startEars = startEars;
+setInterval(() => {
+  if (wall.ears.on) wall.home?.send({ action: "ears", on: true });
+  if ($("settings").hidden === false && wall.ears.on) $("earInfo").textContent = `Escuchando · ${wall.ears.heardToday} frases hoy` + (wall.ears.last ? ` · última: «${wall.ears.last}»` : "");
+}, 30000);
 function listenToDesk() {
   wall.home?.stop(); wall.home = null;
   if (settings.key) wall.home = connectHome({ key: settings.key, onEvent: (e) => void onDesk(e) });
@@ -334,6 +363,7 @@ async function start() {
     await keepAwake();
     void scan();
     listenToDesk();
+    void startEars();
     if (settings.key) void tell("status", { camera: true });
   } catch (e) {
     status(e.name === "NotAllowedError" ? "Necesito la cámara: permítela en Safari" : "No he podido arrancar: " + e.message);
@@ -344,13 +374,18 @@ wall.start = start;
 $("wallStart").onclick = start;
 $("wall").onclick = (e) => { if (e.target !== $("wallStart")) openSettings(); };
 function openSettings() {
-  $("name").value = settings.name; $("voiceKey").value = settings.key; $("facing").value = settings.facing;
+  $("name").value = settings.name; $("voiceKey").value = settings.key; $("facing").value = settings.facing; $("listenOn").checked = !!settings.listen;
   renderPeople(); $("faceInfo").textContent = ""; $("settings").hidden = false;
   if ($("preview").classList.contains("spot")) { $("preview").classList.remove("spot"); $("preview").classList.add("stash"); }
 }
 $("closeSettings").onclick = () => { if (framing) setFraming(false); if (wall.enrolling) endEnroll(); $("settings").hidden = true; };
 $("name").onchange = () => { settings.name = $("name").value.trim() || "Crew"; settings.save(); };
 $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); if (wall.started) { status("Vigilando la puerta"); listenToDesk(); } };
+$("listenOn").onchange = () => {
+  settings.listen = $("listenOn").checked; settings.save();
+  if (settings.listen && wall.started) void startEars();
+  if (!settings.listen) { wall.ears.stop(); $("earInfo").textContent = ""; }
+};
 $("facing").onchange = async () => { settings.facing = $("facing").value; settings.save(); if (wall.started) await startCamera().catch(() => {}); };
 $("testLink").onclick = async () => {
   $("linkInfo").textContent = "Enviando…";

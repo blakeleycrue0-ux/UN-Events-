@@ -125,6 +125,196 @@
     return { time: now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }), date: date.charAt(0).toUpperCase() + date.slice(1) };
   }
 
+  // src/jarvis/ears.js
+  var WAKE = /\b(jarvis|yarvis|jarbis|yarbis|charvis|harvis|harbis|jervis|yervis|jarvi|yarvi|jarviz|jarvice|chavis|travis)\b/i;
+  function afterWake(text) {
+    const m = WAKE.exec(text);
+    return m ? text.slice(m.index + m[0].length).replace(/^[\s,.:!¡¿?]+/, "").trim() : null;
+  }
+
+  // src/jarvis/wallears.js
+  var RATE = 16e3;
+  function encodeWav(samples, rate = RATE) {
+    const buffer = new ArrayBuffer(44 + samples.length * 2), view = new DataView(buffer);
+    const text = (o, s) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i));
+    };
+    text(0, "RIFF");
+    view.setUint32(4, 36 + samples.length * 2, true);
+    text(8, "WAVE");
+    text(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true);
+    view.setUint32(28, rate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    text(36, "data");
+    view.setUint32(40, samples.length * 2, true);
+    for (let i = 0; i < samples.length; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(44 + i * 2, s < 0 ? s * 32768 : s * 32767, true);
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+  function createWallEars({ settings: settings2, onCommand, onStatus = () => {
+  }, store: store2 }) {
+    const e = {
+      on: false,
+      muted: false,
+      mutedUntil: 0,
+      followUntil: 0,
+      busy: false,
+      level: 0,
+      limits: { minMS: 350, endMS: 800, maxMS: 7e3, preMS: 600, perDay: 400, gapMS: 1200 },
+      heardToday: 0,
+      day: "",
+      last: ""
+    };
+    let ctx = null, stream = null, proc = null, ring = [], seg = null, floor = 8e-3, lastLoud = 0, segStart = 0, coolUntil = 0;
+    const today = () => (/* @__PURE__ */ new Date()).toDateString();
+    const loadCount = () => {
+      const c = store2?.get("jarvis-wall-ears", null);
+      e.day = c?.day || today();
+      e.heardToday = e.day === today() ? c?.n || 0 : 0;
+    };
+    const saveCount = () => store2?.set("jarvis-wall-ears", { day: today(), n: e.heardToday });
+    loadCount();
+    e.start = async () => {
+      if (e.on) return true;
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      ctx = new Ctx();
+      await ctx.resume?.();
+      const source = ctx.createMediaStreamSource(stream);
+      proc = ctx.createScriptProcessor(4096, 1, 1);
+      const step = ctx.sampleRate / RATE;
+      proc.onaudioprocess = (ev) => {
+        const input = ev.inputBuffer.getChannelData(0), out = new Float32Array(Math.floor(input.length / step));
+        let sum = 0;
+        for (let i = 0; i < out.length; i++) {
+          const v = input[Math.floor(i * step)];
+          out[i] = v;
+          sum += v * v;
+        }
+        e.feed(out, Math.sqrt(sum / Math.max(1, out.length)));
+      };
+      source.connect(proc);
+      proc.connect(ctx.destination);
+      e.on = true;
+      onStatus("listening");
+      return true;
+    };
+    e.stop = () => {
+      e.on = false;
+      seg = null;
+      ring = [];
+      try {
+        proc?.disconnect();
+      } catch {
+      }
+      try {
+        stream?.getTracks().forEach((t) => t.stop());
+      } catch {
+      }
+      try {
+        ctx?.close();
+      } catch {
+      }
+      proc = stream = ctx = null;
+      onStatus("off");
+    };
+    e.feed = (block, rms, now = Date.now()) => {
+      e.level = rms;
+      const deaf = e.muted || now < e.mutedUntil;
+      const threshold = Math.max(0.012, floor * 3);
+      if (!seg) {
+        ring.push(block);
+        let kept = ring.reduce((n, b) => n + b.length, 0);
+        while (ring.length > 1 && kept - ring[0].length > RATE * e.limits.preMS / 1e3) {
+          kept -= ring[0].length;
+          ring.shift();
+        }
+        if (rms < threshold) floor = floor * 0.95 + rms * 0.05;
+        if (!deaf && now >= coolUntil && rms > threshold) {
+          seg = ring.slice();
+          ring = [];
+          segStart = now;
+          lastLoud = now;
+        }
+        return;
+      }
+      seg.push(block);
+      if (rms > threshold) lastLoud = now;
+      if (deaf) {
+        seg = null;
+        return;
+      }
+      if (now - segStart > e.limits.maxMS) {
+        seg = null;
+        coolUntil = now + 4e3;
+        return;
+      }
+      if (now - lastLoud > e.limits.endMS) {
+        const parts = seg;
+        seg = null;
+        if (lastLoud - segStart >= e.limits.minMS) void e.finish(parts);
+      }
+    };
+    e.finish = async (parts) => {
+      if (e.busy || e.heardToday >= e.limits.perDay || !settings2.key) return;
+      const total = parts.reduce((n, b) => n + b.length, 0), samples = new Float32Array(total);
+      let o = 0;
+      for (const b of parts) {
+        samples.set(b, o);
+        o += b.length;
+      }
+      e.busy = true;
+      e.heardToday++;
+      saveCount();
+      try {
+        const clip = encodeWav(samples);
+        const response = await call("jarvis-hear", null, settings2.key, { raw: clip, headers: { "Content-Type": "audio/wav" } });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          onStatus("error", data.error || "hear " + response.status);
+          return;
+        }
+        e.handle(String(data.text || ""));
+      } catch {
+        onStatus("error", "sin conexi\xF3n");
+      } finally {
+        e.busy = false;
+        coolUntil = Date.now() + e.limits.gapMS / 4;
+      }
+    };
+    e.handle = (text, now = Date.now()) => {
+      text = text.replace(/\s+/g, " ").trim();
+      if (!text) return;
+      e.last = text;
+      const command = afterWake(text);
+      if (command !== null) {
+        e.followUntil = command ? 0 : now + 8e3;
+        onCommand(command, command ? "wake" : "wake-only");
+        return;
+      }
+      if (now < e.followUntil) {
+        e.followUntil = 0;
+        onCommand(text, "follow");
+      }
+    };
+    e.setDeskSpeaking = (speaking, follow = false) => {
+      e.muted = speaking;
+      seg = null;
+      if (!speaking) {
+        e.mutedUntil = Date.now() + 400;
+        if (follow) e.followUntil = Date.now() + 7e3;
+      }
+    };
+    return e;
+  }
+
   // src/pared.js
   var settings = loadSettings();
   var wall = window.wall = {
@@ -385,6 +575,10 @@
   wall.sendFrame = sendFrame;
   async function onDesk(e) {
     if (e.action === "peek") wall.peekUntil = Date.now() + 15e3;
+    if (e.action === "speaking") {
+      wall.ears.setDeskSpeaking(!!e.on, !e.on && wall.expectReply);
+      if (!e.on) wall.expectReply = false;
+    }
     if (e.action === "camera" && (e.facing === "user" || e.facing === "environment") && e.facing !== settings.facing) {
       settings.facing = e.facing;
       settings.save();
@@ -394,6 +588,39 @@
     }
   }
   wall.onDesk = onDesk;
+  wall.ears = createWallEars({
+    settings,
+    store,
+    onCommand: (text, via) => {
+      if (!wall.home) return;
+      wall.expectReply = true;
+      if (via === "wake-only") wall.home.send({ action: "ask-wake" });
+      else wall.home.send({ action: "ask", text, id: Date.now(), from: "wall" });
+      $("wallHeard").textContent = "\xAB" + (via === "wake-only" ? "Jarvis" : text) + "\xBB";
+      clearTimeout(wall.heardTimer);
+      wall.heardTimer = setTimeout(() => {
+        $("wallHeard").textContent = "";
+      }, 6e3);
+    },
+    onStatus: (s, detail) => {
+      $("earDot").classList.toggle("on", s === "listening" || s === "error" && wall.ears.on);
+      if (s === "error") $("earInfo").textContent = "Error al transcribir: " + detail;
+    }
+  });
+  async function startEars() {
+    if (!settings.listen || wall.ears.on) return;
+    try {
+      await wall.ears.start();
+      $("earInfo").textContent = "Escuchando. Di \xABJarvis\u2026\xBB y lo que quieras.";
+    } catch (e) {
+      $("earInfo").textContent = e.name === "NotAllowedError" ? "Permite el micr\xF3fono en Safari para esta p\xE1gina." : "No puedo usar el micr\xF3fono: " + e.message;
+    }
+  }
+  wall.startEars = startEars;
+  setInterval(() => {
+    if (wall.ears.on) wall.home?.send({ action: "ears", on: true });
+    if ($("settings").hidden === false && wall.ears.on) $("earInfo").textContent = `Escuchando \xB7 ${wall.ears.heardToday} frases hoy` + (wall.ears.last ? ` \xB7 \xFAltima: \xAB${wall.ears.last}\xBB` : "");
+  }, 3e4);
   function listenToDesk() {
     wall.home?.stop();
     wall.home = null;
@@ -581,6 +808,7 @@
       await keepAwake();
       void scan();
       listenToDesk();
+      void startEars();
       if (settings.key) void tell("status", { camera: true });
     } catch (e) {
       status(e.name === "NotAllowedError" ? "Necesito la c\xE1mara: perm\xEDtela en Safari" : "No he podido arrancar: " + e.message);
@@ -596,6 +824,7 @@
     $("name").value = settings.name;
     $("voiceKey").value = settings.key;
     $("facing").value = settings.facing;
+    $("listenOn").checked = !!settings.listen;
     renderPeople();
     $("faceInfo").textContent = "";
     $("settings").hidden = false;
@@ -619,6 +848,15 @@
     if (wall.started) {
       status("Vigilando la puerta");
       listenToDesk();
+    }
+  };
+  $("listenOn").onchange = () => {
+    settings.listen = $("listenOn").checked;
+    settings.save();
+    if (settings.listen && wall.started) void startEars();
+    if (!settings.listen) {
+      wall.ears.stop();
+      $("earInfo").textContent = "";
     }
   };
   $("facing").onchange = async () => {
