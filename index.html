@@ -68,6 +68,16 @@
         <div class="row"><button id="testVoice" class="pill">Probar voz</button></div>
         <p id="voiceInfo" class="muted"></p>
 
+        <h3>Encuadre de la puerta</h3>
+        <p class="muted">Para reconocer caras lejos (por ejemplo a 5 m): haz zoom y arrastra el recuadro hasta la puerta, a la altura de las caras. Se queda guardado.</p>
+        <div class="row"><button id="frameToggle" class="pill ghost">Ajustar encuadre</button></div>
+        <div id="frameEditor" hidden>
+          <div id="frameSlot" class="frame-slot"></div>
+          <label>Zoom <span id="zoomValue">1.0×</span><input id="zoom" type="range" min="1" max="6" step="0.1" value="1" /></label>
+          <div class="row"><button id="frameReset" class="pill ghost small">Quitar zoom</button></div>
+        </div>
+        <p id="frameInfo" class="muted"></p>
+
         <h3>Cámara</h3>
         <label>Usar<select id="facing"><option value="user">Delantera</option><option value="environment">Trasera</option></select></label>
         <label class="check"><input id="greetOn" type="checkbox" /> Saludarme al verme</label>
@@ -76,7 +86,7 @@
       </div>
     </div>
 
-    <div id="preview" class="preview stash"><video id="video" autoplay muted playsinline></video><span id="faceState" class="face-state"></span></div>
+    <div id="preview" class="preview stash"><video id="video" autoplay muted playsinline></video><div id="frameBox" class="frame-box" hidden></div><span id="faceState" class="face-state"></span></div>
 
     <script src="supabase-config.js"></script>
     <script src="jarvis.js"></script>

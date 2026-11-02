@@ -27,7 +27,7 @@
     }
   };
   const settings = Object.assign(
-    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: false, engine: "cloud" },
+    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: false, engine: "cloud", crop: { cx: 0.5, cy: 0.5, zoom: 1 } },
     store.get("jarvis-settings", {})
   );
   const save = () => store.set("jarvis-settings", settings);
@@ -807,14 +807,77 @@
     var _a;
     (_a = jarvis.stream) == null ? void 0 : _a.getTracks().forEach((track) => track.stop());
     jarvis.stream = await navigator.mediaDevices.getUserMedia({
+      // As many pixels as the camera gives (up to 4K): the door crop below needs them for faces ~5 m away.
       audio: false,
-      video: { facingMode: settings.facing, width: { ideal: 640 }, height: { ideal: 480 } }
+      video: { facingMode: settings.facing, width: { ideal: 3840 }, height: { ideal: 2160 } }
     });
     $("video").srcObject = jarvis.stream;
     $("preview").classList.toggle("back", settings.facing === "environment");
     await $("video").play().catch(() => {
     });
     $("eye").hidden = false;
+    drawFrame();
+  }
+  const cropCanvas = document.createElement("canvas");
+  const cropCtx = cropCanvas.getContext("2d");
+  function cropRect(video) {
+    const c = settings.crop || { cx: 0.5, cy: 0.5, zoom: 1 };
+    const zoom = Math.min(6, Math.max(1, +c.zoom || 1));
+    const w = 1 / zoom, h = 1 / zoom;
+    const x = Math.min(1 - w, Math.max(0, c.cx - w / 2)), y = Math.min(1 - h, Math.max(0, c.cy - h / 2));
+    return { x, y, w, h, sx: x * video.videoWidth, sy: y * video.videoHeight, sw: w * video.videoWidth, sh: h * video.videoHeight };
+  }
+  jarvis.cropRect = () => cropRect($("video"));
+  function frameInput(video) {
+    var _a;
+    if ((((_a = settings.crop) == null ? void 0 : _a.zoom) || 1) <= 1.01) return video;
+    const r = cropRect(video);
+    const scale = Math.min(1, 1280 / r.sw);
+    cropCanvas.width = Math.round(r.sw * scale);
+    cropCanvas.height = Math.round(r.sh * scale);
+    cropCtx.drawImage(video, r.sx, r.sy, r.sw, r.sh, 0, 0, cropCanvas.width, cropCanvas.height);
+    return cropCanvas;
+  }
+  jarvis.frameInput = () => frameInput($("video"));
+  function drawFrame() {
+    var _a, _b, _c;
+    const box = $("frameBox"), video = $("video");
+    if (!box || !video.videoWidth) return;
+    const r = cropRect(video), mirror = settings.facing === "user";
+    box.style.left = (mirror ? 1 - r.x - r.w : r.x) * 100 + "%";
+    box.style.top = r.y * 100 + "%";
+    box.style.width = r.w * 100 + "%";
+    box.style.height = r.h * 100 + "%";
+    box.hidden = (((_a = settings.crop) == null ? void 0 : _a.zoom) || 1) <= 1.01;
+    $("zoom").value = ((_b = settings.crop) == null ? void 0 : _b.zoom) || 1;
+    $("zoomValue").textContent = (+(((_c = settings.crop) == null ? void 0 : _c.zoom) || 1)).toFixed(1) + "\xD7";
+    const px = Math.round(r.sw) + "\xD7" + Math.round(r.sh);
+    $("frameInfo").textContent = "C\xE1mara ".concat(video.videoWidth, "\xD7").concat(video.videoHeight, " \xB7 zona analizada ").concat(px, " px");
+  }
+  $("video").addEventListener("loadedmetadata", drawFrame);
+  let framing = false;
+  function setFraming(on) {
+    framing = on;
+    $("frameEditor").hidden = !on;
+    $("frameToggle").textContent = on ? "Listo" : "Ajustar encuadre";
+    if (on) {
+      if (!jarvis.started) {
+        $("frameEditor").hidden = true;
+        framing = false;
+        $("frameInfo").textContent = "Primero toca la burbuja para despertar a Jarvis.";
+        $("frameInfo").hidden = false;
+        return;
+      }
+      if (jarvis.enrolling) endEnroll();
+      $("frameSlot").append($("preview"));
+      $("preview").classList.remove("stash");
+      $("preview").classList.add("framing");
+      drawFrame();
+    } else if (!jarvis.enrolling) {
+      $("preview").classList.add("stash");
+      $("preview").classList.remove("framing");
+      document.body.append($("preview"));
+    }
   }
   async function scan() {
     clearTimeout(jarvis.loop);
@@ -824,7 +887,7 @@
     if (!jarvis.busy && !talking && video.readyState >= 2) {
       jarvis.busy = true;
       try {
-        onFaces(await jarvis.detector.detect(video));
+        onFaces(await jarvis.detector.detect(frameInput(video)));
       } catch (e) {
         $("faceState").textContent = "Error: " + e.message;
       } finally {
@@ -902,6 +965,7 @@
     document.body.append($("preview"));
   }
   function startEnroll(person) {
+    if (framing) setFraming(false);
     if (!jarvis.started) {
       $("faceInfo").textContent = "Primero toca la burbuja para despertar a Jarvis.";
       return;
@@ -1055,10 +1119,48 @@
     }, 6e3);
   };
   $("closeSettings").onclick = () => {
+    if (framing) setFraming(false);
     $("settings").hidden = true;
     if (jarvis.enrolling) endEnroll();
     scheduleWake();
   };
+  $("frameToggle").onclick = () => setFraming(!framing);
+  $("zoom").oninput = () => {
+    settings.crop = { ...settings.crop, zoom: +$("zoom").value };
+    save();
+    drawFrame();
+  };
+  $("frameReset").onclick = () => {
+    settings.crop = { cx: 0.5, cy: 0.5, zoom: 1 };
+    save();
+    drawFrame();
+  };
+  let drag = null;
+  $("frameSlot").addEventListener("pointerdown", (e) => {
+    var _a, _b;
+    if (!framing) return;
+    const area = $("video").getBoundingClientRect();
+    drag = { x: e.clientX, y: e.clientY, cx: settings.crop.cx, cy: settings.crop.cy, w: area.width, h: area.height };
+    (_b = (_a = $("frameSlot")).setPointerCapture) == null ? void 0 : _b.call(_a, e.pointerId);
+    e.preventDefault();
+  });
+  $("frameSlot").addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const mirror = settings.facing === "user" ? -1 : 1;
+    const zoom = settings.crop.zoom || 1, half = 0.5 / zoom;
+    const cx = Math.min(1 - half, Math.max(half, drag.cx + mirror * (e.clientX - drag.x) / drag.w));
+    const cy = Math.min(1 - half, Math.max(half, drag.cy + (e.clientY - drag.y) / drag.h));
+    settings.crop = { ...settings.crop, cx, cy };
+    drawFrame();
+  });
+  const endDrag = () => {
+    if (drag) {
+      drag = null;
+      save();
+    }
+  };
+  $("frameSlot").addEventListener("pointerup", endDrag);
+  $("frameSlot").addEventListener("pointercancel", endDrag);
   $("settings").onclick = (e) => {
     if (e.target === $("settings")) $("closeSettings").onclick();
   };

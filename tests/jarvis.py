@@ -218,6 +218,28 @@ with sync_playwright() as p:
     page.screenshot(path='/tmp/jarvis-home.png')
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
 
+    # Door framing: zoom 3x and drag the box; the face model then sees only that enlarged part.
+    page.click('#openSettings'); page.click('#frameToggle')
+    assert page.locator('#frameSlot video').is_visible()
+    page.evaluate("()=>{const z=document.getElementById('zoom');z.value='3';z.dispatchEvent(new Event('input'))}")
+    assert page.locator('#frameBox').is_visible() and page.locator('#zoomValue').inner_text() == '3.0×'
+    box = page.locator('#frameSlot').bounding_box()
+    page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2); page.mouse.down()
+    page.mouse.move(box['x'] + box['width'] / 2 - 40, box['y'] + box['height'] / 2 + 20, steps=4); page.mouse.up()
+    crop = page.evaluate("JSON.parse(localStorage.getItem('jarvis-settings')).crop")
+    assert crop['zoom'] == 3 and crop['cx'] > 0.5 and crop['cy'] > 0.5, crop  # mirrored front camera: drag left moves right in the image
+    assert 'zona analizada' in page.locator('#frameInfo').inner_text()
+    page.screenshot(path='/tmp/jarvis-frame.png')
+    page.click('#frameToggle'); page.click('#closeSettings')
+    page.evaluate("()=>{window.inputs=[];const d=jarvis.detector;jarvis.detector={...d,detect:(i)=>{inputs.push([i.width||i.videoWidth,i.height||i.videoHeight,i.tagName]);return d.detect(i)}}}")
+    page.wait_for_function("inputs.length>=2", timeout=8000)
+    w, h, tag = page.evaluate("inputs[inputs.length-1]"); vw, vh = page.evaluate("[document.getElementById('video').videoWidth, document.getElementById('video').videoHeight]")
+    assert tag == 'CANVAS' and abs(w - min(1280, vw / 3)) <= 2, (w, h, vw, vh)
+    page.click('#openSettings'); page.click('#frameToggle'); page.click('#frameReset'); page.click('#frameToggle'); page.click('#closeSettings')
+    page.evaluate("inputs.length=0"); page.wait_for_function("inputs.length>=1", timeout=8000)
+    assert page.evaluate("inputs[inputs.length-1][2]") == 'VIDEO'
+    calm(page)
+
     # Hearing by recording + ElevenLabs (works on iPhone with the camera on).
     page.click('#openSettings'); page.select_option('#engine', 'cloud'); page.uncheck('#always'); page.click('#closeSettings')
     page.wait_for_function("!jarvis.listening", timeout=5000)

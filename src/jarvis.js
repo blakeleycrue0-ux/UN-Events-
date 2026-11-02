@@ -23,7 +23,7 @@
     },
   };
   const settings = Object.assign(
-    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: false, engine: "cloud" },
+    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: false, engine: "cloud", crop: { cx: 0.5, cy: 0.5, zoom: 1 } },
     store.get("jarvis-settings", {}),
   );
   const save = () => store.set("jarvis-settings", settings);
@@ -586,12 +586,64 @@
   async function startCamera() {
     jarvis.stream?.getTracks().forEach((track) => track.stop());
     jarvis.stream = await navigator.mediaDevices.getUserMedia({
-      audio: false, video: { facingMode: settings.facing, width: { ideal: 640 }, height: { ideal: 480 } },
+      // As many pixels as the camera gives (up to 4K): the door crop below needs them for faces ~5 m away.
+      audio: false, video: { facingMode: settings.facing, width: { ideal: 3840 }, height: { ideal: 2160 } },
     });
     $("video").srcObject = jarvis.stream;
     $("preview").classList.toggle("back", settings.facing === "environment");
     await $("video").play().catch(() => {});
     $("eye").hidden = false;
+    drawFrame();
+  }
+  // ---------- Encuadre de la puerta ----------
+  // Only the chosen part of the picture is analysed, enlarged: a digital zoom
+  // that lets the face model see people at the door several metres away.
+  const cropCanvas = document.createElement("canvas");
+  const cropCtx = cropCanvas.getContext("2d");
+  function cropRect(video) {
+    const c = settings.crop || { cx: 0.5, cy: 0.5, zoom: 1 };
+    const zoom = Math.min(6, Math.max(1, +c.zoom || 1));
+    const w = 1 / zoom, h = 1 / zoom;
+    const x = Math.min(1 - w, Math.max(0, c.cx - w / 2)), y = Math.min(1 - h, Math.max(0, c.cy - h / 2));
+    return { x, y, w, h, sx: x * video.videoWidth, sy: y * video.videoHeight, sw: w * video.videoWidth, sh: h * video.videoHeight };
+  }
+  jarvis.cropRect = () => cropRect($("video"));
+  function frameInput(video) {
+    if ((settings.crop?.zoom || 1) <= 1.01) return video;
+    const r = cropRect(video);
+    const scale = Math.min(1, 1280 / r.sw); // never more work than a 1280-pixel frame
+    cropCanvas.width = Math.round(r.sw * scale); cropCanvas.height = Math.round(r.sh * scale);
+    cropCtx.drawImage(video, r.sx, r.sy, r.sw, r.sh, 0, 0, cropCanvas.width, cropCanvas.height);
+    return cropCanvas;
+  }
+  jarvis.frameInput = () => frameInput($("video"));
+  // Draws the zoom rectangle over the preview (mirrored like the front camera image).
+  function drawFrame() {
+    const box = $("frameBox"), video = $("video");
+    if (!box || !video.videoWidth) return;
+    const r = cropRect(video), mirror = settings.facing === "user";
+    box.style.left = ((mirror ? 1 - r.x - r.w : r.x) * 100) + "%";
+    box.style.top = (r.y * 100) + "%"; box.style.width = (r.w * 100) + "%"; box.style.height = (r.h * 100) + "%";
+    box.hidden = (settings.crop?.zoom || 1) <= 1.01;
+    $("zoom").value = settings.crop?.zoom || 1;
+    $("zoomValue").textContent = (+(settings.crop?.zoom || 1)).toFixed(1) + "×";
+    const px = Math.round(r.sw) + "×" + Math.round(r.sh);
+    $("frameInfo").textContent = `Cámara ${video.videoWidth}×${video.videoHeight} · zona analizada ${px} px`;
+  }
+  $("video").addEventListener("loadedmetadata", drawFrame);
+  let framing = false;
+  function setFraming(on) {
+    framing = on;
+    $("frameEditor").hidden = !on;
+    $("frameToggle").textContent = on ? "Listo" : "Ajustar encuadre";
+    if (on) {
+      if (!jarvis.started) { $("frameEditor").hidden = true; framing = false; $("frameInfo").textContent = "Primero toca la burbuja para despertar a Jarvis."; $("frameInfo").hidden = false; return; }
+      if (jarvis.enrolling) endEnroll();
+      $("frameSlot").append($("preview")); $("preview").classList.remove("stash"); $("preview").classList.add("framing");
+      drawFrame();
+    } else if (!jarvis.enrolling) {
+      $("preview").classList.add("stash"); $("preview").classList.remove("framing"); document.body.append($("preview"));
+    }
   }
   async function scan() {
     clearTimeout(jarvis.loop);
@@ -601,7 +653,7 @@
     const talking = (jarvis.listening && jarvis.listenMode !== "wake") || jarvis.speaking || mood === "thinking";
     if (!jarvis.busy && !talking && video.readyState >= 2) {
       jarvis.busy = true;
-      try { onFaces(await jarvis.detector.detect(video)); }
+      try { onFaces(await jarvis.detector.detect(frameInput(video))); }
       catch (e) { $("faceState").textContent = "Error: " + e.message; }
       finally { jarvis.busy = false; }
     }
@@ -657,6 +709,7 @@
     $("preview").classList.add("stash"); document.body.append($("preview"));
   }
   function startEnroll(person) {
+    if (framing) setFraming(false);
     if (!jarvis.started) { $("faceInfo").textContent = "Primero toca la burbuja para despertar a Jarvis."; return; }
     jarvis.enrolling = { personId: person.id, samples: [] };
     $("enrollSlot").append($("preview")); $("preview").classList.remove("stash");
@@ -749,7 +802,29 @@
     try { rec.start(); out("habla ahora… (6 s)"); } catch (e) { out("no arranca: " + e.name + " " + e.message); }
     setTimeout(() => { try { rec.stop(); } catch {} }, 6000);
   };
-  $("closeSettings").onclick = () => { $("settings").hidden = true; if (jarvis.enrolling) endEnroll(); scheduleWake(); };
+  $("closeSettings").onclick = () => { if (framing) setFraming(false); $("settings").hidden = true; if (jarvis.enrolling) endEnroll(); scheduleWake(); };
+  $("frameToggle").onclick = () => setFraming(!framing);
+  $("zoom").oninput = () => { settings.crop = { ...settings.crop, zoom: +$("zoom").value }; save(); drawFrame(); };
+  $("frameReset").onclick = () => { settings.crop = { cx: 0.5, cy: 0.5, zoom: 1 }; save(); drawFrame(); };
+  // Drag on the picture to move the zoom box over the door.
+  let drag = null;
+  $("frameSlot").addEventListener("pointerdown", (e) => {
+    if (!framing) return;
+    const area = $("video").getBoundingClientRect();
+    drag = { x: e.clientX, y: e.clientY, cx: settings.crop.cx, cy: settings.crop.cy, w: area.width, h: area.height };
+    $("frameSlot").setPointerCapture?.(e.pointerId); e.preventDefault();
+  });
+  $("frameSlot").addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const mirror = settings.facing === "user" ? -1 : 1;
+    const zoom = settings.crop.zoom || 1, half = 0.5 / zoom;
+    const cx = Math.min(1 - half, Math.max(half, drag.cx + mirror * (e.clientX - drag.x) / drag.w));
+    const cy = Math.min(1 - half, Math.max(half, drag.cy + (e.clientY - drag.y) / drag.h));
+    settings.crop = { ...settings.crop, cx, cy }; drawFrame();
+  });
+  const endDrag = () => { if (drag) { drag = null; save(); } };
+  $("frameSlot").addEventListener("pointerup", endDrag);
+  $("frameSlot").addEventListener("pointercancel", endDrag);
   $("settings").onclick = (e) => { if (e.target === $("settings")) $("closeSettings").onclick(); };
   $("name").onchange = () => { settings.name = $("name").value.trim() || "Crew"; save(); };
   $("greetOn").onchange = () => { settings.greet = $("greetOn").checked; save(); };
