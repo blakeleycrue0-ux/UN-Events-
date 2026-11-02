@@ -171,7 +171,8 @@
       limits: { minMS: 350, endMS: 800, maxMS: 7e3, preMS: 600, perDay: 400, gapMS: 1200 },
       heardToday: 0,
       day: "",
-      last: ""
+      last: "",
+      failures: 0
     };
     let ctx = null, stream = null, proc = null, ring = [], seg = null, floor = 8e-3, lastLoud = 0, segStart = 0, coolUntil = 0;
     const today = () => (/* @__PURE__ */ new Date()).toDateString();
@@ -287,11 +288,14 @@
         const response = await call("jarvis-hear", null, settings2.key, { raw: clip, headers: { "Content-Type": "audio/wav" } });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
+          e.failures++;
           onStatus("error", data.error || "hear " + response.status);
           return;
         }
+        e.failures = 0;
         e.handle(String(data.text || ""));
       } catch {
+        e.failures++;
         onStatus("error", "sin conexi\xF3n");
       } finally {
         e.busy = false;
@@ -629,7 +633,10 @@
     },
     onStatus: (s, detail) => {
       $("earDot").classList.toggle("on", s === "listening" || s === "error" && wall.ears.on);
-      if (s === "error") $("earInfo").textContent = "Error al transcribir: " + detail;
+      if (s === "error") {
+        $("earInfo").textContent = "Error al transcribir: " + detail;
+        if (wall.ears.failures >= 2) wall.home?.send({ action: "ears", on: false });
+      }
     }
   });
   async function startEars() {
@@ -643,7 +650,7 @@
   }
   wall.startEars = startEars;
   setInterval(() => {
-    if (wall.ears.on) wall.home?.send({ action: "ears", on: true });
+    if (wall.ears.on) wall.home?.send({ action: "ears", on: !(wall.ears.failures >= 2) });
     if ($("settings").hidden === false && wall.ears.on) $("earInfo").textContent = `Escuchando \xB7 ${wall.ears.heardToday} frases hoy` + (wall.ears.last ? ` \xB7 \xFAltima: \xAB${wall.ears.last}\xBB` : "");
   }, 3e4);
   function listenToDesk() {

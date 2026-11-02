@@ -252,12 +252,26 @@
     "ElevenLabs key lacks text to speech permission": "A la clave de ElevenLabs le falta el permiso Text to Speech.",
     "ElevenLabs quota reached": "Se han acabado los cr\xE9ditos de ElevenLabs este mes."
   };
+  function localVoice(lang) {
+    const all = window.speechSynthesis?.getVoices?.() || [];
+    const want = lang === "es" ? ["Jorge", "Google espa\xF1ol", "M\xF3nica", "Monica", "Paulina", "Diego"] : ["Daniel", "Google UK English Male", "Arthur", "Google UK English Female", "Samantha"];
+    for (const name of want) {
+      const v = all.find((x) => x.name.startsWith(name));
+      if (v) return v;
+    }
+    return all.find((x) => x.lang?.toLowerCase().startsWith(lang === "es" ? "es-es" : "en-gb")) || all.find((x) => x.lang?.toLowerCase().startsWith(lang)) || null;
+  }
   function createVoice({ settings: settings2, onState = () => {
   } }) {
     const audio = new Audio();
     audio.preload = "auto";
     let id = 0, finish = null, ctx = null, analyser = null, data = null;
-    const voice2 = { speaking: false, error: "", volume: 1 };
+    const voice2 = { speaking: false, error: "", volume: 1, local: false };
+    let cloudDownUntil = 0;
+    try {
+      window.speechSynthesis?.getVoices?.();
+    } catch {
+    }
     voice2.unlock = () => {
       try {
         const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -275,6 +289,7 @@
       }
     };
     voice2.level = () => {
+      if (voice2.speaking && voice2.local) return 0.35 + 0.3 * Math.abs(Math.sin(Date.now() / 90));
       if (!analyser || !voice2.speaking) return 0;
       analyser.getByteFrequencyData(data);
       let sum = 0;
@@ -306,7 +321,7 @@
       const result = await response.blob();
       if (cache) {
         try {
-          await cache.put(keyUrl, new Response(result, { headers: { "Content-Type": "audio/mpeg" } }));
+          await cache.put(keyUrl, new Response(result, { headers: { "Content-Type": result.type || "audio/mpeg" } }));
         } catch {
         }
       }
@@ -321,21 +336,70 @@
     voice2.stop = () => {
       id++;
       audio.pause();
+      try {
+        window.speechSynthesis?.cancel();
+      } catch {
+      }
       finish?.();
       voice2.speaking = false;
     };
+    function speakLocal(text, lang, mine) {
+      const synth = window.speechSynthesis;
+      if (!synth || !window.SpeechSynthesisUtterance) return Promise.resolve(false);
+      return new Promise((resolve) => {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = lang === "es" ? "es-ES" : "en-GB";
+        const v = localVoice(lang);
+        if (v) u.voice = v;
+        u.rate = 1;
+        u.pitch = 0.9;
+        u.volume = voice2.volume;
+        const done = () => {
+          clearTimeout(guard);
+          finish = null;
+          voice2.local = false;
+          resolve(true);
+        };
+        const guard = setTimeout(() => {
+          synth.cancel();
+          done();
+        }, 3e4);
+        u.onend = u.onerror = done;
+        finish = () => {
+          synth.cancel();
+          done();
+        };
+        if (mine !== id) {
+          resolve(false);
+          return;
+        }
+        voice2.local = true;
+        voice2.speaking = true;
+        onState("speaking", text);
+        synth.cancel();
+        synth.speak(u);
+      });
+    }
     voice2.speak = async (text, lang = settings2.lang) => {
       const mine = ++id;
       audio.pause();
       onState("thinking", text);
       let url;
       try {
+        if (Date.now() < cloudDownUntil && !voice2.forceCloud) throw Error("cloud voice resting");
         url = URL.createObjectURL(await blob(text, lang));
         voice2.error = "";
       } catch (e) {
-        voice2.error = e.message;
-        if (mine === id) onState("idle", text);
-        return false;
+        if (e.message !== "cloud voice resting") {
+          voice2.error = e.message;
+          cloudDownUntil = Date.now() + 10 * 6e4;
+        }
+        const spoken = await speakLocal(text, lang, mine);
+        if (mine === id) {
+          voice2.speaking = false;
+          onState("idle", text);
+        }
+        return spoken;
       }
       if (mine !== id) {
         URL.revokeObjectURL(url);
@@ -1927,6 +1991,15 @@
       return;
     }
     if (event.action === "ears") {
+      if (event.on === false) {
+        if (wallListening()) {
+          desk.wallEarsAt = 0;
+          if (desk.started && settings.wake) ears.resume();
+          log("la pared no puede escuchar: escucha el ordenador");
+          render();
+        }
+        return;
+      }
       const was = wallListening();
       desk.wallEarsAt = Date.now();
       if (!was && desk.started && !ears.mode?.match?.(/direct|follow/)) {
@@ -2354,8 +2427,10 @@
   };
   $("testVoice").onclick = async () => {
     voice.unlock();
+    voice.forceCloud = true;
     await talk(t().online(settings.name));
-    $("voiceInfo").textContent = voice.error || "Voz funcionando.";
+    voice.forceCloud = false;
+    $("voiceInfo").textContent = voice.error ? voice.error + " Mientras tanto hablo con la voz del ordenador." : "Voz funcionando.";
     ears.resume();
   };
   $("showType").onchange = () => {
