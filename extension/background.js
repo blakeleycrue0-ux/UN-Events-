@@ -1,6 +1,6 @@
 // Jarvis para Chromebook: listens on Jarvis's private channel (Supabase Realtime)
 // and carries out the fixed actions in commands.js.
-importScripts("config.js", "commands.js");
+importScripts("config.js", "commands.js", "agent.js");
 
 let socket = null, heartbeat = null, ref = 0, topic = "", lastAt = 0;
 let lastStatus = "";
@@ -47,6 +47,8 @@ async function run(command) {
   if (plan.kind === "open") await chrome.tabs.create({ url: plan.url });
   if (plan.kind === "play") { await media("pause"); await chrome.tabs.create({ url: plan.url }); }
   if (plan.kind === "media") await media(plan.action);
+  if (plan.kind === "agent") void runAgent(plan.task, plan.lang);
+  if (plan.kind === "agent-stop") stopAgent();
 }
 
 // Pause / resume / next on YouTube and Spotify tabs.
@@ -87,9 +89,12 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message === "reconnect") { topic = ""; connect(); return; }
   // From the Jarvis desk page on this Chromebook (bridge.js): instant, no internet.
   if (message?.bridge) {
-    if (message.action === "ping") { reply({ ok: true, state: lastStatus }); return; }
-    const plan = jarvisPlan({ action: message.action, query: message.query, site: message.site, service: message.service });
-    if (plan?.kind === "media") void media(plan.action).then(() => reply({ ok: true }));
+    if (message.action === "ping") { reply({ ok: true, state: lastStatus, agent: !!agent.job }); return; }
+    if (message.action === "agent-answer") { agentAnswer(+message.ask, message.text); reply({ ok: true }); return; }
+    const plan = jarvisPlan({ action: message.action, query: message.query, site: message.site, service: message.service, task: message.task, lang: message.lang });
+    if (plan?.kind === "agent") { void runAgent(plan.task, plan.lang); reply({ ok: true }); }
+    else if (plan?.kind === "agent-stop") { stopAgent(); reply({ ok: true }); }
+    else if (plan?.kind === "media") void media(plan.action).then(() => reply({ ok: true }));
     else if (plan) void chrome.tabs.create({ url: plan.url }).then(() => reply({ ok: true }));
     else reply({ ok: false });
     return true;

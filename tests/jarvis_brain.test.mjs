@@ -17,11 +17,11 @@ function fakeSdk(behaviour){
  return {Anthropic,calls};
 }
 function setup(behaviour=()=>({stop_reason:'end_turn',content:[{type:'thinking',thinking:''},{type:'text',text:'Good evening, Crew.'}]}),env={},status=200){
- let handler;const sdk=fakeSdk(behaviour);const outbound=[];
+ let handler;const sdk=fakeSdk(behaviour);const outbound=[],state=[];
  const e={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',ANTHROPIC_API_KEY:'sk-ant-fixture',SUPABASE_URL:'https://fixture.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service-fixture',...env};
- const fetch=async(url,opts)=>{outbound.push({url,opts,body:JSON.parse(opts.body)});return new Response('{}',{status})};
+ const fetch=async(url,opts)=>{const entry={url,opts,body:JSON.parse(opts.body)};if(String(url).includes('/rest/v1/jarvis_state')){state.push(entry);return new Response('',{status:201})}outbound.push(entry);return new Response(entry.url.includes('/rest/v1/')?'':'{}',{status:entry.url.includes('/rest/v1/')&&status===200?201:status})};
  new Function('Deno','Anthropic','fetch',code)({env:{get:n=>e[n]},serve:h=>handler=h},sdk.Anthropic,fetch);
- return {handler,calls:sdk.calls,outbound};
+ return {handler,calls:sdk.calls,outbound,state};
 }
 const req=(body,{origin='https://app.example.com',key='clave-larga-de-prueba'}={})=>new Request('https://fixture.supabase.co/functions/v1/jarvis-brain',{method:'POST',headers:{origin,'x-jarvis-key':key,'content-type':'application/json'},body:JSON.stringify(body)});
 const tool=(name,input,text='')=>()=>({stop_reason:'tool_use',content:[...(text?[{type:'text',text}]:[]),{type:'tool_use',id:'t1',name,input}]});
@@ -69,7 +69,7 @@ test('Claude gets strict tools and its choices reach the Chromebook channel or t
  const s=setup(tool('play_music',{query:'lofi beats',service:'youtube'},'Playing lofi beats on YouTube.'));
  const r=await s.handler(req(convo));assert.deepEqual(await r.json(),{reply:'Playing lofi beats on YouTube.',actions:['play']});
  const p=s.calls.find(c=>c.params).params;
- assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','remember','email_me']);
+ assert.deepEqual(p.tools.map(t=>t.name),['play_music','media_control','open_site','web_search','remember','email_me','browser_task','set_reminder','call_me']);
  assert.ok(p.tools.every(t=>t.strict===true&&t.input_schema.additionalProperties===false));
  assert.ok(!('tool_choice' in p));
  const call=s.outbound[0];assert.equal(call.url,'https://fixture.supabase.co/realtime/v1/api/broadcast');
@@ -102,4 +102,33 @@ test('memory and live context reach Claude; remember comes back to the desk',asy
  assert.ok(!p.system.includes('x'.repeat(201)),'each memory is capped');
  assert.equal(s.outbound.length,0,'remembering sends nothing anywhere');
  const louder=setup(tool('media_control',{action:'louder'}));await louder.handler(req(convo));assert.equal(louder.outbound[0].body.messages[0].payload.action,'louder');
+});
+
+test('multi-step browser jobs go to the Chromebook agent; the phone side gets name, language and memory',async()=>{
+ const s=setup(tool('browser_task',{task:'Check Teams for maths assignments due this week'},"On it, I'm checking Teams."));
+ const r=await s.handler(req({...convo,lang:'es',memory:['Likes lofi.'],hear:'es-ES'}));
+ assert.deepEqual(await r.json(),{reply:"On it, I'm checking Teams.",actions:['agent']});
+ assert.deepEqual({...s.outbound[0].body.messages[0].payload,at:0},{action:'agent',task:'Check Teams for maths assignments due this week',lang:'es',at:0});
+ assert.equal(s.state.length,1);assert.deepEqual({...s.state[0].body,updated_at:0},{id:1,name:'Crew',lang:'es',hear:'es-ES',memory:['Likes lofi.'],updated_at:0});
+ assert.match(s.state[0].opts.headers.Prefer,/merge-duplicates/);
+ const p=s.calls.find(c=>c.params).params;assert.match(p.system,/browser_task/);
+});
+test('reminders are stored with an exact time; past or garbled times are refused',async()=>{
+ const due=new Date(Date.now()+3600e3).toISOString().replace('Z','+00:00');
+ const s=setup(tool('set_reminder',{due,text:'Time to study maths, Crew.',via:'call'},"I'll call you at eight."));
+ assert.deepEqual(await (await s.handler(req(convo))).json(),{reply:"I'll call you at eight.",actions:['reminder:call']});
+ const row=s.outbound[0];assert.equal(row.url,'https://fixture.supabase.co/rest/v1/jarvis_reminders');assert.equal(row.opts.headers.apikey,'service-fixture');
+ assert.deepEqual(row.body,{due_at:new Date(due).toISOString(),text:'Time to study maths, Crew.',via:'call',lang:'en'});
+ for(const bad of ['tomorrow','2020-01-01T08:00:00+01:00']){
+  const b=setup(tool('set_reminder',{due:bad,text:'x',via:'call'},'Done.'));
+  assert.deepEqual(await (await b.handler(req(convo))).json(),{reply:"I couldn't save that reminder.",actions:['reminder:failed']});assert.equal(b.outbound.length,0);
+ }
+});
+test('call_me asks jarvis-call to ring the phone with the Jarvis key',async()=>{
+ const s=setup(tool('call_me',{message:'Hey Crew, you asked me to call.'},'Calling you now.'));
+ assert.deepEqual(await (await s.handler(req(convo))).json(),{reply:'Calling you now.',actions:['call:calling']});
+ const c=s.outbound[0];assert.equal(c.url,'https://fixture.supabase.co/functions/v1/jarvis-call');
+ assert.equal(c.opts.headers['x-jarvis-key'],'clave-larga-de-prueba');assert.deepEqual(c.body,{action:'call',message:'Hey Crew, you asked me to call.'});
+ const off=setup(tool('call_me',{message:'hi'},'Calling.'),{},428);
+ assert.equal((await (await off.handler(req(convo))).json()).reply,"I couldn't place the call, sorry.");
 });

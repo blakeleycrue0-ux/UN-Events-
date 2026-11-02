@@ -49,6 +49,29 @@ const TOOLS = [
       subject: { type: "string" }, body: { type: "string" },
     } },
   },
+  {
+    name: "browser_task", strict: true,
+    description: "Do a multi-step job in the Chromebook's web browser for the user: check Teams or Classroom assignments, read or search emails in Gmail, find, open or download files in Drive, fill in a form, hand in work. It runs in the background; the user is asked by voice before anything that can't be undone, and the result is spoken when it finishes.",
+    input_schema: { type: "object", additionalProperties: false, required: ["task"], properties: {
+      task: { type: "string", description: "Complete, self-contained instruction in English, with every detail the user gave (which subject, which file, what to check)." },
+    } },
+  },
+  {
+    name: "set_reminder", strict: true,
+    description: "Remind the user of something at a given time: by phone call, spoken on the Chromebook, or by email.",
+    input_schema: { type: "object", additionalProperties: false, required: ["due", "text", "via"], properties: {
+      due: { type: "string", description: "When, as ISO 8601 with the user's UTC offset, e.g. 2026-11-03T08:00:00+01:00." },
+      text: { type: "string", description: "What Jarvis will say at that moment: one or two natural sentences addressed to the user, in the language of the conversation." },
+      via: { type: "string", enum: ["call", "chromebook", "email"], description: "call = ring the user's phone (use when they say call me / llámame)." },
+    } },
+  },
+  {
+    name: "call_me", strict: true,
+    description: "Phone the user right now and talk to them (only when they ask to be called now).",
+    input_schema: { type: "object", additionalProperties: false, required: ["message"], properties: {
+      message: { type: "string", description: "The first thing Jarvis says when they pick up, in the language of the conversation." },
+    } },
+  },
 ];
 async function sha256(text: string) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -65,6 +88,25 @@ async function sendToChromebook(key: string, command: Record<string, unknown>) {
     signal: AbortSignal.timeout(8000),
   });
   if (!response.ok) throw Error("broadcast " + response.status);
+}
+// Small tables (service role only) shared with jarvis-call: reminders and the
+// user's name, language and memory so Jarvis knows them on the phone too.
+async function db(path: string, init: RequestInit = {}) {
+  const url = Deno.env.get("SUPABASE_URL")!, service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  return fetch(url + "/rest/v1/" + path, {
+    ...init,
+    headers: { apikey: service, Authorization: "Bearer " + service, "Content-Type": "application/json", Prefer: "return=minimal,resolution=merge-duplicates", ...(init.headers || {}) },
+    signal: AbortSignal.timeout(8000),
+  });
+}
+async function callMe(key: string, message: string) {
+  const url = Deno.env.get("SUPABASE_URL")!;
+  const response = await fetch(url + "/functions/v1/jarvis-call", {
+    method: "POST", headers: { "Content-Type": "application/json", "x-jarvis-key": key },
+    body: JSON.stringify({ action: "call", message }), signal: AbortSignal.timeout(15000),
+  });
+  const data = await response.json().catch(() => ({}));
+  return response.ok ? "calling" : data.error === "Calls not configured" ? "not configured" : "failed";
 }
 async function emailMe(subject: string, body: string) {
   const key = (Deno.env.get("RESEND_API_KEY") || "").trim(), to = (Deno.env.get("JARVIS_EMAIL_TO") || "").trim();
@@ -106,7 +148,7 @@ Deno.serve(async (request: Request) => {
   if (diff) return json(401, { error: "Wrong Jarvis key" });
 
   // Validate the short conversation the page keeps.
-  let body: { messages?: { role: string; content: string }[]; lang?: string; name?: string; now?: string; memory?: unknown; context?: string } = {};
+  let body: { messages?: { role: string; content: string }[]; lang?: string; name?: string; now?: string; memory?: unknown; context?: string; hear?: string } = {};
   try { body = await request.json(); } catch { /* handled below */ }
   const turns = Array.isArray(body.messages) ? body.messages : [];
   const valid = turns.length >= 1 && turns.length <= 20 && turns.every((m, i) =>
@@ -119,14 +161,17 @@ Deno.serve(async (request: Request) => {
   // Long-term memory and live context kept by the desk page.
   const memory = (Array.isArray(body.memory) ? body.memory : []).slice(-40).map((m) => String(m).replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean);
   const context = String(body.context || "").replace(/\s+/g, " ").slice(0, 300);
+  // Keep the phone side up to date (ignored if the table isn't there).
+  db("jarvis_state", { method: "POST", body: JSON.stringify({ id: 1, name, lang: body.lang === "es" ? "es" : "en", hear: body.hear === "en-US" ? "en-US" : "es-ES", memory, updated_at: new Date().toISOString() }) }).catch(() => {});
 
   const system =
     `You are Jarvis, the AI assistant of ${name}'s bedroom: you live on the Chromebook on the desk, with a camera on the wall that tells you who comes through the door. ` +
     `Your replies are spoken aloud by a voice synthesizer, so: answer in ${lang} only, in one to three short natural sentences, ` +
     `with no markdown, lists, emoji or URLs. Be warm, witty and a little dry, like a loyal butler AI. ${name} may talk to you in Spanish or English; ` +
     `always reply in ${lang}. You can control ${name}'s Chromebook browser with your tools (music on YouTube or Spotify, pause or skip, ` +
-    `open sites such as Teams for school assignments, Google searches) and send ${name} emails. When you use a tool, say in a few words what you did. ` +
-    `You cannot read Teams assignments or emails yet: offer to open Teams or Gmail instead. Smart-home control (lights, air conditioning, fan, TV, PlayStation) ` +
+    `open sites, Google searches), send ${name} emails, set reminders and phone ${name}. When you use a tool, say in a few words what you did. ` +
+    `For anything that needs several steps in the browser (reading Teams or Classroom assignments, reading emails, finding, downloading or handing in files, forms) use browser_task and just say you're on it: the result is spoken when it's done. ` +
+    `For reminders, work out the exact date and time from the local time given, and use via "call" when ${name} wants a phone call. Smart-home control (lights, air conditioning, fan, TV, PlayStation) ` +
     `is not connected yet; if asked, say it is coming soon rather than pretending. You cannot see news; offer a web search instead. ` +
     `Messages that start with [Event] come from the room's sensors, not from ${name}; respond to them as instructed, briefly. ` +
     (context ? `Live context: ${context}. ` : "") +
@@ -170,6 +215,22 @@ Deno.serve(async (request: Request) => {
           if (result !== "sent") reply = lang === "English"
             ? (result === "not configured" ? "I can't send emails yet: email isn't set up." : "I couldn't send the email, sorry.")
             : (result === "not configured" ? "Todavía no puedo enviar emails: falta configurarlo." : "No he podido enviar el email, lo siento.");
+        } else if (block.name === "browser_task") {
+          const task = String(input.task || "").replace(/\s+/g, " ").trim().slice(0, 600);
+          if (task) { await sendToChromebook(given, { action: "agent", task, lang: body.lang === "es" ? "es" : "en" }); actions.push("agent"); }
+        } else if (block.name === "set_reminder") {
+          const due = new Date(String(input.due || "")), text = String(input.text || "").replace(/\s+/g, " ").trim().slice(0, 400);
+          const via = ["call", "chromebook", "email"].includes(input.via) ? input.via : "chromebook";
+          const ok = !isNaN(+due) && due.getTime() > Date.now() - 60000 && !!text &&
+            (await db("jarvis_reminders", { method: "POST", body: JSON.stringify({ due_at: due.toISOString(), text, via, lang: body.lang === "es" ? "es" : "en" }) })).ok;
+          actions.push(ok ? "reminder:" + via : "reminder:failed");
+          if (!ok) reply = lang === "English" ? "I couldn't save that reminder." : "No he podido guardar el recordatorio.";
+        } else if (block.name === "call_me") {
+          const result = await callMe(given, String(input.message || "").slice(0, 300));
+          actions.push("call:" + result);
+          if (result !== "calling") reply = lang === "English"
+            ? (result === "not configured" ? "I can't make phone calls yet: calls aren't set up." : "I couldn't place the call, sorry.")
+            : (result === "not configured" ? "Todavía no puedo llamarte: faltan configurar las llamadas." : "No he podido llamarte, lo siento.");
         } else if (block.name === "play_music") {
           await sendToChromebook(given, { action: "play", service: input.service === "spotify" ? "spotify" : "youtube", query: String(input.query || "").slice(0, 200) });
           actions.push("play");

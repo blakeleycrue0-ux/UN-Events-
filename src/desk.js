@@ -179,6 +179,12 @@ async function heard(text, via) {
 }
 async function respond(raw) {
   $("heard").textContent = "«" + raw + "»";
+  // Answer to a question from the browser agent ("Shall I hand it in?").
+  if (desk.ask) { const id = desk.ask; desk.ask = 0; await extension("agent-answer", { ask: id, text: raw }); setState("idle"); ears.resume(); return; }
+  if (desk.agent && /^\s*(stop|para|parar|cancela|cancel|d[ée]jalo|basta)\b/i.test(raw)) {
+    await extension("agent-stop"); desk.agent = null; renderAgent();
+    await talk(settings.lang === "es" ? "Vale, lo dejo." : "Alright, I've stopped."); ears.resume(); return;
+  }
   const local = quick(raw, settings.lang, settings.name);
   if (local) {
     if (local.timer) addTimer(local.timer.ms, local.timer.label);
@@ -205,7 +211,8 @@ async function think(raw, { remember = true, event = false } = {}) {
     const now = new Date().toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
     const timers = desk.timers.map((tm) => `${tm.label} timer, ${Math.ceil((tm.end - Date.now()) / 60000)} min left`).join("; ");
     const context = [weatherText(), timers, desk.music ? `Last music: ${desk.music.query}` : ""].filter(Boolean).join(". ");
-    const response = await call("jarvis-brain", { messages: history, lang: settings.lang, name: settings.name, now, memory: desk.memory, context }, settings.key);
+    const off = -new Date().getTimezoneOffset(), tz = `UTC${off < 0 ? "-" : "+"}${String(Math.floor(Math.abs(off) / 60)).padStart(2, "0")}:${String(Math.abs(off) % 60).padStart(2, "0")}`;
+    const response = await call("jarvis-brain", { messages: history, lang: settings.lang, name: settings.name, now: `${now} (${tz}, ${new Date().getFullYear()})`, memory: desk.memory, context, hear: settings.hear }, settings.key);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw Error(t().thinkErr[data.error] || t().thinkDown);
     const reply = data.refused || !data.reply ? t().refused : data.reply;
@@ -242,6 +249,14 @@ desk.addTimer = addTimer;
 async function onHome(event) {
   const at = +event.at || Date.now();
   if (event.action === "wall") { desk.wallSeen = at; render(); return; }
+  // From a phone call or a reminder that came due.
+  if (event.action === "remember" && event.fact) { addMemory(String(event.fact).slice(0, 200)); return; }
+  if (event.action === "remind" && event.text) {
+    wakeUp(); orb.flash("alert"); chime("alert");
+    const text = String(event.text).slice(0, 400);
+    if (desk.voice.speaking || ears.mode === "direct") { toast(text); return; }
+    await talk(text, event.lang === "es" ? "es" : event.lang === "en" ? "en" : settings.lang); ears.resume(true); return;
+  }
   if (event.action === "arrival" || event.action === "test" || event.action === "unknown") {
     desk.wallSeen = Date.now();
     const p = event.person || { name: settings.lang === "es" ? "Desconocido" : "Unknown", role: "unknown" };
@@ -287,6 +302,7 @@ const pending = new Map();
 window.addEventListener("message", (e) => {
   if (e.source !== window || e.data?.source !== "jarvis-extension") return;
   desk.extension = true; render();
+  if (e.data.agent) void onAgent(e.data.agent);
   if (e.data.id && pending.has(e.data.id)) { pending.get(e.data.id)(e.data.ok); pending.delete(e.data.id); }
 });
 function extension(action, extra = {}) {
@@ -297,6 +313,35 @@ function extension(action, extra = {}) {
   });
 }
 desk.extensionCall = extension;
+
+// ---------- Modo agente (tareas de varios pasos en el navegador) ----------
+function renderAgent() {
+  const a = desk.agent;
+  $("agentCard").hidden = !a; if (!a) return;
+  $("agentCard").classList.toggle("done", !!a.done);
+  $("agentTask").textContent = a.task || "";
+  $("agentSay").textContent = a.say || "";
+  $("agentStep").textContent = a.done ? (settings.lang === "es" ? "terminado" : "finished") : a.step ? (settings.lang === "es" ? `paso ${a.step}` : `step ${a.step}`) : "";
+}
+async function onAgent(m) {
+  wakeUp();
+  if (m.kind === "start") { desk.agent = { task: m.task, step: 0, say: settings.lang === "es" ? "Empezando…" : "Starting…" }; renderAgent(); return; }
+  if (!desk.agent) desk.agent = { task: m.task || "", step: 0 };
+  if (m.kind === "step") { Object.assign(desk.agent, { step: m.step, say: m.say }); renderAgent(); return; }
+  if (m.kind === "ask") {
+    // Speak the question, then the next thing heard is the answer.
+    desk.ask = m.id; desk.agent.say = m.question; renderAgent();
+    orb.flash("arrival"); chime();
+    voice.stop(); await talk(m.question); desk.ask = m.id; ears.direct();
+    return;
+  }
+  if (m.kind === "done") {
+    Object.assign(desk.agent, { done: true, say: m.stopped ? "" : m.summary }); renderAgent();
+    setTimeout(() => { if (desk.agent?.done) { desk.agent = null; renderAgent(); } }, 90000);
+    if (m.summary && !m.stopped) { if (desk.voice.speaking || ears.mode === "direct") toast(m.summary); else { await talk(m.summary); ears.resume(true); } }
+  }
+}
+desk.onAgent = onAgent;
 let playing = true;
 async function media(action) {
   if (action === "toggle") action = playing ? "pause" : "resume";
@@ -397,6 +442,18 @@ $("closeSettings").onclick = () => { $("settings").hidden = true; };
 const bind = (id, key, conv = (v) => v) => { $(id).onchange = () => { settings[key] = conv($(id).type === "checkbox" ? $(id).checked : $(id).value); settings.save(); render(); }; };
 bind("name", "name", (v) => v.trim() || "Crew"); bind("lang", "lang"); bind("hear", "hear"); bind("greetOn", "greet");
 bind("quietFrom", "quietFrom", Number); bind("quietTo", "quietTo", Number);
+$("testCall").onclick = async () => {
+  const es = settings.lang === "es";
+  if (!settings.key) { $("callInfo").textContent = "Primero pon tu clave de Jarvis."; return; }
+  $("callInfo").textContent = "Llamando…";
+  try {
+    const response = await call("jarvis-call", { action: "test" }, settings.key);
+    const data = await response.json().catch(() => ({}));
+    $("callInfo").textContent = response.ok ? "Te estoy llamando. Contesta y habla con Jarvis." :
+      response.status === 428 ? "Faltan los secretos de Twilio en Supabase (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, JARVIS_PHONE_TO)." :
+      response.status === 401 ? "La clave de Jarvis no coincide." : "No se pudo llamar" + (data.error ? ": " + data.error : ".");
+  } catch { $("callInfo").textContent = es ? "Sin conexión." : "Sin conexión."; }
+};
 $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); home?.stop(); if (desk.started && settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) }); };
 $("wakeOn").onchange = () => { settings.wake = $("wakeOn").checked; settings.save(); if (settings.wake) ears.resume(); else ears.pause(); render(); };
 $("gesturesOn").onchange = () => { settings.gestures = $("gesturesOn").checked; settings.save(); if (settings.gestures) void startHands(); else { desk.handsOn = false; $("handVideo").srcObject?.getTracks().forEach((t) => t.stop()); $("hand").hidden = true; render(); } };

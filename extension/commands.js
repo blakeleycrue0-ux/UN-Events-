@@ -24,6 +24,12 @@ function jarvisPlan(command) {
     return { kind: "open", url: JARVIS_SITES[command.site] };
   if (command.action === "search" && text(command.query))
     return { kind: "open", url: "https://www.google.com/search?q=" + encodeURIComponent(text(command.query)) };
+  // Agent mode: a multi-step job, carried out step by step with confirmations.
+  if (command.action === "agent") {
+    const task = String(command.task || "").replace(/\s+/g, " ").trim().slice(0, 600);
+    return task ? { kind: "agent", task, lang: command.lang === "es" ? "es" : "en" } : null;
+  }
+  if (command.action === "agent-stop") return { kind: "agent-stop" };
   if (["pause", "resume", "next", "previous", "louder", "quieter"].includes(command.action)) return { kind: "media", action: command.action };
   return null;
 }

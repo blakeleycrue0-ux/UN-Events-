@@ -175,3 +175,11 @@ body.night .side { opacity: .5; }
   .status .stat span:last-child { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .wake-ring, .say.pop, .arrival { animation: none; } }
+
+/* Agent task in progress */
+.agent-task { font-size: calc(var(--u) * 1.15); font-weight: 300; line-height: 1.35; color: var(--text, #f2f5f8); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.agent-say { margin-top: calc(var(--u) * .5); font-size: calc(var(--u) * .9); color: var(--muted); min-height: 1.3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-bar { margin-top: calc(var(--u) * .9); height: 1px; background: var(--hair); overflow: hidden; position: relative; }
+.agent-bar span { position: absolute; inset: 0 auto 0 0; width: 30%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: agentScan 1.6s ease-in-out infinite; }
+.agent.done .agent-bar span { animation: none; width: 100%; background: var(--accent); opacity: .5; }
+@keyframes agentScan { from { transform: translateX(-100%); } to { transform: translateX(340%); } }

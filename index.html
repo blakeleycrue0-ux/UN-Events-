@@ -52,6 +52,12 @@
 
       <!-- Right: door, music, memory -->
       <section class="side right">
+        <div id="agentCard" class="block agent" hidden>
+          <div class="label">Task <span id="agentStep" class="sub"></span></div>
+          <div id="agentTask" class="agent-task"></div>
+          <div id="agentSay" class="agent-say"></div>
+          <div class="agent-bar"><span></span></div>
+        </div>
         <div class="block">
           <div class="label">Door <span id="wallText" class="sub"></span></div>
           <ul id="arrivals" class="arrivals"></ul>
@@ -114,6 +120,11 @@
         <li><b>Pulgar arriba / abajo</b><span>Volumen</span></li>
         <li><b>Índice hacia arriba</b><span>Hablar sin decir «Jarvis»</span></li>
       </ul>
+
+      <h3>Llamadas y recordatorios</h3>
+      <p class="muted">Jarvis puede llamarte al móvil para recordarte cosas y hablar contigo («Jarvis, llámame mañana a las 8 para el examen»). Necesita Twilio configurado en Supabase.</p>
+      <div class="row"><button id="testCall" class="pill">Llamarme ahora (prueba)</button></div>
+      <p id="callInfo" class="muted"></p>
 
       <h3>Memoria</h3>
       <ul id="memoryList" class="memory-list"></ul>
