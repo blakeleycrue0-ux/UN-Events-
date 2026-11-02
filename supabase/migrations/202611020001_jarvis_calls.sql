@@ -57,3 +57,6 @@ language sql stable security definer set search_path = '' as $$
 $$;
 revoke execute on function public.jarvis_cron_check(text) from public, anon, authenticated;
 grant execute on function public.jarvis_cron_check(text) to service_role;
+
+-- The guard-mode code (4 digits) is stored privately here, not in the public site.
+alter table public.jarvis_state add column if not exists guard_pin text check (guard_pin ~ '^[0-9]{4}$');

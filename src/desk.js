@@ -189,6 +189,7 @@ async function respond(raw) {
   $("heard").textContent = "«" + raw + "»";
   // Answer to a question from the browser agent ("Shall I hand it in?").
   if (desk.ask) { const id = desk.ask; desk.ask = 0; await extension("agent-answer", { ask: id, text: raw }); setState("idle"); ears.resume(); return; }
+  if (await wakeVoice(raw)) return;
   if (await guardVoice(raw)) return;
   if (desk.agent && /^\s*(stop|para|parar|cancela|cancel|d[ée]jalo|basta)\b/i.test(raw)) {
     await extension("agent-stop"); desk.agent = null; renderAgent();
@@ -274,12 +275,14 @@ function renderReminders() {
 }
 setInterval(() => { if (desk.started) void loadReminders(); }, 60000);
 
-// New computer: bring back what Jarvis remembers from Supabase.
+// New computer: bring back what Jarvis remembers from Supabase (and the guard code).
 async function restoreMemory() {
-  if (desk.memory.length || !settings.key) return;
+  if (!settings.key) return;
   try {
     const response = await call("jarvis-call", { action: "state" }, settings.key);
     const data = await response.json().catch(() => ({}));
+    if (response.ok && /^\d{4}$/.test(data.guardPin || "") && data.guardPin !== settings.guardPin) { settings.guardPin = data.guardPin; settings.save(); }
+    if (desk.memory.length) return;
     const facts = Array.isArray(data.memory) ? data.memory.map((m) => String(m).slice(0, 200)).filter(Boolean) : [];
     if (!response.ok || !facts.length || desk.memory.length) return;
     desk.memory = facts.slice(-40); store.set("jarvis-memory", desk.memory); render();
@@ -304,12 +307,165 @@ function addTimer(ms, label) {
 }
 desk.addTimer = addTimer;
 
+// ---------- Despertador amanecer ----------
+// Like a sunrise lamp: 15 min before the time the screen goes from black to deep
+// red, orange and warm light, with nature sounds rising; at the time, Jarvis says
+// good morning. "Ya estoy despierto" stops it; "cinco minutos más" snoozes 9 min.
+desk.wake = store.get("jarvis-wake", { time: "", done: "" });
+desk.sunriseLeadMS = 15 * 60000; desk.sunriseRingMS = 30 * 60000; desk.snoozeMS = 9 * 60000;
+function wakeTarget(now = Date.now()) {
+  if (desk.wakeOverride) return desk.wakeOverride;
+  if (!/^\d{2}:\d{2}$/.test(desk.wake.time || "")) return 0;
+  const [h, m] = desk.wake.time.split(":").map(Number), d = new Date(now);
+  d.setHours(h, m, 0, 0);
+  if (now > d.getTime() + desk.sunriseRingMS) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+desk.wakeTarget = wakeTarget;
+function saveWake() { store.set("jarvis-wake", desk.wake); renderWake(); }
+function renderWake() {
+  const on = /^\d{2}:\d{2}$/.test(desk.wake.time || "");
+  $("alarmInfo").hidden = !on;
+  if (on) $("alarmText").textContent = (settings.lang === "es" ? "Despertador " : "Alarm ") + desk.wake.time;
+}
+function setWake(time) { desk.wake.time = time; desk.wake.done = ""; desk.wakeOverride = 0; saveWake(); }
+desk.setWake = setWake;
+// Sunrise colours: night → deep red → orange → warm gold → soft daylight.
+const SKY = [[0, [0, 0, 0], [40, 4, 0]], [0.3, [30, 4, 2], [150, 25, 8]], [0.6, [110, 35, 10], [255, 120, 35]], [0.85, [210, 120, 60], [255, 200, 120]], [1, [255, 226, 190], [255, 246, 228]]];
+function skyAt(p) {
+  let i = 0; while (i < SKY.length - 2 && p > SKY[i + 1][0]) i++;
+  const [a, b] = [SKY[i], SKY[i + 1]], k = Math.min(1, Math.max(0, (p - a[0]) / (b[0] - a[0])));
+  const mix = (x, y) => x.map((v, j) => Math.round(v + (y[j] - v) * k));
+  return { bg: mix(a[1], b[1]), sun: mix(a[2], b[2]) };
+}
+function paintSunrise(p) {
+  const { bg, sun } = skyAt(p), y = 112 - p * 62, size = 18 + p * 70;
+  const mid = sun.map((v, j) => Math.round(v * 0.75 + bg[j] * 0.25)), edge = bg.map((v) => Math.round(v * 0.7));
+  const el = $("sunrise");
+  el.style.backgroundColor = `rgb(${edge})`;   // fully opaque: nothing of the desk shows through
+  el.style.backgroundImage = `radial-gradient(circle at 50% ${y}%, rgb(${sun}) 0%, rgb(${mid}) ${size * 0.35}%, rgb(${bg}) ${size}%, rgb(${edge}) 100%)`;
+  $("sunriseClock").textContent = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+}
+desk.paintSunrise = paintSunrise;
+// Nature: a soft stream (filtered brown noise) and birds, all generated (no files).
+function startNature() {
+  if (desk.nature) return desk.nature;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext; desk.chimeCtx ||= new Ctx();
+    const ctx = desk.chimeCtx, master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
+    const len = ctx.sampleRate * 4, buf = ctx.createBuffer(1, len, ctx.sampleRate), data = buf.getChannelData(0);
+    let last = 0; for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; data[i] = last * 3.5; }
+    const noise = ctx.createBufferSource(); noise.buffer = buf; noise.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900;
+    const water = ctx.createGain(); water.gain.value = 0.55;
+    noise.connect(lp); lp.connect(water); water.connect(master); noise.start();
+    const chirp = () => {
+      if (!desk.nature) return;
+      const t0 = ctx.currentTime, notes = 2 + Math.floor(Math.random() * 4), base = 2600 + Math.random() * 1800;
+      for (let n = 0; n < notes; n++) {
+        const o = ctx.createOscillator(), g = ctx.createGain(), t = t0 + n * (0.09 + Math.random() * 0.06), f = base * (0.9 + Math.random() * 0.25);
+        o.type = "sine"; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (1.15 + Math.random() * 0.3), t + 0.05); o.frequency.exponentialRampToValueAtTime(f * 0.9, t + 0.1);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05 + Math.random() * 0.05, t + 0.015); g.gain.linearRampToValueAtTime(0, t + 0.1);
+        o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.12);
+      }
+      desk.birdTimer = setTimeout(chirp, 600 + Math.random() * 2600);
+    };
+    desk.nature = { master, noise, ctx };
+    chirp();
+  } catch { /* no audio */ }
+  return desk.nature;
+}
+function stopNature() { clearTimeout(desk.birdTimer); try { desk.nature?.noise.stop(); desk.nature?.master.disconnect(); } catch {} desk.nature = null; }
+function endSunrise(dismissed) {
+  const target = wakeTarget();
+  $("sunrise").hidden = true; $("sunrise").classList.remove("ring"); stopNature(); desk.sunrise = false; desk.snoozeUntil = 0;
+  if (dismissed && target) { desk.wake.done = String(target); desk.wakeOverride = 0; saveWake(); }
+}
+desk.endSunrise = endSunrise;
+async function ringSunrise(target) {
+  if (desk.wakeRang === target) return;
+  desk.wakeRang = target; $("sunrise").classList.add("ring");
+  const es = settings.lang === "es", hm = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const today = new Date().toDateString(), due = (desk.reminders || []).filter((r) => new Date(r.due_at).toDateString() === today).length;
+  const w = weatherText();
+  $("sunriseMsg").textContent = es ? `Buenos días, ${settings.name}` : `Good morning, ${settings.name}`;
+  const text = es
+    ? `Buenos días, ${settings.name}. Son las ${hm}. ${w ? w + "." : ""} ${due ? `Hoy tienes ${due} ${due === 1 ? "recordatorio" : "recordatorios"}.` : "Hoy no tienes nada apuntado."} Arriba, que el día no se conquista solo.`
+    : `Good morning, ${settings.name}. It's ${hm}. ${w ? w + "." : ""} ${due ? `You have ${due} ${due === 1 ? "reminder" : "reminders"} today.` : "Nothing on the list today."} Up you get, the day won't conquer itself.`;
+  await talk(text.replace(/\s+/g, " ").trim(), es ? "es" : "en"); ears.resume(true);
+}
+function sunriseTick() {
+  const now = Date.now(), target = wakeTarget(now);
+  if (!target || desk.wake.done === String(target)) { if (desk.sunrise) endSunrise(false); return; }
+  const start = target - desk.sunriseLeadMS;
+  if (now < start || now > target + desk.sunriseRingMS) { if (desk.sunrise) endSunrise(false); return; }
+  if (desk.snoozeUntil > now) return;
+  if (desk.snoozeUntil) { desk.snoozeUntil = 0; desk.wakeRang = 0; }
+  if (!desk.sunrise) { desk.sunrise = true; $("sunrise").hidden = false; wakeUp(); }
+  const p = Math.min(1, (now - start) / desk.sunriseLeadMS);
+  paintSunrise(p);
+  // Nature sounds rise over the last third, then stay gentle.
+  const vol = p < 0.65 ? 0 : Math.min(0.9, (p - 0.65) / 0.35 * 0.9);
+  if (vol > 0) { const n = startNature(); if (n) n.master.gain.setTargetAtTime(vol, n.ctx.currentTime, 1.5); }
+  if (now >= target) void ringSunrise(target);
+}
+desk.sunriseTick = sunriseTick;
+setInterval(sunriseTick, 1000);
+function snooze() {
+  desk.snoozeUntil = Date.now() + desk.snoozeMS; desk.wakeRang = 0;
+  $("sunrise").hidden = true; $("sunrise").classList.remove("ring"); stopNature(); desk.sunrise = false;
+}
+desk.snooze = snooze;
+$("sunriseStop").onclick = async () => { endSunrise(true); voice.stop(); await talk(settings.lang === "es" ? "Perfecto. Que tengas un gran día." : "Splendid. Have a great day."); ears.resume(); };
+$("sunriseSnooze").onclick = () => { voice.stop(); snooze(); };
+const NUM = { una: 1, uno: 1, one: 1, dos: 2, two: 2, tres: 3, three: 3, cuatro: 4, four: 4, cinco: 5, five: 5, seis: 6, six: 6, siete: 7, seven: 7, ocho: 8, eight: 8, nueve: 9, nine: 9, diez: 10, ten: 10, once: 11, eleven: 11, doce: 12, twelve: 12 };
+// Voice: "despiértame a las 7 y media", "wake me up at 6:45", "quita el despertador", "ya estoy despierto".
+function parseWake(text) {
+  const m = /(despiertame|despertador|wake me|alarm clock|alarma (?:a|para) las?)\D*?(\d{1,2}|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:[:.h ](\d{2}))?(?: ?(y media|y cuarto|menos cuarto|pm|de la tarde|de la noche|am|de la manana))?/.exec(text);
+  if (!m) return null;
+  let h = /^\d+$/.test(m[2]) ? +m[2] : NUM[m[2]], min = m[3] ? +m[3] : 0;
+  if (m[4] === "y media") min = 30; else if (m[4] === "y cuarto") min = 15; else if (m[4] === "menos cuarto") { h -= 1; min = 45; }
+  if (/pm|tarde|noche/.test(m[4] || "") && h < 12) h += 12;
+  if (h > 23 || min > 59 || h < 0) return null;
+  return String(h).padStart(2, "0") + ":" + String(min).padStart(2, "0");
+}
+desk.parseWake = parseWake;
+async function wakeVoice(raw) {
+  const text = normalize(raw).replace(/'/g, ""), es = settings.lang === "es";
+  if (desk.sunrise && /(ya )?estoy despierto|me levanto|im up|im awake|apaga(r)? (la )?alarma|para(r)? (la )?alarma|stop (the )?alarm/.test(text)) { $("sunriseStop").click(); return true; }
+  if (desk.sunrise && /cinco minutos|5 minutos|snooze|five more minutes|un rato mas/.test(text)) {
+    snooze(); await talk(es ? "Nueve minutos más. Ni uno más." : "Nine more minutes. Not one more."); ears.resume(); return true;
+  }
+  if (/(quita|cancela|apaga|borra)( el)? despertador|no me despiertes|cancel (the )?(wake|alarm clock)/.test(text)) {
+    setWake(""); await talk(es ? "Despertador quitado. Duerme lo que quieras." : "Alarm clock off. Sleep as long as you like."); ears.resume(); return true;
+  }
+  const time = parseWake(text);
+  if (!time) return false;
+  setWake(time);
+  const [h, m] = time.split(":").map(Number), early = new Date(0, 0, 0, h, m - 15);
+  const from = `${String(early.getHours()).padStart(2, "0")}:${String(early.getMinutes()).padStart(2, "0")}`;
+  await talk(es ? `Hecho. Te despierto a las ${time}, con el amanecer empezando a las ${from}.` : `Done. I'll wake you at ${time}, with the sunrise starting at ${from}.`);
+  ears.resume(); return true;
+}
+desk.wakeVoice = wakeVoice;
+$("wakeTime").onchange = () => { if (/^\d{2}:\d{2}$/.test($("wakeTime").value)) setWake($("wakeTime").value); };
+$("wakeClear").onclick = () => { setWake(""); $("wakeTime").value = ""; };
+$("testSunrise").onclick = () => {
+  $("settings").hidden = true;
+  desk.sunriseLeadMS = 60000; desk.wakeOverride = Date.now() + 60000; desk.wake.done = "";
+  setTimeout(() => { desk.sunriseLeadMS = 15 * 60000; }, 15 * 60000);
+};
+renderWake();
+// Keep the screen on (for the sunrise and the door) while the desk page is open.
+async function keepScreenOn() { try { if (document.visibilityState === "visible") desk.wakeLock = await navigator.wakeLock?.request("screen"); } catch { /* not allowed */ } }
+document.addEventListener("visibilitychange", () => void keepScreenOn());
+
 // ---------- Modo vigilancia ----------
 // Armed when you leave ("Jarvis, me voy" or the phone remote). Whoever comes in
 // that isn't you gets a cheeky question and 20 s to type the code; otherwise a
 // gentle alarm sounds and your phone hears about it. Your own face disarms it.
 desk.guard = store.get("jarvis-guard", { on: false, armAt: 0, log: [] });
-desk.guardGraceMS = 20000; desk.guardExitMS = 60000;
+desk.guardGraceMS = 10000; desk.guardExitMS = 60000;
 const guardArmed = () => desk.guard.on && Date.now() >= (desk.guard.armAt || 0);
 function guardLog(text) { desk.guard.log.push({ at: Date.now(), text }); while (desk.guard.log.length > 20) desk.guard.log.shift(); }
 function guardSend(extra = {}) {
@@ -333,13 +489,13 @@ function setGuard(on, why = "") {
 desk.setGuard = setGuard;
 function guardLine(p, action) {
   const es = settings.lang === "es", name = settings.name;
-  if (action !== "unknown" && p.role === "me") return es ? { text: `Bienvenido, ${name}. Pon el código, por si acaso no eres tú. Veinte segundos.`, lang: "es" }
-    : { text: `Welcome back, ${name}. Code, please, just in case you're not really you. Twenty seconds.`, lang: "en" };
-  if (action !== "unknown" && p.role === "mom") return { text: `Hi, Mum. ${name} is out, so I'm in charge. What do you need? Pop the code in within twenty seconds, or things get loud.`, lang: "en" };
-  if (action !== "unknown" && p.role === "dad") return { text: `Hello, Dad. ${name} isn't here, and yes, the air conditioning is off. Code in twenty seconds, please, or I start singing.`, lang: "en" };
-  if (action !== "unknown") return es ? { text: `Hola, ${p.name}. ${name} no está. ¿Qué necesitas? Tienes veinte segundos para poner el código.`, lang: "es" } : { text: `Hello, ${p.name}. ${name} is out. What do you need? You've got twenty seconds to enter the code.`, lang: "en" };
-  return es ? { text: `Vaya, hola. ${name} no está y a ti no te conozco. ¿Qué necesitas? Pon el código en veinte segundos o monto un escándalo.`, lang: "es" }
-    : { text: `Well, hello there. ${name} isn't home, and I don't recognise you. What do you need? Enter the code in twenty seconds, or I raise the alarm.`, lang: "en" };
+  if (action !== "unknown" && p.role === "me") return es ? { text: `Bienvenido, ${name}. Pon el código, por si acaso no eres tú. Diez segundos.`, lang: "es" }
+    : { text: `Welcome back, ${name}. Code, please, just in case you're not really you. Ten seconds.`, lang: "en" };
+  if (action !== "unknown" && p.role === "mom") return { text: `Hi, Mum. ${name} is out, so I'm in charge. What do you need? Pop the code in within ten seconds, or things get very loud.`, lang: "en" };
+  if (action !== "unknown" && p.role === "dad") return { text: `Hello, Dad. ${name} isn't here, and yes, the air conditioning is off. Code in ten seconds, please, or I start singing.`, lang: "en" };
+  if (action !== "unknown") return es ? { text: `Hola, ${p.name}. ${name} no está. ¿Qué necesitas? Tienes diez segundos para poner el código.`, lang: "es" } : { text: `Hello, ${p.name}. ${name} is out. What do you need? You've got ten seconds to enter the code.`, lang: "en" };
+  return es ? { text: `Vaya, hola. ${name} no está y a ti no te conozco. ¿Qué necesitas? Pon el código en diez segundos o monto un escándalo.`, lang: "es" }
+    : { text: `Well, hello there. ${name} isn't home, and I don't recognise you. What do you need? Enter the code in ten seconds, or I raise the alarm.`, lang: "en" };
 }
 async function guardIntruder(p, action) {
   if (desk.intruder) return;
@@ -358,28 +514,32 @@ async function soundAlarm() {
   guardLog("Alarma" + (desk.intruder ? " · " + desk.intruder.who : ""));
   desk.alarm = true; document.body.classList.add("alarm"); saveGuard({ alert: "alarm" });
   const es = settings.lang === "es";
-  await talk(es ? `Sin código. Alarma activada. ${settings.name} ya está avisado.` : `No code. Alarm on. ${settings.name} has been told.`, es ? "es" : "en");
-  if (!desk.alarm) return;
-  // A soft two-tone siren: noticeable, not ear-splitting. Stops by itself after a minute.
-  const beep = () => {
+  $("intruderBanner").hidden = false;
+  // Over the top on purpose: a sweeping siren, red pulsing screen and a dramatic butler.
+  const siren = () => {
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext; desk.chimeCtx ||= new Ctx();
       const ctx = desk.chimeCtx, t0 = ctx.currentTime;
-      [880, 660].forEach((f, i) => {
-        const o = ctx.createOscillator(), g = ctx.createGain(); o.type = "triangle"; o.frequency.value = f;
-        o.connect(g); g.connect(ctx.destination); const t = t0 + i * 0.4;
-        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + 0.03); g.gain.linearRampToValueAtTime(0, t + 0.38);
-        o.start(t); o.stop(t + 0.4);
-      });
+      for (const [type, gain, detune] of [["sawtooth", 0.16, 0], ["square", 0.07, 7]]) {
+        const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.detune.value = detune * 100;
+        o.frequency.setValueAtTime(600, t0); o.frequency.linearRampToValueAtTime(1500, t0 + 0.9); o.frequency.linearRampToValueAtTime(600, t0 + 1.8);
+        o.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.05); g.gain.setValueAtTime(gain, t0 + 1.75); g.gain.linearRampToValueAtTime(0, t0 + 1.8);
+        o.start(t0); o.stop(t0 + 1.82);
+      }
     } catch { /* no audio */ }
   };
-  beep(); desk.alarmTimer = setInterval(beep, 900);
+  siren(); desk.alarmTimer = setInterval(siren, 1800);
   desk.alarmStop = setTimeout(stopAlarm, 60000);
+  const lines = es
+    ? [`¡Alerta de intruso! ¡Alerta de intruso! Protocolo de bloqueo activado.`, `${settings.name} ya ha sido avisado. La policía todavía no, pero no me tientes.`, `Repito: esto no es un simulacro. Bueno, un poco sí.`]
+    : [`Intruder alert! Intruder alert! Lockdown protocol engaged.`, `${settings.name} has been notified. The police have not. Yet. Don't tempt me.`, `I repeat: this is not a drill. Well, slightly a drill.`];
+  for (const line of lines) { if (!desk.alarm) break; await talk(line, es ? "es" : "en"); }
 }
 desk.soundAlarm = soundAlarm;
 function stopAlarm() {
   clearInterval(desk.alarmTimer); clearTimeout(desk.alarmStop);
-  const was = desk.alarm; desk.alarm = false; document.body.classList.remove("alarm");
+  const was = desk.alarm; desk.alarm = false; document.body.classList.remove("alarm"); $("intruderBanner").hidden = true;
   if (was) { renderGuard(); guardSend(); }
 }
 desk.stopAlarm = stopAlarm;
@@ -611,7 +771,7 @@ async function start() {
   setState("thinking"); say(t().waking);
   await ears.openMeter();
   if (!home) connectDesk();
-  void restoreMemory(); void loadReminders();
+  void restoreMemory(); void loadReminders(); void keepScreenOn();
   setTimeout(guardSend, 2500);
   void loadWeather(); setInterval(loadWeather, 20 * 60000);
   try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch {}
@@ -634,6 +794,7 @@ $("wake").onclick = start;
 $("orb").onclick = () => { if (!desk.started) return start(); if (voice.speaking) { voice.stop(); ears.resume(); return; } ears.direct(); };
 document.addEventListener("keydown", (e) => {
   if (e.target.closest?.("input, textarea, select") || !$("settings").hidden) return;
+  if (e.code === "Space" && desk.sunrise) { e.preventDefault(); $("sunriseStop").click(); return; }
   if (e.code === "Space") { e.preventDefault(); if (!desk.started) return void start(); if (voice.speaking) { voice.stop(); ears.resume(); } else ears.direct(); }
   if (e.code === "Escape") { voice.stop(); ears.resume(); }
 });
@@ -642,7 +803,7 @@ $("typeForm").onsubmit = (e) => { e.preventDefault(); const v = $("typeInput").v
 // ---------- Ajustes ----------
 function openSettings() {
   for (const id of ["name", "lang", "hear", "city"]) $(id).value = settings[id];
-  $("guardPin").value = settings.guardPin || "";
+  $("guardPin").value = settings.guardPin || ""; $("wakeTime").value = desk.wake.time || "";
   $("voiceKey").value = settings.key; $("wakeOn").checked = settings.wake; $("greetOn").checked = settings.greet;
   $("quietFrom").value = settings.quietFrom; $("quietTo").value = settings.quietTo;
   $("memoryList").replaceChildren(...desk.memory.map((m, i) => {
@@ -690,7 +851,12 @@ $("closeSettings").onclick = () => { $("settings").hidden = true; };
 const bind = (id, key, conv = (v) => v) => { $(id).onchange = () => { settings[key] = conv($(id).type === "checkbox" ? $(id).checked : $(id).value); settings.save(); render(); }; };
 bind("name", "name", (v) => v.trim() || "Crew"); bind("lang", "lang"); bind("hear", "hear"); bind("greetOn", "greet");
 bind("quietFrom", "quietFrom", Number); bind("quietTo", "quietTo", Number);
-$("guardPin").onchange = () => { const v = $("guardPin").value.replace(/\D/g, "").slice(0, 4); $("guardPin").value = v; settings.guardPin = v.length === 4 ? v : ""; settings.save(); };
+$("guardPin").onchange = () => {
+  const v = $("guardPin").value.replace(/\D/g, "").slice(0, 4); $("guardPin").value = v;
+  if (v.length !== 4) return;
+  settings.guardPin = v; settings.save();
+  if (settings.key) void call("jarvis-call", { action: "pin", pin: v }, settings.key).catch(() => {});
+};
 $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); connectDesk(); };
 $("wakeOn").onchange = () => { settings.wake = $("wakeOn").checked; settings.save(); if (settings.wake) ears.resume(); else ears.pause(); render(); };
 $("city").onchange = async () => {

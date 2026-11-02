@@ -212,10 +212,12 @@ with sync_playwright() as p:
     page.wait_for_function("document.getElementById('guardLabel').textContent==='Guard on'")
     home({'action': 'unknown', 'count': 1}); wait_voice(page, "don't recognise you")
     page.wait_for_function("desk.alarm===true", timeout=8000)
-    wait_voice(page, 'No code. Alarm on')
+    wait_voice(page, 'Intruder alert')
     assert page.evaluate("document.body.classList.contains('alarm')") and any(x.get('alert') == 'alarm' for x in to_wall)
+    assert page.locator('#intruderBanner').is_visible()
     page.screenshot(path='/tmp/desk-alarm.png')
     home({'action': 'guard-silence'}); page.wait_for_function("desk.alarm===false")
+    assert page.locator('#intruderBanner').is_hidden()
     assert page.evaluate("desk.guard.on"), 'silencing keeps watching'
     calm(page)
     # You walk in: even you must type the code (a face can be mistaken).
@@ -252,6 +254,27 @@ with sync_playwright() as p:
     page.evaluate("recQueue.push({results:[['what time is it',true]],end:true})"); page.keyboard.press('Space')
     page.wait_for_function("extCalls.includes('pause')")
     calm(page); page.wait_for_function("extCalls.includes('resume')")
+
+    # Sunrise alarm clock: set by voice; dawn paints the screen, then Jarvis says good morning.
+    page.evaluate("recQueue.push({results:[['Jarvis despiértame a las 7 y media',true]],end:true})"); page.keyboard.press('Space')
+    wait_voice(page, "I'll wake you at 07:30, with the sunrise starting at 07:15")
+    assert page.locator('#alarmInfo').is_visible() and '07:30' in page.locator('#alarmText').inner_text()
+    assert page.evaluate("[desk.parseWake('pon el despertador a las 6:45'), desk.parseWake('wake me up at seven'), desk.parseWake('despiertame a las ocho menos cuarto'), desk.parseWake('que hora es')]") == ['06:45', '07:00', '07:45', None]
+    calm(page)
+    page.evaluate("()=>{desk.sunriseLeadMS=2500; desk.wakeOverride=Date.now()+2500}")
+    page.wait_for_function("!document.getElementById('sunrise').hidden", timeout=4000)
+    page.wait_for_timeout(1200); page.screenshot(path='/tmp/desk-sunrise-mid.png')
+    wait_voice(page, 'Good morning, Crew')
+    assert page.evaluate("getComputedStyle(document.getElementById('sunrise')).backgroundImage.includes('rgb(255')"), 'full daylight at the end'
+    page.screenshot(path='/tmp/desk-sunrise.png')
+    assert page.evaluate("!!desk.nature"), 'nature sounds playing'
+    calm(page)
+    page.click('#sunriseStop'); wait_voice(page, 'Have a great day')
+    assert page.locator('#sunrise').is_hidden() and not page.evaluate("!!desk.nature")
+    page.wait_for_timeout(1500); assert page.locator('#sunrise').is_hidden(), 'stays off once dismissed'
+    calm(page)
+    page.evaluate("recQueue.push({results:[['Jarvis quita el despertador',true]],end:true})"); page.keyboard.press('Space')
+    wait_voice(page, 'Alarm clock off'); assert page.locator('#alarmInfo').is_hidden(); calm(page)
 
     # A reminder that comes due is spoken on the desk.
     home({'action': 'remind', 'text': 'Time to study maths, Crew.', 'lang': 'en'})

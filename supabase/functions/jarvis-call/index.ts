@@ -3,6 +3,7 @@
 //   on the desk computer (or by email when Resend is set up).
 // - POST {action: "state"} with the Jarvis key: what Jarvis remembers, so a
 //   new computer running the desk gets its memory back.
+// - POST {action: "pin", pin}: save the 4-digit guard code (kept private here).
 // - POST {action: "reminders"} / {action: "forget", id}: the pending reminders
 //   as saved in the database, for the desk's panel.
 // (The name is historical: it once handled phone calls too.)
@@ -32,8 +33,8 @@ async function rows(path: string, init: RequestInit = {}) {
   try { return await response.json(); } catch { return []; }
 }
 async function profile() {
-  const [state] = await rows("jarvis_state?id=eq.1&select=name,memory");
-  return { name: clean(state?.name || "Crew", 30), memory: Array.isArray(state?.memory) ? state.memory.slice(-40) : [] };
+  const [state] = await rows("jarvis_state?id=eq.1&select=name,memory,guard_pin");
+  return { name: clean(state?.name || "Crew", 30), memory: Array.isArray(state?.memory) ? state.memory.slice(-40) : [], guardPin: /^\d{4}$/.test(state?.guard_pin || "") ? state.guard_pin : "" };
 }
 async function broadcast(command: Record<string, unknown>) {
   const service = env("SUPABASE_SERVICE_ROLE_KEY");
@@ -98,7 +99,12 @@ Deno.serve(async (request: Request) => {
     // deno-lint-ignore no-explicit-any
     let body: any = {};
     try { body = await request.json(); } catch { /* defaults */ }
-    if (body.action === "state") { const who = await profile(); return json(200, { name: who.name, memory: who.memory }); }
+    if (body.action === "state") { const who = await profile(); return json(200, { name: who.name, memory: who.memory, guardPin: who.guardPin }); }
+    // The guard code lives here (private), not in the public site code.
+    if (body.action === "pin" && /^\d{4}$/.test(String(body.pin || ""))) {
+      await db("jarvis_state?id=eq.1", { method: "PATCH", body: JSON.stringify({ guard_pin: String(body.pin) }) });
+      return json(200, { ok: true });
+    }
     // The desk shows what is really saved, straight from the database.
     if (body.action === "reminders") {
       const list = await rows("jarvis_reminders?done=eq.false&order=due_at.asc&limit=12&select=id,due_at,text,via");

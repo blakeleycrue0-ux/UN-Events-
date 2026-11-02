@@ -11,7 +11,7 @@ function setup({env={},due=[]}={}){
  const out=[];
  const fetch=async(url,opts={})=>{url=String(url);out.push({url,opts,body:opts.body});
   if(url.includes('/rest/v1/rpc/jarvis_cron_check'))return Response.json(JSON.parse(opts.body).token==='cron-secret-1234567890');
-  if(url.includes('/rest/v1/jarvis_state'))return Response.json([{name:'Crew',memory:['Maths exam Friday']}]);
+  if(url.includes('/rest/v1/jarvis_state')&&opts.method!=='PATCH')return Response.json([{name:'Crew',memory:['Maths exam Friday'],guard_pin:'1234'}]);
   if(url.includes('/rest/v1/jarvis_reminders?done=eq.false&order='))return Response.json([{id:'0b6f2c1e-1111-4222-8333-944455556666',due_at:'2026-11-03T07:00:00Z',text:'Exam',via:'chromebook'}]);
   if(url.includes('/rest/v1/jarvis_reminders?done=eq.false'))return Response.json(due);
   if(url.includes('/rest/v1/jarvis_reminders?id='))return Response.json([{id:1}]);
@@ -25,7 +25,7 @@ const desk=(body,{key='clave-larga-de-prueba',origin='https://app.example.com'}=
 const cron=(token)=>new Request(BASE+'?step=cron',{method:'POST',headers:{'x-jarvis-cron':token}});
 
 test('a new desk gets its memory back with the Jarvis key, from the app only',async()=>{
- assert.deepEqual(await (await setup().handler(desk({action:'state'}))).json(),{name:'Crew',memory:['Maths exam Friday']});
+ assert.deepEqual(await (await setup().handler(desk({action:'state'}))).json(),{name:'Crew',memory:['Maths exam Friday'],guardPin:'1234'});
  assert.equal((await setup().handler(desk({action:'state'},{key:'nope'}))).status,401);
  assert.equal((await setup().handler(desk({action:'state'},{origin:'https://evil.com'}))).status,403);
  assert.equal((await setup().handler(new Request(BASE,{method:'POST',headers:{'x-jarvis-key':'clave-larga-de-prueba'},body:'{"action":"state"}'}))).status,403);
@@ -52,4 +52,11 @@ test('the desk lists the reminders really saved, and can delete one',async()=>{
  const f=await s.handler(desk({action:'forget',id:'0b6f2c1e-1111-4222-8333-944455556666'}));assert.equal(f.status,200);
  const del=s.out.find(o=>o.opts.method==='DELETE');assert.match(del.url,/jarvis_reminders\?id=eq\.0b6f2c1e-1111-4222-8333-944455556666&done=eq\.false$/);
  assert.equal((await setup().handler(desk({action:'forget',id:'x;drop'}))).status,400);
+});
+
+test('the guard code is saved privately in the database, 4 digits only',async()=>{
+ const s=setup();assert.equal((await s.handler(desk({action:'pin',pin:'2803'}))).status,200);
+ const p=s.out.find(o=>o.opts.method==='PATCH'&&o.url.includes('jarvis_state'));assert.deepEqual(JSON.parse(p.body),{guard_pin:'2803'});
+ assert.equal((await setup().handler(desk({action:'pin',pin:'12a4'}))).status,400);
+ assert.equal((await setup().handler(desk({action:'pin',pin:'2803'},{key:'nope'}))).status,401);
 });

@@ -47,7 +47,7 @@ function render() {
   $("alert").hidden = !showAlert;
   if (showAlert) {
     $("alertTitle").textContent = s.alarm ? "Alarma sonando" : "Alguien ha entrado";
-    $("alertSub").textContent = s.alarm ? `${s.intruder} no ha puesto el código.` : `${s.intruder} tiene 20 segundos para poner el código.`;
+    $("alertSub").textContent = s.alarm ? `${s.intruder} no ha puesto el código.` : `${s.intruder} tiene 10 segundos para poner el código.`;
     $("silence").hidden = !s.alarm;
   }
   const log = (s?.log || []).slice().reverse();

@@ -29,6 +29,7 @@
         <div class="time">
           <time id="clock" class="clock">--:--</time>
           <div id="date" class="date"></div>
+          <div id="alarmInfo" class="quiet" hidden><span class="ico" data-icon="clear"></span><span id="alarmText"></span></div>
           <div id="quiet" class="quiet" hidden><span class="ico" data-icon="moon"></span>Night mode · silent greetings</div>
         </div>
         <div class="weather">
@@ -82,6 +83,11 @@
       </section>
     </div>
 
+    <div id="sunrise" class="sunrise" hidden>
+      <div class="sunrise-text"><time id="sunriseClock">--:--</time><span id="sunriseMsg">Buenos días</span></div>
+      <div class="sunrise-actions"><button id="sunriseSnooze">Cinco minutos más</button><button id="sunriseStop">Ya estoy despierto</button></div>
+    </div>
+    <div id="intruderBanner" class="intruder" hidden><b>INTRUSO</b><span>Pon el código para pararlo</span></div>
     <div id="keypad" class="overlay keypad" hidden>
       <div class="keypad-card">
         <div class="keypad-title">Código de la alarma</div>
@@ -134,8 +140,13 @@
       <div class="peek"><img id="peekImg" alt="" hidden /><p id="peekInfo" class="peek-info">Conectando con el móvil de la pared…</p></div>
       <div class="row"><button id="camFront" class="pill">Delantera</button><button id="camBack" class="pill">Trasera</button></div>
 
+      <h3>Despertador amanecer</h3>
+      <p class="muted">«Jarvis, despiértame a las 7». 15 minutos antes la pantalla amanece poco a poco (rojo, naranja, luz cálida) con sonidos de naturaleza; a la hora, Jarvis te da los buenos días.</p>
+      <div class="two"><label>Hora<input id="wakeTime" type="time" /></label><label>&nbsp;<button id="wakeClear" class="pill" type="button">Quitar</button></label></div>
+      <div class="row"><button id="testSunrise" class="pill" type="button">Probar amanecer (1 minuto)</button></div>
+
       <h3>Modo vigilancia</h3>
-      <p class="muted">Di «Jarvis, me voy» al salir (o usa tu móvil en <b>/mando</b>). Si entra alguien que no eres tú, Jarvis le habla y tiene 20 segundos para poner el código; si no, suena una alarma suave. Todo el que entre, tú también, tiene que poner el código (o desactívala desde tu móvil).</p>
+      <p class="muted">Di «Jarvis, me voy» al salir (o usa tu móvil en <b>/mando</b>). Si entra alguien, Jarvis le habla y tiene 10 segundos para poner el código; si no, suena la alarma. Todo el que entre, tú también, tiene que poner el código (o desactívala desde tu móvil).</p>
       <label>Código (4 números)<input id="guardPin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Ej. 2580" /></label>
 
       <h3>Recordatorios</h3>

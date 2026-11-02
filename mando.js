@@ -184,7 +184,7 @@
     $("alert").hidden = !showAlert;
     if (showAlert) {
       $("alertTitle").textContent = s.alarm ? "Alarma sonando" : "Alguien ha entrado";
-      $("alertSub").textContent = s.alarm ? `${s.intruder} no ha puesto el c\xF3digo.` : `${s.intruder} tiene 20 segundos para poner el c\xF3digo.`;
+      $("alertSub").textContent = s.alarm ? `${s.intruder} no ha puesto el c\xF3digo.` : `${s.intruder} tiene 10 segundos para poner el c\xF3digo.`;
       $("silence").hidden = !s.alarm;
     }
     const log = (s?.log || []).slice().reverse();
