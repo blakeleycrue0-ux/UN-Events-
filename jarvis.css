@@ -127,3 +127,10 @@ body[data-state="speaking"] .bubble::after { opacity: .8; }
 .preview.stash { position: fixed; left: 0; bottom: 0; width: 4px; height: 3px; margin: 0; opacity: .01; pointer-events: none; z-index: -1; }
 .mic-log { margin: 10px 0 0; padding: 12px; border-radius: 14px; background: #000; color: #9fe6b0; font: 11px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; min-height: 3em; max-height: 220px; overflow: auto; }
 .mic-log:empty { display: none; }
+.person { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+.person > div { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.person .muted { margin: 0; font-size: 13px; }
+.pill.small { padding: 8px 12px; font-size: 14px; }
+.add-person { margin-top: 14px; }
+.add-person summary { cursor: pointer; color: var(--text); font-weight: 600; padding: 8px 0; }
+.sheet textarea { width: 100%; padding: 12px 16px; border-radius: 16px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.06); color: inherit; font: inherit; resize: vertical; -webkit-user-select: text; user-select: text; }

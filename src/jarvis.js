@@ -23,12 +23,12 @@
     },
   };
   const settings = Object.assign(
-    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: true },
+    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: false, engine: "cloud" },
     store.get("jarvis-settings", {}),
   );
   const save = () => store.set("jarvis-settings", settings);
   const jarvis = window.jarvis = {
-    started: false, stream: null, detector: null, faces: store.get("jarvis-faces", []),
+    started: false, stream: null, detector: null,
     threshold: 0.55, absenceMS: 5 * 60000, lastSeen: 0, busy: false, enrolling: null,
     loop: null, wakeLock: null, timers: [], speaking: false, listening: false, voiceError: "",
     history: [], lastTalk: 0, settings,
@@ -125,15 +125,15 @@
     return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
   }
   function unlockAudio() { audio.src = silentUrl(); audio.play().catch(() => {}); }
-  async function voiceBlob(text) {
+  async function voiceBlob(text, lang = settings.lang) {
     const cacheable = !/\d/.test(text) && "caches" in window;
-    const keyUrl = location.origin + "/__jarvis-voice?" + settings.lang + "&" + encodeURIComponent(text);
+    const keyUrl = location.origin + "/__jarvis-voice?" + lang + "&" + encodeURIComponent(text);
     let cache;
     if (cacheable) {
       try { cache = await caches.open("jarvis-voice-v2"); const hit = await cache.match(keyUrl); if (hit) return await hit.blob(); } catch {}
     }
     if (!settings.key) throw Error("Falta la clave de Jarvis en Ajustes.");
-    const response = await post("jarvis-voice", { text, lang: settings.lang });
+    const response = await post("jarvis-voice", { text, lang });
     if (!response.ok) {
       let error = ""; try { error = (await response.json()).error || ""; } catch {}
       throw Error({
@@ -154,14 +154,14 @@
     speechId++; audio.pause(); endSpeech?.(); jarvis.speaking = false;
     if (mood === "speaking" || mood === "thinking") rest();
   }
-  async function speak(text) {
+  async function speak(text, lang = settings.lang) {
     const id = ++speechId;
     audio.pause();
     show(text);
     setState("thinking");
     let url;
     try {
-      url = URL.createObjectURL(await voiceBlob(text));
+      url = URL.createObjectURL(await voiceBlob(text, lang));
       jarvis.voiceError = "";
     } catch (e) {
       jarvis.voiceError = e.message; $("voiceInfo").textContent = e.message;
@@ -307,7 +307,7 @@
     }, delay);
   }
   // mode: "tap" (user pressed), "follow" (right after an answer), "wake" (background, needs "Jarvis").
-  function listen(mode = "tap") {
+  function listenNative(mode = "tap") {
     if (jarvis.listening) {
       // Reuse an open background session instead of restarting the microphone,
       // which iPhone often refuses when done back to back.
@@ -385,6 +385,117 @@
     mlog(`escuchar (${mode}, ${rec.lang})`);
     try { rec.start(); } catch (e) { failure = /not-allowed/i.test(e.name + e.message) ? "not-allowed" : e.name + ": " + e.message; finish(); }
   }
+
+  // ---------- Oído propio (grabación + ElevenLabs Speech to Text) ----------
+  // Works with the camera on: the phone records a short clip itself, detects
+  // when you stop talking, and the clip is transcribed in Supabase.
+  let hearCancel = null;
+  function audioContext() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    jarvis.audioCtx = jarvis.audioCtx || new Ctx();
+    jarvis.audioCtx.resume?.().catch(() => {});
+    return jarvis.audioCtx;
+  }
+  const recorderType = () => ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || "";
+  // Resolves with a Blob of one utterance, or null if nobody spoke in time.
+  async function captureUtterance({ waitMS }) {
+    const limits = jarvis.listenLimits;
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const type = recorderType();
+    const recorder = new MediaRecorder(mic, type ? { mimeType: type } : undefined);
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+    const ctx = audioContext();
+    const source = ctx?.createMediaStreamSource(mic), analyser = ctx?.createAnalyser();
+    if (analyser) { analyser.fftSize = 1024; source.connect(analyser); }
+    const samples = new Float32Array(1024);
+    const level = () => {
+      if (!analyser) return 0.05;
+      analyser.getFloatTimeDomainData(samples);
+      let sum = 0; for (const x of samples) sum += x * x;
+      return Math.sqrt(sum / samples.length);
+    };
+    recorder.start(250);
+    mlog(`grabando (${type || "formato por defecto"})`);
+    const started = Date.now();
+    let floor = 0, floorCount = 0, speechAt = 0, lastLoud = 0, cancelled = false;
+    await new Promise((resolve) => {
+      hearCancel = () => { cancelled = true; resolve(); };
+      const tick = setInterval(() => {
+        const now = Date.now(), rms = level();
+        if (now - started < 300) { floor += rms; floorCount++; return; }
+        const base = floorCount ? floor / floorCount : 0.01;
+        const loud = rms > Math.max(0.015, base * 2.5);
+        if (loud) { lastLoud = now; if (!speechAt) { speechAt = now; mlog("voz detectada"); setState("listening"); } }
+        const done = cancelled || (speechAt && now - lastLoud > limits.silenceMS) || (!speechAt && now - started > waitMS) || now - started > limits.maxMS;
+        if (done) { clearInterval(tick); resolve(); }
+      }, 50);
+    });
+    hearCancel = null;
+    await new Promise((resolve) => { recorder.onstop = resolve; try { recorder.stop(); } catch { resolve(); } });
+    mic.getTracks().forEach((track) => track.stop());
+    try { source?.disconnect(); } catch {}
+    const blob = new Blob(chunks, { type: (type || chunks[0]?.type || "audio/mp4").split(";")[0] });
+    mlog(`fin grabación: ${cancelled ? "cancelada" : speechAt ? Math.round(blob.size / 1024) + " KB" : "sin voz"}`);
+    return cancelled || !speechAt ? null : blob;
+  }
+  jarvis.captureUtterance = captureUtterance;
+  async function transcribe(blob) {
+    const response = await fetch(endpoint("jarvis-hear"), {
+      method: "POST",
+      headers: { "Content-Type": blob.type || "audio/mp4", "x-jarvis-key": settings.key, apikey: window.SECURITY_SUPABASE_PUBLIC?.key || "" },
+      body: blob,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw Error({
+        "ElevenLabs key lacks speech to text permission": "A la clave de ElevenLabs le falta el permiso Speech to Text.",
+        "ElevenLabs quota reached": "Se han acabado los créditos de ElevenLabs este mes.",
+        "ElevenLabs key rejected": "ElevenLabs no acepta la clave.",
+        "Wrong Jarvis key": "La clave de Jarvis no coincide con la de Supabase.",
+        "Hearing not configured": "Falta configurar el oído en Supabase.",
+      }[data.error] || "No he podido entenderte ahora mismo.");
+    }
+    mlog("texto: «" + (data.text || "") + "»");
+    return data.text || "";
+  }
+  jarvis.transcribe = transcribe;
+  async function listenCloud(mode = "tap") {
+    if (jarvis.listening) { hearCancel?.(); return; }
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return listenNative(mode);
+    if (!settings.key) { show(t().needKey); return; }
+    clearTimeout(restartTimer);
+    stopSpeaking();
+    audioContext(); // created inside the tap so iPhone allows it
+    jarvis.listening = true; jarvis.listenMode = mode;
+    setState("listening"); $("heard").textContent = ""; show(t().listening);
+    mlog(`escuchar (${mode}, grabación propia)`);
+    let blob = null;
+    try {
+      blob = await jarvis.captureUtterance({ waitMS: mode === "follow" ? jarvis.listenLimits.followMS : jarvis.listenLimits.noSpeechMS });
+    } catch (e) {
+      jarvis.listening = false; jarvis.listenMode = ""; rest();
+      mlog("micrófono: " + e.name + " " + e.message);
+      show(e.name === "NotAllowedError" ? t().micDenied : t().cantStart + e.message);
+      return;
+    }
+    jarvis.listening = false; jarvis.listenMode = "";
+    if (!blob) { rest(); if (mode === "tap") show(t().notHeard); scheduleWake(); return; }
+    setState("thinking");
+    let text = "";
+    try { text = (await jarvis.transcribe(blob)).trim(); }
+    catch (e) { rest(); show(e.message); return; }
+    if (!text) { rest(); if (mode === "tap") show(t().notHeard); scheduleWake(); return; }
+    await respond(text);
+    later(() => listen("follow"));
+  }
+  // Background "Jarvis…" listening still uses Safari's recognizer (optional, experimental).
+  function listen(mode = "tap") {
+    if (mode === "wake" || settings.engine === "native") return listenNative(mode);
+    if (jarvis.listening && jarvis.listenMode === "wake") finishListening?.(true);
+    return listenCloud(mode);
+  }
   jarvis.listen = listen;
 
   // ---------- Cámara y caras ----------
@@ -429,10 +540,45 @@
     };
   }
   jarvis.createDetector = realDetector;
-  function bestMatch(embedding) {
-    let best = 0;
-    for (const known of jarvis.faces) best = Math.max(best, jarvis.detector.similarity(embedding, known));
+  // ---------- Personas ----------
+  // Everyone Jarvis knows: you, your family. Face samples stay on this phone.
+  const FAMILY = {
+    mom: [
+      "Hi Mum! Are you here to make my bed, or to drop off some clean clothes?",
+      "Hello Mum. The room is under control... mostly. Did you bring the laundry?",
+      "Welcome, Mum. If you're looking for dirty plates, I saw nothing. Officially.",
+    ],
+    dad: [
+      "Hello Dad. Don't worry, the air conditioning is off. I'm watching the electricity bill for you.",
+      "Hi Dad. Checking whether the air conditioning is on again? Relax, everything's under control.",
+      "Good to see you, Dad. Yes, the lights are off. Every euro is safe.",
+    ],
+  };
+  const ROLES = { me: "Tú", mom: "Mamá", dad: "Papá", other: "Otra persona" };
+  function loadPeople() {
+    const saved = store.get("jarvis-people", null);
+    if (Array.isArray(saved)) return saved;
+    const legacy = store.get("jarvis-faces", []); // single-face version
+    return legacy.length ? [{ id: "me", role: "me", name: settings.name, greeting: "", samples: legacy }] : [];
+  }
+  jarvis.people = loadPeople();
+  const savePeople = () => store.set("jarvis-people", jarvis.people);
+  const displayName = (p) => (p.role === "me" ? settings.name : p.name);
+  // Best person for a face, only when clearly ahead of everyone else (family looks alike).
+  function identify(embedding) {
+    const scores = jarvis.people.filter((p) => p.samples?.length).map((p) => ({
+      person: p, score: Math.max(...p.samples.map((known) => jarvis.detector.similarity(embedding, known))),
+    })).sort((a, b) => b.score - a.score);
+    const [best, second] = scores;
+    if (!best || best.score < jarvis.threshold || (second && best.score - second.score < 0.03)) return { score: best?.score || 0 };
     return best;
+  }
+  jarvis.identify = identify;
+  function greetingFor(person) {
+    if (person.greeting) return { text: person.greeting, lang: person.role === "me" ? settings.lang : "en" };
+    if (person.role === "me") return { text: greeting(), lang: settings.lang };
+    if (FAMILY[person.role]) return { text: pick(FAMILY[person.role]), lang: "en" };
+    return { text: `Hello, ${person.name}. Welcome.`, lang: "en" };
   }
   async function startCamera() {
     jarvis.stream?.getTracks().forEach((track) => track.stop());
@@ -459,47 +605,86 @@
     jarvis.loop = setTimeout(scan, jarvis.enrolling ? 250 : 1000);
   }
   jarvis.scan = scan;
+  const seen = jarvis.seen = {};
   function onFaces(found) {
     if (jarvis.enrolling) return enrollStep(found);
-    if (!found.length) { $("faceState").textContent = jarvis.faces.length ? "Nadie a la vista" : "Sin cara registrada"; return; }
-    if (!jarvis.faces.length) { $("faceState").textContent = "Veo una cara"; return; }
-    const score = Math.max(...found.map((f) => bestMatch(f.embedding)));
-    const now = Date.now();
-    if (score >= jarvis.threshold) {
-      $("faceState").textContent = `${settings.name} · ${Math.round(score * 100)}%`;
-      const away = now - jarvis.lastSeen > jarvis.absenceMS;
-      jarvis.lastSeen = now;
-      if (away && settings.greet && !(jarvis.listening && jarvis.listenMode !== "wake") && !jarvis.speaking) {
-        if (jarvis.listening) finishListening?.(true);
-        void speak(greeting()).then(() => later(() => listen("follow")));
-      }
-    } else $("faceState").textContent = "Persona desconocida";
+    const known = jarvis.people.some((p) => p.samples?.length);
+    if (!found.length) { $("faceState").textContent = known ? "Nadie a la vista" : "Sin cara registrada"; return; }
+    if (!known) { $("faceState").textContent = "Veo una cara"; return; }
+    const now = Date.now(), names = [];
+    let toGreet = null;
+    for (const face of found) {
+      const match = identify(face.embedding);
+      if (!match.person) continue;
+      names.push(displayName(match.person));
+      const away = now - (seen[match.person.id] || 0) > jarvis.absenceMS;
+      seen[match.person.id] = now;
+      if (match.person.role === "me") jarvis.lastSeen = now;
+      if (away && !toGreet) toGreet = match.person;
+    }
+    $("faceState").textContent = names.length ? names.join(" · ") : "Persona desconocida";
+    if (toGreet && settings.greet && !(jarvis.listening && jarvis.listenMode !== "wake") && !jarvis.speaking) {
+      if (jarvis.listening) finishListening?.(true);
+      const person = toGreet, { text, lang } = greetingFor(person);
+      void speak(text, lang).then(() => { if (person.role === "me") later(() => listen("follow")); });
+    }
   }
   // Enrolment keeps several samples of one clearly visible face.
   function enrollStep(found) {
     const e = jarvis.enrolling;
+    const person = jarvis.people.find((p) => p.id === e.personId);
+    if (!person) { endEnroll(); return; }
     if (found.length !== 1 || found[0].score < 0.6) {
-      $("faceInfo").textContent = found.length > 1 ? "Hay más de una cara. Ponte tú solo." : "No te veo bien. Acércate y mira a la cámara.";
+      $("faceInfo").textContent = found.length > 1 ? "Hay más de una cara. Que se ponga solo." : "No veo bien la cara. Acércate y mira a la cámara.";
       return;
     }
     e.samples.push(found[0].embedding.map((x) => Math.round(x * 1e4) / 1e4));
-    $("faceInfo").textContent = `Aprendiendo tu cara… ${e.samples.length}/5`;
+    $("faceInfo").textContent = `Aprendiendo la cara de ${displayName(person)}… ${e.samples.length}/5`;
     if (e.samples.length >= 5) {
-      jarvis.faces = e.samples; endEnroll();
-      if (!store.set("jarvis-faces", jarvis.faces)) $("faceInfo").textContent = "No se pudo guardar en este navegador.";
-      else { renderFaceInfo(); jarvis.lastSeen = Date.now(); void speak(t().nice(settings.name)); }
+      person.samples = e.samples; endEnroll();
+      if (!savePeople()) { $("faceInfo").textContent = "No se pudo guardar en este navegador."; return; }
+      seen[person.id] = Date.now(); if (person.role === "me") jarvis.lastSeen = Date.now();
+      renderPeople();
+      $("faceInfo").textContent = `Listo: ya reconozco a ${displayName(person)}.`;
+      void speak(person.role === "me" ? t().nice(settings.name) : `Nice to meet you, ${person.name}. I'll remember you.`, person.role === "me" ? settings.lang : "en");
     }
   }
   function endEnroll() {
     jarvis.enrolling = null;
     $("preview").classList.add("stash"); document.body.append($("preview"));
   }
-  function renderFaceInfo() {
-    $("faceInfo").textContent = jarvis.faces.length ? "Registrada. Te saludaré al verte." : "Sin registrar.";
-    $("forget").hidden = !jarvis.faces.length;
-    $("enroll").textContent = jarvis.faces.length ? "Volver a registrar" : "Registrar mi cara";
+  function startEnroll(person) {
+    if (!jarvis.started) { $("faceInfo").textContent = "Primero toca la burbuja para despertar a Jarvis."; return; }
+    jarvis.enrolling = { personId: person.id, samples: [] };
+    $("enrollSlot").append($("preview")); $("preview").classList.remove("stash");
+    $("faceInfo").textContent = person.role === "me" ? "Ponte delante de la cámara…" : `Que ${displayName(person)} se ponga delante de la cámara…`;
+    void scan();
   }
-
+  function renderPeople() {
+    const list = $("people"); list.replaceChildren();
+    if (!jarvis.people.length) {
+      const p = document.createElement("p"); p.className = "muted"; p.textContent = "Todavía no conozco a nadie."; list.append(p);
+    }
+    for (const person of jarvis.people) {
+      const row = document.createElement("div"); row.className = "person";
+      const info = document.createElement("div");
+      const title = document.createElement("strong"); title.textContent = displayName(person);
+      const sub = document.createElement("span"); sub.className = "muted";
+      sub.textContent = ROLES[person.role] + " · " + (person.samples?.length ? "cara registrada" : "falta la cara");
+      info.append(title, sub);
+      const learn = document.createElement("button"); learn.className = "pill small"; learn.textContent = person.samples?.length ? "Repetir cara" : "Registrar cara";
+      learn.onclick = () => startEnroll(person);
+      const remove = document.createElement("button"); remove.className = "pill ghost small"; remove.textContent = "Borrar";
+      remove.onclick = () => {
+        jarvis.people = jarvis.people.filter((p) => p !== person); savePeople(); renderPeople();
+        $("faceInfo").textContent = `He borrado a ${displayName(person)} de este móvil.`;
+      };
+      row.append(info, learn, remove); list.append(row);
+    }
+    $("personRole").querySelector('option[value="me"]').disabled = jarvis.people.some((p) => p.role === "me");
+    if ($("personRole").selectedOptions[0]?.disabled) $("personRole").value = "mom";
+  }
+  jarvis.renderPeople = renderPeople;
   // ---------- Arranque ----------
   async function keepAwake() {
     try { if (navigator.wakeLock && !document.hidden) jarvis.wakeLock = await navigator.wakeLock.request("screen"); } catch {}
@@ -518,7 +703,7 @@
       await keepAwake();
       void scan();
       if (!settings.key) { show(t().needKey); scheduleWake(); }
-      else void speak(jarvis.faces.length ? t().ready(settings.name) : t().readyNoFace).then(() => scheduleWake());
+      else void speak(jarvis.people.some((p) => p.role === "me" && p.samples?.length) ? t().ready(settings.name) : t().readyNoFace).then(() => scheduleWake());
     } catch (e) {
       setState("off");
       show(e.name === "NotAllowedError" ? t().cam : t().cantStart + e.message);
@@ -529,7 +714,7 @@
   $("bubble").onclick = () => {
     if (!jarvis.started) return start();
     if (jarvis.speaking) { stopSpeaking(); return scheduleWake(); }
-    if (jarvis.wakeBlocked) { jarvis.wakeBlocked = false; settings.always = store.get("jarvis-settings", {}).always !== false; }
+    if (jarvis.wakeBlocked) { jarvis.wakeBlocked = false; settings.always = store.get("jarvis-settings", {}).always === true; }
     listen("tap");
   };
   $("typeForm").onsubmit = (e) => {
@@ -543,9 +728,9 @@
     if (jarvis.listening) finishListening?.(true);
     $("name").value = settings.name; $("facing").value = settings.facing; $("greetOn").checked = settings.greet;
     $("showType").checked = settings.typing; $("voiceKey").value = settings.key;
-    $("lang").value = settings.lang; $("hear").value = settings.hear; $("always").checked = store.get("jarvis-settings", {}).always !== false;
+    $("lang").value = settings.lang; $("hear").value = settings.hear; $("always").checked = store.get("jarvis-settings", {}).always === true; $("engine").value = settings.engine;
     $("voiceInfo").textContent = jarvis.voiceError || (settings.key ? "" : "Sin clave: Jarvis solo escribirá.");
-    renderFaceInfo(); $("settings").hidden = false; $("micLog").textContent = micLog.slice(-14).join("\n");
+    renderPeople(); $("faceInfo").textContent = ""; $("settings").hidden = false; $("micLog").textContent = micLog.slice(-14).join("\n");
   };
   // Ajustes → Micrófono: a direct recognizer test whose raw events explain any problem.
   $("micTest").onclick = () => {
@@ -569,6 +754,7 @@
   $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); save(); };
   $("lang").onchange = () => { settings.lang = $("lang").value; jarvis.history = []; save(); tickClock(); };
   $("hear").onchange = () => { settings.hear = $("hear").value; save(); };
+  $("engine").onchange = () => { settings.engine = $("engine").value; save(); };
   $("always").onchange = () => { settings.always = $("always").checked; jarvis.wakeBlocked = false; save(); };
   $("testVoice").onclick = async () => {
     settings.key = $("voiceKey").value.trim(); save();
@@ -581,21 +767,17 @@
     settings.facing = $("facing").value; save();
     if (jarvis.started) { try { await startCamera(); } catch (e) { show("No se pudo cambiar de cámara: " + e.message); } }
   };
-  $("enroll").onclick = () => {
-    if (!jarvis.started) { $("faceInfo").textContent = "Primero toca la burbuja para despertar a Jarvis."; return; }
-    jarvis.enrolling = { samples: [] };
-    $("enrollSlot").append($("preview")); $("preview").classList.remove("stash");
-    $("faceInfo").textContent = "Mira a la cámara…";
-    void scan();
-  };
-  $("forget").onclick = () => {
-    jarvis.faces = []; store.set("jarvis-faces", []); renderFaceInfo();
-    show(t().forgot);
+  $("addPerson").onclick = () => {
+    const role = $("personRole").value;
+    const name = role === "me" ? settings.name : $("personName").value.trim() || ROLES[role];
+    const person = { id: role === "me" ? "me" : "p" + Date.now().toString(36), role, name: name.slice(0, 30), greeting: $("personGreeting").value.trim().slice(0, 300), samples: [] };
+    jarvis.people.push(person); savePeople();
+    $("personName").value = ""; $("personGreeting").value = "";
+    renderPeople(); startEnroll(person);
   };
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { if (jarvis.listening) finishListening?.(true); clearTimeout(restartTimer); return; }
     if (jarvis.started) { void keepAwake(); void scan(); scheduleWake(); }
   });
   setState("off");
-  renderFaceInfo();
 })();

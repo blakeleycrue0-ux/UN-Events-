@@ -27,7 +27,7 @@
     }
   };
   const settings = Object.assign(
-    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: true },
+    { name: "Crew", facing: "user", greet: true, typing: false, key: "", lang: "en", hear: "es-ES", always: false, engine: "cloud" },
     store.get("jarvis-settings", {})
   );
   const save = () => store.set("jarvis-settings", settings);
@@ -35,7 +35,6 @@
     started: false,
     stream: null,
     detector: null,
-    faces: store.get("jarvis-faces", []),
     threshold: 0.55,
     absenceMS: 5 * 6e4,
     lastSeen: 0,
@@ -188,9 +187,9 @@
     audio.play().catch(() => {
     });
   }
-  async function voiceBlob(text) {
+  async function voiceBlob(text, lang = settings.lang) {
     const cacheable = !/\d/.test(text) && "caches" in window;
-    const keyUrl = location.origin + "/__jarvis-voice?" + settings.lang + "&" + encodeURIComponent(text);
+    const keyUrl = location.origin + "/__jarvis-voice?" + lang + "&" + encodeURIComponent(text);
     let cache;
     if (cacheable) {
       try {
@@ -201,7 +200,7 @@
       }
     }
     if (!settings.key) throw Error("Falta la clave de Jarvis en Ajustes.");
-    const response = await post("jarvis-voice", { text, lang: settings.lang });
+    const response = await post("jarvis-voice", { text, lang });
     if (!response.ok) {
       let error = "";
       try {
@@ -234,14 +233,14 @@
     jarvis.speaking = false;
     if (mood === "speaking" || mood === "thinking") rest();
   }
-  async function speak(text) {
+  async function speak(text, lang = settings.lang) {
     const id = ++speechId;
     audio.pause();
     show(text);
     setState("thinking");
     let url;
     try {
-      url = URL.createObjectURL(await voiceBlob(text));
+      url = URL.createObjectURL(await voiceBlob(text, lang));
       jarvis.voiceError = "";
     } catch (e) {
       jarvis.voiceError = e.message;
@@ -387,7 +386,7 @@
       else scheduleWake(800);
     }, delay);
   }
-  function listen(mode = "tap") {
+  function listenNative(mode = "tap") {
     if (jarvis.listening) {
       if (mode === "tap" && jarvis.listenMode === "wake" && promoteListening) promoteListening();
       else finishListening == null ? void 0 : finishListening(true);
@@ -519,6 +518,180 @@
       finish();
     }
   }
+  let hearCancel = null;
+  function audioContext() {
+    var _a, _b;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    jarvis.audioCtx = jarvis.audioCtx || new Ctx();
+    (_b = (_a = jarvis.audioCtx).resume) == null ? void 0 : _b.call(_a).catch(() => {
+    });
+    return jarvis.audioCtx;
+  }
+  const recorderType = () => ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((m) => {
+    var _a, _b;
+    return (_b = (_a = window.MediaRecorder) == null ? void 0 : _a.isTypeSupported) == null ? void 0 : _b.call(_a, m);
+  }) || "";
+  async function captureUtterance({ waitMS }) {
+    var _a;
+    const limits = jarvis.listenLimits;
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const type = recorderType();
+    const recorder = new MediaRecorder(mic, type ? { mimeType: type } : void 0);
+    const chunks = [];
+    recorder.ondataavailable = (e) => {
+      var _a2;
+      if ((_a2 = e.data) == null ? void 0 : _a2.size) chunks.push(e.data);
+    };
+    const ctx = audioContext();
+    const source = ctx == null ? void 0 : ctx.createMediaStreamSource(mic), analyser = ctx == null ? void 0 : ctx.createAnalyser();
+    if (analyser) {
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+    }
+    const samples = new Float32Array(1024);
+    const level = () => {
+      if (!analyser) return 0.05;
+      analyser.getFloatTimeDomainData(samples);
+      let sum = 0;
+      for (const x of samples) sum += x * x;
+      return Math.sqrt(sum / samples.length);
+    };
+    recorder.start(250);
+    mlog("grabando (".concat(type || "formato por defecto", ")"));
+    const started = Date.now();
+    let floor = 0, floorCount = 0, speechAt = 0, lastLoud = 0, cancelled = false;
+    await new Promise((resolve) => {
+      hearCancel = () => {
+        cancelled = true;
+        resolve();
+      };
+      const tick = setInterval(() => {
+        const now = Date.now(), rms = level();
+        if (now - started < 300) {
+          floor += rms;
+          floorCount++;
+          return;
+        }
+        const base = floorCount ? floor / floorCount : 0.01;
+        const loud = rms > Math.max(0.015, base * 2.5);
+        if (loud) {
+          lastLoud = now;
+          if (!speechAt) {
+            speechAt = now;
+            mlog("voz detectada");
+            setState("listening");
+          }
+        }
+        const done = cancelled || speechAt && now - lastLoud > limits.silenceMS || !speechAt && now - started > waitMS || now - started > limits.maxMS;
+        if (done) {
+          clearInterval(tick);
+          resolve();
+        }
+      }, 50);
+    });
+    hearCancel = null;
+    await new Promise((resolve) => {
+      recorder.onstop = resolve;
+      try {
+        recorder.stop();
+      } catch {
+        resolve();
+      }
+    });
+    mic.getTracks().forEach((track) => track.stop());
+    try {
+      source == null ? void 0 : source.disconnect();
+    } catch {
+    }
+    const blob = new Blob(chunks, { type: (type || ((_a = chunks[0]) == null ? void 0 : _a.type) || "audio/mp4").split(";")[0] });
+    mlog("fin grabaci\xF3n: ".concat(cancelled ? "cancelada" : speechAt ? Math.round(blob.size / 1024) + " KB" : "sin voz"));
+    return cancelled || !speechAt ? null : blob;
+  }
+  jarvis.captureUtterance = captureUtterance;
+  async function transcribe(blob) {
+    var _a;
+    const response = await fetch(endpoint("jarvis-hear"), {
+      method: "POST",
+      headers: { "Content-Type": blob.type || "audio/mp4", "x-jarvis-key": settings.key, apikey: ((_a = window.SECURITY_SUPABASE_PUBLIC) == null ? void 0 : _a.key) || "" },
+      body: blob
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw Error({
+        "ElevenLabs key lacks speech to text permission": "A la clave de ElevenLabs le falta el permiso Speech to Text.",
+        "ElevenLabs quota reached": "Se han acabado los cr\xE9ditos de ElevenLabs este mes.",
+        "ElevenLabs key rejected": "ElevenLabs no acepta la clave.",
+        "Wrong Jarvis key": "La clave de Jarvis no coincide con la de Supabase.",
+        "Hearing not configured": "Falta configurar el o\xEDdo en Supabase."
+      }[data.error] || "No he podido entenderte ahora mismo.");
+    }
+    mlog("texto: \xAB" + (data.text || "") + "\xBB");
+    return data.text || "";
+  }
+  jarvis.transcribe = transcribe;
+  async function listenCloud(mode = "tap") {
+    var _a;
+    if (jarvis.listening) {
+      hearCancel == null ? void 0 : hearCancel();
+      return;
+    }
+    if (!((_a = navigator.mediaDevices) == null ? void 0 : _a.getUserMedia) || !window.MediaRecorder) return listenNative(mode);
+    if (!settings.key) {
+      show(t().needKey);
+      return;
+    }
+    clearTimeout(restartTimer);
+    stopSpeaking();
+    audioContext();
+    jarvis.listening = true;
+    jarvis.listenMode = mode;
+    setState("listening");
+    $("heard").textContent = "";
+    show(t().listening);
+    mlog("escuchar (".concat(mode, ", grabaci\xF3n propia)"));
+    let blob = null;
+    try {
+      blob = await jarvis.captureUtterance({ waitMS: mode === "follow" ? jarvis.listenLimits.followMS : jarvis.listenLimits.noSpeechMS });
+    } catch (e) {
+      jarvis.listening = false;
+      jarvis.listenMode = "";
+      rest();
+      mlog("micr\xF3fono: " + e.name + " " + e.message);
+      show(e.name === "NotAllowedError" ? t().micDenied : t().cantStart + e.message);
+      return;
+    }
+    jarvis.listening = false;
+    jarvis.listenMode = "";
+    if (!blob) {
+      rest();
+      if (mode === "tap") show(t().notHeard);
+      scheduleWake();
+      return;
+    }
+    setState("thinking");
+    let text = "";
+    try {
+      text = (await jarvis.transcribe(blob)).trim();
+    } catch (e) {
+      rest();
+      show(e.message);
+      return;
+    }
+    if (!text) {
+      rest();
+      if (mode === "tap") show(t().notHeard);
+      scheduleWake();
+      return;
+    }
+    await respond(text);
+    later(() => listen("follow"));
+  }
+  function listen(mode = "tap") {
+    if (mode === "wake" || settings.engine === "native") return listenNative(mode);
+    if (jarvis.listening && jarvis.listenMode === "wake") finishListening == null ? void 0 : finishListening(true);
+    return listenCloud(mode);
+  }
   jarvis.listen = listen;
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -583,10 +756,46 @@
     };
   }
   jarvis.createDetector = realDetector;
-  function bestMatch(embedding) {
-    let best = 0;
-    for (const known of jarvis.faces) best = Math.max(best, jarvis.detector.similarity(embedding, known));
+  const FAMILY = {
+    mom: [
+      "Hi Mum! Are you here to make my bed, or to drop off some clean clothes?",
+      "Hello Mum. The room is under control... mostly. Did you bring the laundry?",
+      "Welcome, Mum. If you're looking for dirty plates, I saw nothing. Officially."
+    ],
+    dad: [
+      "Hello Dad. Don't worry, the air conditioning is off. I'm watching the electricity bill for you.",
+      "Hi Dad. Checking whether the air conditioning is on again? Relax, everything's under control.",
+      "Good to see you, Dad. Yes, the lights are off. Every euro is safe."
+    ]
+  };
+  const ROLES = { me: "T\xFA", mom: "Mam\xE1", dad: "Pap\xE1", other: "Otra persona" };
+  function loadPeople() {
+    const saved = store.get("jarvis-people", null);
+    if (Array.isArray(saved)) return saved;
+    const legacy = store.get("jarvis-faces", []);
+    return legacy.length ? [{ id: "me", role: "me", name: settings.name, greeting: "", samples: legacy }] : [];
+  }
+  jarvis.people = loadPeople();
+  const savePeople = () => store.set("jarvis-people", jarvis.people);
+  const displayName = (p) => p.role === "me" ? settings.name : p.name;
+  function identify(embedding) {
+    const scores = jarvis.people.filter((p) => {
+      var _a;
+      return (_a = p.samples) == null ? void 0 : _a.length;
+    }).map((p) => ({
+      person: p,
+      score: Math.max(...p.samples.map((known) => jarvis.detector.similarity(embedding, known)))
+    })).sort((a, b) => b.score - a.score);
+    const [best, second] = scores;
+    if (!best || best.score < jarvis.threshold || second && best.score - second.score < 0.03) return { score: (best == null ? void 0 : best.score) || 0 };
     return best;
+  }
+  jarvis.identify = identify;
+  function greetingFor(person) {
+    if (person.greeting) return { text: person.greeting, lang: person.role === "me" ? settings.lang : "en" };
+    if (person.role === "me") return { text: greeting(), lang: settings.lang };
+    if (FAMILY[person.role]) return { text: pick(FAMILY[person.role]), lang: "en" };
+    return { text: "Hello, ".concat(person.name, ". Welcome."), lang: "en" };
   }
   async function startCamera() {
     var _a;
@@ -619,45 +828,66 @@
     jarvis.loop = setTimeout(scan, jarvis.enrolling ? 250 : 1e3);
   }
   jarvis.scan = scan;
+  const seen = jarvis.seen = {};
   function onFaces(found) {
     if (jarvis.enrolling) return enrollStep(found);
+    const known = jarvis.people.some((p) => {
+      var _a;
+      return (_a = p.samples) == null ? void 0 : _a.length;
+    });
     if (!found.length) {
-      $("faceState").textContent = jarvis.faces.length ? "Nadie a la vista" : "Sin cara registrada";
+      $("faceState").textContent = known ? "Nadie a la vista" : "Sin cara registrada";
       return;
     }
-    if (!jarvis.faces.length) {
+    if (!known) {
       $("faceState").textContent = "Veo una cara";
       return;
     }
-    const score = Math.max(...found.map((f) => bestMatch(f.embedding)));
-    const now = Date.now();
-    if (score >= jarvis.threshold) {
-      $("faceState").textContent = "".concat(settings.name, " \xB7 ").concat(Math.round(score * 100), "%");
-      const away = now - jarvis.lastSeen > jarvis.absenceMS;
-      jarvis.lastSeen = now;
-      if (away && settings.greet && !(jarvis.listening && jarvis.listenMode !== "wake") && !jarvis.speaking) {
-        if (jarvis.listening) finishListening == null ? void 0 : finishListening(true);
-        void speak(greeting()).then(() => later(() => listen("follow")));
-      }
-    } else $("faceState").textContent = "Persona desconocida";
+    const now = Date.now(), names = [];
+    let toGreet = null;
+    for (const face of found) {
+      const match = identify(face.embedding);
+      if (!match.person) continue;
+      names.push(displayName(match.person));
+      const away = now - (seen[match.person.id] || 0) > jarvis.absenceMS;
+      seen[match.person.id] = now;
+      if (match.person.role === "me") jarvis.lastSeen = now;
+      if (away && !toGreet) toGreet = match.person;
+    }
+    $("faceState").textContent = names.length ? names.join(" \xB7 ") : "Persona desconocida";
+    if (toGreet && settings.greet && !(jarvis.listening && jarvis.listenMode !== "wake") && !jarvis.speaking) {
+      if (jarvis.listening) finishListening == null ? void 0 : finishListening(true);
+      const person = toGreet, { text, lang } = greetingFor(person);
+      void speak(text, lang).then(() => {
+        if (person.role === "me") later(() => listen("follow"));
+      });
+    }
   }
   function enrollStep(found) {
     const e = jarvis.enrolling;
+    const person = jarvis.people.find((p) => p.id === e.personId);
+    if (!person) {
+      endEnroll();
+      return;
+    }
     if (found.length !== 1 || found[0].score < 0.6) {
-      $("faceInfo").textContent = found.length > 1 ? "Hay m\xE1s de una cara. Ponte t\xFA solo." : "No te veo bien. Ac\xE9rcate y mira a la c\xE1mara.";
+      $("faceInfo").textContent = found.length > 1 ? "Hay m\xE1s de una cara. Que se ponga solo." : "No veo bien la cara. Ac\xE9rcate y mira a la c\xE1mara.";
       return;
     }
     e.samples.push(found[0].embedding.map((x) => Math.round(x * 1e4) / 1e4));
-    $("faceInfo").textContent = "Aprendiendo tu cara\u2026 ".concat(e.samples.length, "/5");
+    $("faceInfo").textContent = "Aprendiendo la cara de ".concat(displayName(person), "\u2026 ").concat(e.samples.length, "/5");
     if (e.samples.length >= 5) {
-      jarvis.faces = e.samples;
+      person.samples = e.samples;
       endEnroll();
-      if (!store.set("jarvis-faces", jarvis.faces)) $("faceInfo").textContent = "No se pudo guardar en este navegador.";
-      else {
-        renderFaceInfo();
-        jarvis.lastSeen = Date.now();
-        void speak(t().nice(settings.name));
+      if (!savePeople()) {
+        $("faceInfo").textContent = "No se pudo guardar en este navegador.";
+        return;
       }
+      seen[person.id] = Date.now();
+      if (person.role === "me") jarvis.lastSeen = Date.now();
+      renderPeople();
+      $("faceInfo").textContent = "Listo: ya reconozco a ".concat(displayName(person), ".");
+      void speak(person.role === "me" ? t().nice(settings.name) : "Nice to meet you, ".concat(person.name, ". I'll remember you."), person.role === "me" ? settings.lang : "en");
     }
   }
   function endEnroll() {
@@ -665,11 +895,57 @@
     $("preview").classList.add("stash");
     document.body.append($("preview"));
   }
-  function renderFaceInfo() {
-    $("faceInfo").textContent = jarvis.faces.length ? "Registrada. Te saludar\xE9 al verte." : "Sin registrar.";
-    $("forget").hidden = !jarvis.faces.length;
-    $("enroll").textContent = jarvis.faces.length ? "Volver a registrar" : "Registrar mi cara";
+  function startEnroll(person) {
+    if (!jarvis.started) {
+      $("faceInfo").textContent = "Primero toca la burbuja para despertar a Jarvis.";
+      return;
+    }
+    jarvis.enrolling = { personId: person.id, samples: [] };
+    $("enrollSlot").append($("preview"));
+    $("preview").classList.remove("stash");
+    $("faceInfo").textContent = person.role === "me" ? "Ponte delante de la c\xE1mara\u2026" : "Que ".concat(displayName(person), " se ponga delante de la c\xE1mara\u2026");
+    void scan();
   }
+  function renderPeople() {
+    var _a, _b, _c;
+    const list = $("people");
+    list.replaceChildren();
+    if (!jarvis.people.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "Todav\xEDa no conozco a nadie.";
+      list.append(p);
+    }
+    for (const person of jarvis.people) {
+      const row = document.createElement("div");
+      row.className = "person";
+      const info = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = displayName(person);
+      const sub = document.createElement("span");
+      sub.className = "muted";
+      sub.textContent = ROLES[person.role] + " \xB7 " + (((_a = person.samples) == null ? void 0 : _a.length) ? "cara registrada" : "falta la cara");
+      info.append(title, sub);
+      const learn = document.createElement("button");
+      learn.className = "pill small";
+      learn.textContent = ((_b = person.samples) == null ? void 0 : _b.length) ? "Repetir cara" : "Registrar cara";
+      learn.onclick = () => startEnroll(person);
+      const remove = document.createElement("button");
+      remove.className = "pill ghost small";
+      remove.textContent = "Borrar";
+      remove.onclick = () => {
+        jarvis.people = jarvis.people.filter((p) => p !== person);
+        savePeople();
+        renderPeople();
+        $("faceInfo").textContent = "He borrado a ".concat(displayName(person), " de este m\xF3vil.");
+      };
+      row.append(info, learn, remove);
+      list.append(row);
+    }
+    $("personRole").querySelector('option[value="me"]').disabled = jarvis.people.some((p) => p.role === "me");
+    if ((_c = $("personRole").selectedOptions[0]) == null ? void 0 : _c.disabled) $("personRole").value = "mom";
+  }
+  jarvis.renderPeople = renderPeople;
   async function keepAwake() {
     try {
       if (navigator.wakeLock && !document.hidden) jarvis.wakeLock = await navigator.wakeLock.request("screen");
@@ -693,7 +969,10 @@
       if (!settings.key) {
         show(t().needKey);
         scheduleWake();
-      } else void speak(jarvis.faces.length ? t().ready(settings.name) : t().readyNoFace).then(() => scheduleWake());
+      } else void speak(jarvis.people.some((p) => {
+        var _a;
+        return p.role === "me" && ((_a = p.samples) == null ? void 0 : _a.length);
+      }) ? t().ready(settings.name) : t().readyNoFace).then(() => scheduleWake());
     } catch (e) {
       setState("off");
       show(e.name === "NotAllowedError" ? t().cam : t().cantStart + e.message);
@@ -710,7 +989,7 @@
     }
     if (jarvis.wakeBlocked) {
       jarvis.wakeBlocked = false;
-      settings.always = store.get("jarvis-settings", {}).always !== false;
+      settings.always = store.get("jarvis-settings", {}).always === true;
     }
     listen("tap");
   };
@@ -731,9 +1010,11 @@
     $("voiceKey").value = settings.key;
     $("lang").value = settings.lang;
     $("hear").value = settings.hear;
-    $("always").checked = store.get("jarvis-settings", {}).always !== false;
+    $("always").checked = store.get("jarvis-settings", {}).always === true;
+    $("engine").value = settings.engine;
     $("voiceInfo").textContent = jarvis.voiceError || (settings.key ? "" : "Sin clave: Jarvis solo escribir\xE1.");
-    renderFaceInfo();
+    renderPeople();
+    $("faceInfo").textContent = "";
     $("settings").hidden = false;
     $("micLog").textContent = micLog.slice(-14).join("\n");
   };
@@ -802,6 +1083,10 @@
     settings.hear = $("hear").value;
     save();
   };
+  $("engine").onchange = () => {
+    settings.engine = $("engine").value;
+    save();
+  };
   $("always").onchange = () => {
     settings.always = $("always").checked;
     jarvis.wakeBlocked = false;
@@ -826,22 +1111,16 @@
       }
     }
   };
-  $("enroll").onclick = () => {
-    if (!jarvis.started) {
-      $("faceInfo").textContent = "Primero toca la burbuja para despertar a Jarvis.";
-      return;
-    }
-    jarvis.enrolling = { samples: [] };
-    $("enrollSlot").append($("preview"));
-    $("preview").classList.remove("stash");
-    $("faceInfo").textContent = "Mira a la c\xE1mara\u2026";
-    void scan();
-  };
-  $("forget").onclick = () => {
-    jarvis.faces = [];
-    store.set("jarvis-faces", []);
-    renderFaceInfo();
-    show(t().forgot);
+  $("addPerson").onclick = () => {
+    const role = $("personRole").value;
+    const name = role === "me" ? settings.name : $("personName").value.trim() || ROLES[role];
+    const person = { id: role === "me" ? "me" : "p" + Date.now().toString(36), role, name: name.slice(0, 30), greeting: $("personGreeting").value.trim().slice(0, 300), samples: [] };
+    jarvis.people.push(person);
+    savePeople();
+    $("personName").value = "";
+    $("personGreeting").value = "";
+    renderPeople();
+    startEnroll(person);
   };
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
@@ -856,5 +1135,4 @@
     }
   });
   setState("off");
-  renderFaceInfo();
 })();
