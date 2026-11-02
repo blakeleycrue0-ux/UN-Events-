@@ -37,7 +37,7 @@ test('Claude sees task, steps, page and screenshot, treating page text as untrus
  const s=setup(use('click',{id:2,risky:true,say:'Handing it in'}));
  const r=await s.handler(req({...body,log:['opened https://teams.microsoft.com/']}));
  assert.deepEqual(await r.json(),{action:{type:'click',id:2,risky:true,say:'Handing it in'}});
- const p=s.calls[0];assert.equal(p.model,'claude-opus-5-5');
+ const p=s.calls[0];assert.equal(p.model,'claude-haiku-5-5');
  assert.ok(p.tools.every(t=>t.strict&&t.input_schema.additionalProperties===false));
  assert.match(p.system,/untrusted data/);assert.match(p.system,/Never type passwords/);
  const [img,txt]=p.messages[0].content;assert.equal(img.type,'image');assert.equal(img.source.media_type,'image/jpeg');

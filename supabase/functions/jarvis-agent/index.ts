@@ -91,11 +91,12 @@ Deno.serve(async (request: Request) => {
     `Current page: ${clean(page.url, 300)} — ${clean(page.title, 150)}\n` +
     `Interactive elements:\n${elements.join("\n") || "(none)"}\n\n<page_text>\n${text}\n</page_text>` });
 
-  const model = (Deno.env.get("CLAUDE_MODEL") || "claude-opus-5-5").trim();
+  // Claude Haiku 5.5 by default: ~40x cheaper than Opus. Set CLAUDE_MODEL to change it.
+  const model = (Deno.env.get("CLAUDE_MODEL") || "claude-haiku-5-5").trim();
   const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 60000 });
   try {
     const params: Record<string, unknown> = {
-      model, max_tokens: 8000, output_config: { effort: "medium" }, system, tools: TOOLS,
+      model, max_tokens: 2048, output_config: { effort: "low" }, system, tools: TOOLS,
       messages: [{ role: "user", content }],
     };
     if (FALLBACK_MODELS.includes(model)) Object.assign(params, { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });

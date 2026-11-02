@@ -165,12 +165,13 @@ Deno.serve(async (request: Request) => {
     content: i === turns.length - 1 && now ? `[Local time: ${now}]\n${m.content.trim()}` : m.content.trim(),
   }));
 
-  const model = (Deno.env.get("CLAUDE_MODEL") || "claude-opus-5-5").trim();
+  // Claude Haiku 5.5 by default: ~40x cheaper than Opus. Set CLAUDE_MODEL to change it.
+  const model = (Deno.env.get("CLAUDE_MODEL") || "claude-haiku-5-5").trim();
   const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 45000 });
   try {
     const params: Record<string, unknown> = {
       model,
-      max_tokens: 16000,
+      max_tokens: 1024, // spoken replies are short
       output_config: { effort: "low" }, // quick conversational replies
       system,
       messages,

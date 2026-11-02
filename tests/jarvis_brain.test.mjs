@@ -37,12 +37,14 @@ test('brain requires origin, key and a well-formed short conversation before cal
  assert.equal(s.calls.length,0);
  assert.equal((await setup(undefined,{ANTHROPIC_API_KEY:''}).handler(req(convo))).status,428);
 });
-test('reply comes from text blocks of Claude Opus 5.5 at low effort with refusal fallback',async()=>{
+test('reply comes from text blocks of Claude Haiku 5.5 (cheapest) at low effort',async()=>{
  const s=setup();const r=await s.handler(req(convo));
  assert.equal(r.status,200);assert.deepEqual(await r.json(),{reply:'Good evening, Crew.',actions:[]});
  const p=s.calls.find(c=>c.params).params;
- assert.equal(p.model,'claude-opus-5-5');assert.deepEqual(p.output_config,{effort:'low'});
- assert.equal(p.fallbacks,'default');assert.deepEqual(p.betas,['server-side-fallback-2026-07-01']);
+ assert.equal(p.model,'claude-haiku-5-5');assert.deepEqual(p.output_config,{effort:'low'});assert.ok(p.max_tokens<=1024);
+ assert.ok(!('fallbacks' in p),'Haiku has no server-side fallback');
+ const opus=setup(undefined,{CLAUDE_MODEL:'claude-opus-5-5'});await opus.handler(req(convo));
+ const op=opus.calls.find(c=>c.params).params;assert.equal(op.fallbacks,'default');assert.deepEqual(op.betas,['server-side-fallback-2026-07-01']);
  assert.ok(!('thinking' in p)&&!('temperature' in p));
  assert.match(p.system,/answer in English only/);assert.match(p.messages[0].content,/^\[Local time: Monday/);
  assert.equal(s.calls[0].ctor.apiKey,'sk-ant-fixture');
