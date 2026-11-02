@@ -29,6 +29,7 @@
       greet: true,
       crop: { cx: 0.5, cy: 0.5, zoom: 1 },
       guardPin: "",
+      listen: true,
       wake: true,
       quietFrom: 23,
       quietTo: 8,
@@ -932,7 +933,7 @@
     }
     $("memoryCard").hidden = !desk.memory.length;
     $("extDot").classList.toggle("on", desk.extension);
-    $("earDot").classList.toggle("on", settings.wake && !ears.blocked && desk.started);
+    $("earDot").classList.toggle("on", settings.wake && !ears.blocked && desk.started || wallListening());
     document.body.classList.toggle("ambient", desk.started && Date.now() - desk.activeAt > 18e4);
   }
   desk.render = render;
@@ -945,11 +946,21 @@
   var ears = desk.ears = createEars({ settings, log, onHeard: (text, via) => void heard(text, via), onState: (state, text) => {
     if (state === "listening") setState("listening", text);
     else if (state === "blocked") {
-      say(t().micDenied);
+      if (!wallListening()) say(t().micDenied);
       setState("idle");
     } else if (state === "thinking") setState("thinking");
     else if (desk.state === "listening") setState("idle");
   } });
+  {
+    const resume = ears.resume;
+    ears.resume = (follow = false) => {
+      if (wallListening()) {
+        ears.paused = true;
+        return;
+      }
+      resume(follow);
+    };
+  }
   orb.levelSource = () => desk.state === "speaking" ? voice.level() : desk.state === "listening" ? ears.level() : 0;
   async function talk(text, lang) {
     ears.pause();
@@ -976,7 +987,7 @@
       ears.resume();
       return;
     }
-    if (via === "wake" && Date.now() - (desk.wallEarsAt || 0) < 15e4) {
+    if (via === "wake" && wallListening()) {
       ears.resume();
       return;
     }
@@ -1183,6 +1194,7 @@
   desk.setGuard = setGuard;
   function guardLine(p, action) {
     const es = settings.lang === "es", name = settings.name;
+    if (action !== "unknown" && p.role === "me") return es ? { text: `Bienvenido, ${name}. Pon el c\xF3digo, por si acaso no eres t\xFA. Veinte segundos.`, lang: "es" } : { text: `Welcome back, ${name}. Code, please, just in case you're not really you. Twenty seconds.`, lang: "en" };
     if (action !== "unknown" && p.role === "mom") return { text: `Hi, Mum. ${name} is out, so I'm in charge. What do you need? Pop the code in within twenty seconds, or things get loud.`, lang: "en" };
     if (action !== "unknown" && p.role === "dad") return { text: `Hello, Dad. ${name} isn't here, and yes, the air conditioning is off. Code in twenty seconds, please, or I start singing.`, lang: "en" };
     if (action !== "unknown") return es ? { text: `Hola, ${p.name}. ${name} no est\xE1. \xBFQu\xE9 necesitas? Tienes veinte segundos para poner el c\xF3digo.`, lang: "es" } : { text: `Hello, ${p.name}. ${name} is out. What do you need? You've got twenty seconds to enter the code.`, lang: "en" };
@@ -1374,7 +1386,13 @@
       return;
     }
     if (event.action === "ears") {
+      const was = wallListening();
       desk.wallEarsAt = Date.now();
+      if (!was && desk.started && !ears.mode?.match?.(/direct|follow/)) {
+        ears.pause();
+        log("micro del ordenador apagado: escucha la pared");
+        render();
+      }
       return;
     }
     if (event.action === "ask-wake") {
@@ -1400,23 +1418,17 @@
     }
     if (event.action === "guard-silence") {
       stopAlarm();
+      desk.intruder = null;
+      clearTimeout(desk.intruderTimer);
+      closeKeypad();
+      guardSend();
       return;
     }
     if (event.action === "arrival" || event.action === "test" || event.action === "unknown") {
       desk.wallSeen = Date.now();
       const p = event.person || { name: settings.lang === "es" ? "Desconocido" : "Unknown", role: "unknown" };
       if (event.action !== "test" && desk.guard.on) {
-        if (p.role === "me" && event.action !== "unknown") {
-          if (guardArmed()) {
-            setGuard(false, "has vuelto");
-            desk.arrivals.push({ name: p.name, role: "me", at: Date.now() });
-            store.set("jarvis-arrivals", desk.arrivals);
-            render();
-            await talk(settings.lang === "es" ? `Bienvenido, ${settings.name}. Vigilancia desactivada. Todo en orden.` : `Welcome back, ${settings.name}. Guard is off. All quiet while you were out.`);
-            ears.resume(true);
-          }
-          return;
-        }
+        if (!guardArmed() && p.role === "me" && event.action !== "unknown") return;
         if (guardArmed()) {
           desk.arrivals.push({ name: p.name, role: event.action === "unknown" ? "unknown" : p.role, at: Date.now() });
           store.set("jarvis-arrivals", desk.arrivals);
@@ -1574,6 +1586,15 @@
   $("mPlay").onclick = () => media("toggle");
   $("mNext").onclick = () => media("next");
   var home = null;
+  var wallListening = () => Date.now() - (desk.wallEarsAt || 0) < 15e4;
+  desk.wallListening = wallListening;
+  setInterval(() => {
+    if (desk.started && settings.wake && desk.wallEarsAt && !wallListening() && ears.paused && desk.state === "idle") {
+      desk.wallEarsAt = 0;
+      ears.resume();
+      render();
+    }
+  }, 3e4);
   function connectDesk() {
     home?.stop();
     home = null;

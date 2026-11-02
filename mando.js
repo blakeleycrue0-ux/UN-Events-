@@ -29,6 +29,7 @@
       greet: true,
       crop: { cx: 0.5, cy: 0.5, zoom: 1 },
       guardPin: "",
+      listen: true,
       wake: true,
       quietFrom: 23,
       quietTo: 8,

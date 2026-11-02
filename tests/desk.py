@@ -218,9 +218,11 @@ with sync_playwright() as p:
     home({'action': 'guard-silence'}); page.wait_for_function("desk.alarm===false")
     assert page.evaluate("desk.guard.on"), 'silencing keeps watching'
     calm(page)
-    # You walk in: your face switches it off.
+    # You walk in: even you must type the code (a face can be mistaken).
     home({'action': 'arrival', 'person': {'name': 'Crew', 'role': 'me', 'greeting': ''}})
-    wait_voice(page, 'Guard is off')
+    wait_voice(page, "just in case you're not really you")
+    assert page.evaluate("desk.guard.on") and page.locator('#keypad').is_visible()
+    page.keyboard.type('2580'); wait_voice(page, 'Code accepted')
     assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden()
     calm(page)
 
@@ -240,8 +242,10 @@ with sync_playwright() as p:
         if len(voice) > n: break
         page.wait_for_timeout(100)
     assert len(voice) > n; calm(page)
-    home({'action': 'ears', 'on': True}); page.wait_for_function("desk.wallEarsAt>0")
-    page.evaluate("desk.wallEarsAt=0")
+    # While the wall listens, this computer's microphone stays off and never complains.
+    home({'action': 'ears', 'on': True}); page.wait_for_function("desk.wallEarsAt>0 && desk.ears.paused")
+    page.evaluate("desk.ears.resume()"); assert page.evaluate("desk.ears.paused")
+    page.evaluate("desk.wallEarsAt=0"); page.evaluate("desk.ears.resume()")
 
     # Music pauses while Jarvis listens and comes back after.
     page.evaluate("extCalls.length=0")

@@ -150,7 +150,7 @@ function render() {
   for (const m of desk.memory.slice(-4).reverse()) { const li = document.createElement("li"); li.textContent = m; mem.append(li); }
   $("memoryCard").hidden = !desk.memory.length;
   $("extDot").classList.toggle("on", desk.extension);
-  $("earDot").classList.toggle("on", settings.wake && !ears.blocked && desk.started);
+  $("earDot").classList.toggle("on", (settings.wake && !ears.blocked && desk.started) || wallListening());
   // Ambient: after a few quiet minutes the side panels step back.
   document.body.classList.toggle("ambient", desk.started && Date.now() - desk.activeAt > 180000);
 }
@@ -161,10 +161,12 @@ setInterval(render, 1000);
 const voice = desk.voice = createVoice({ settings, onState: (state, text) => { if (state !== "idle") setState(state === "speaking" ? "speaking" : "thinking"); else setState("idle"); if (text) say(text); } });
 const ears = desk.ears = createEars({ settings, log, onHeard: (text, via) => void heard(text, via), onState: (state, text) => {
   if (state === "listening") setState("listening", text);
-  else if (state === "blocked") { say(t().micDenied); setState("idle"); }
+  else if (state === "blocked") { if (!wallListening()) say(t().micDenied); setState("idle"); }
   else if (state === "thinking") setState("thinking");
   else if (desk.state === "listening") setState("idle");
 } });
+// While the wall phone listens, this computer never opens its own microphone in the background.
+{ const resume = ears.resume; ears.resume = (follow = false) => { if (wallListening()) { ears.paused = true; return; } resume(follow); }; }
 orb.levelSource = () => desk.state === "speaking" ? voice.level() : desk.state === "listening" ? ears.level() : 0;
 async function talk(text, lang) {
   ears.pause();
@@ -178,7 +180,7 @@ async function heard(text, via) {
   if (via === "silence") { say(t().notHeard); setState("idle"); ears.resume(); return; }
   if (via === "error") { say(t().notHeard); setState("idle"); ears.resume(); return; }
   // While the wall phone listens, it handles "Jarvis…" (avoids answering twice).
-  if (via === "wake" && Date.now() - (desk.wallEarsAt || 0) < 150000) { ears.resume(); return; }
+  if (via === "wake" && wallListening()) { ears.resume(); return; }
   if (via === "wake" && !text) { await talk(pick(t().yes)); ears.resume(true); return; }
   if (!text) { setState("idle"); ears.resume(); return; }
   await respond(text);
@@ -331,6 +333,8 @@ function setGuard(on, why = "") {
 desk.setGuard = setGuard;
 function guardLine(p, action) {
   const es = settings.lang === "es", name = settings.name;
+  if (action !== "unknown" && p.role === "me") return es ? { text: `Bienvenido, ${name}. Pon el código, por si acaso no eres tú. Veinte segundos.`, lang: "es" }
+    : { text: `Welcome back, ${name}. Code, please, just in case you're not really you. Twenty seconds.`, lang: "en" };
   if (action !== "unknown" && p.role === "mom") return { text: `Hi, Mum. ${name} is out, so I'm in charge. What do you need? Pop the code in within twenty seconds, or things get loud.`, lang: "en" };
   if (action !== "unknown" && p.role === "dad") return { text: `Hello, Dad. ${name} isn't here, and yes, the air conditioning is off. Code in twenty seconds, please, or I start singing.`, lang: "en" };
   if (action !== "unknown") return es ? { text: `Hola, ${p.name}. ${name} no está. ¿Qué necesitas? Tienes veinte segundos para poner el código.`, lang: "es" } : { text: `Hello, ${p.name}. ${name} is out. What do you need? You've got twenty seconds to enter the code.`, lang: "en" };
@@ -454,7 +458,12 @@ async function onHome(event) {
   if (event.action === "guard") { if (!!event.on !== desk.guard.on) setGuard(!!event.on, "móvil"); else guardSend(); return; }
   if (event.action === "guard-ask") { guardSend(); return; }
   // The wall phone is listening for "Jarvis…" (it hears you better than this computer).
-  if (event.action === "ears") { desk.wallEarsAt = Date.now(); return; }
+  if (event.action === "ears") {
+    const was = wallListening(); desk.wallEarsAt = Date.now();
+    // The wall phone is the microphone now: switch this computer's off.
+    if (!was && desk.started && !ears.mode?.match?.(/direct|follow/)) { ears.pause(); log("micro del ordenador apagado: escucha la pared"); render(); }
+    return;
+  }
   if (event.action === "ask-wake") { voice.stop(); await talk(pick(t().yes)); ears.pause(); ears.resume(); return; }
   // Your phone as a microphone: it sends what you said, Jarvis answers out loud here and on the phone.
   if (event.action === "ask" && event.text) {
@@ -466,21 +475,14 @@ async function onHome(event) {
     home?.send({ action: "reply", id: event.id || 0, text: desk.lastSaid || "" });
     return;
   }
-  if (event.action === "guard-silence") { stopAlarm(); return; }
+  // Silenced from the phone: that entry is dealt with; stay armed for the next one.
+  if (event.action === "guard-silence") { stopAlarm(); desk.intruder = null; clearTimeout(desk.intruderTimer); closeKeypad(); guardSend(); return; }
   if (event.action === "arrival" || event.action === "test" || event.action === "unknown") {
     desk.wallSeen = Date.now();
     const p = event.person || { name: settings.lang === "es" ? "Desconocido" : "Unknown", role: "unknown" };
-    // Guard mode first: you disarm it by walking in; anyone else gets the code question.
+    // Guard mode first: EVERYONE who comes in (you too: faces can be mistaken) must type the code.
     if (event.action !== "test" && desk.guard.on) {
-      if (p.role === "me" && event.action !== "unknown") {
-        if (guardArmed()) {
-          setGuard(false, "has vuelto");
-          desk.arrivals.push({ name: p.name, role: "me", at: Date.now() }); store.set("jarvis-arrivals", desk.arrivals); render();
-          await talk(settings.lang === "es" ? `Bienvenido, ${settings.name}. Vigilancia desactivada. Todo en orden.` : `Welcome back, ${settings.name}. Guard is off. All quiet while you were out.`);
-          ears.resume(true);
-        }
-        return;   // still inside the exit minute: you're on your way out
-      }
+      if (!guardArmed() && p.role === "me" && event.action !== "unknown") return;   // you, on your way out
       if (guardArmed()) {
         desk.arrivals.push({ name: p.name, role: event.action === "unknown" ? "unknown" : p.role, at: Date.now() });
         store.set("jarvis-arrivals", desk.arrivals); render(); orb.flash("alert");
@@ -591,6 +593,10 @@ $("mPrev").onclick = () => media("previous"); $("mPlay").onclick = () => media("
 
 // ---------- Arranque ----------
 let home = null;
+const wallListening = () => Date.now() - (desk.wallEarsAt || 0) < 150000;
+desk.wallListening = wallListening;
+// If the wall stops listening, this computer's microphone takes over again.
+setInterval(() => { if (desk.started && settings.wake && desk.wallEarsAt && !wallListening() && ears.paused && desk.state === "idle") { desk.wallEarsAt = 0; ears.resume(); render(); } }, 30000);
 // The private channel opens as soon as the page loads (before waking Jarvis),
 // so the wall camera and your phone remote always get an answer.
 function connectDesk() {

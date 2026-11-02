@@ -29,6 +29,7 @@
       greet: true,
       crop: { cx: 0.5, cy: 0.5, zoom: 1 },
       guardPin: "",
+      listen: true,
       wake: true,
       quietFrom: 23,
       quietTo: 8,
@@ -181,11 +182,19 @@
     };
     const saveCount = () => store2?.set("jarvis-wall-ears", { day: today(), n: e.heardToday });
     loadCount();
+    e.prime = () => {
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        ctx || (ctx = new Ctx());
+        ctx.resume?.();
+      } catch {
+      }
+    };
     e.start = async () => {
       if (e.on) return true;
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
       const Ctx = window.AudioContext || window.webkitAudioContext;
-      ctx = new Ctx();
+      if (!ctx || ctx.state === "closed") ctx = new Ctx();
       await ctx.resume?.();
       const source = ctx.createMediaStreamSource(stream);
       proc = ctx.createScriptProcessor(4096, 1, 1);
@@ -797,6 +806,7 @@
     }
   }
   async function start() {
+    if (settings.listen) wall.ears.prime();
     $("wallStart").disabled = true;
     status("Encendiendo la c\xE1mara\u2026");
     try {
@@ -853,6 +863,7 @@
   $("listenOn").onchange = () => {
     settings.listen = $("listenOn").checked;
     settings.save();
+    if (settings.listen) wall.ears.prime();
     if (settings.listen && wall.started) void startEars();
     if (!settings.listen) {
       wall.ears.stop();

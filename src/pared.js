@@ -353,6 +353,7 @@ $("frameSlot").addEventListener("pointercancel", endDrag);
 // ---------- Arranque ----------
 async function keepAwake() { try { if (navigator.wakeLock && !document.hidden) await navigator.wakeLock.request("screen"); } catch {} }
 async function start() {
+  if (settings.listen) wall.ears.prime();   // inside the tap, or iPhone keeps audio off
   $("wallStart").disabled = true; status("Encendiendo la cámara…");
   try {
     await startCamera();
@@ -383,6 +384,7 @@ $("name").onchange = () => { settings.name = $("name").value.trim() || "Crew"; s
 $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); if (wall.started) { status("Vigilando la puerta"); listenToDesk(); } };
 $("listenOn").onchange = () => {
   settings.listen = $("listenOn").checked; settings.save();
+  if (settings.listen) wall.ears.prime();
   if (settings.listen && wall.started) void startEars();
   if (!settings.listen) { wall.ears.stop(); $("earInfo").textContent = ""; }
 };

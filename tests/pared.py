@@ -59,8 +59,10 @@ with sync_playwright() as p:
     page.add_init_script(INIT)
     page.route('https://*.supabase.co/functions/v1/jarvis-event', event)
     page.route_web_socket('wss://*.supabase.co/**', realtime)
-    for name in ['jarvis-voice', 'jarvis-brain', 'jarvis-hear']:
+    for name in ['jarvis-voice', 'jarvis-brain']:
         page.route(f'https://*.supabase.co/functions/v1/{name}', never)
+    # The wall's microphone is on by default: room noise may be transcribed (nothing comes back here).
+    page.route('https://*.supabase.co/functions/v1/jarvis-hear', lambda route: route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body='{"text":""}'))
 
     # The phone picks "Pared" on first visit.
     page.goto(URL); page.click('#asWall'); page.wait_for_url('**/pared.html')
@@ -153,7 +155,7 @@ with sync_playwright() as p:
     assert not forbidden, f'the wall must never talk: {forbidden}'
 
     # The wall as a microphone: off by default; once on, phrases starting with "Jarvis" go to the desk.
-    assert not page.evaluate("wall.ears.on"), 'listening is opt-in'
+    assert page.evaluate("wall.ears.on && wall.settings.listen"), 'the wall listens by default'
     heard = []
     def hear(route):
         heard.append(route.request.headers.get('content-type'))

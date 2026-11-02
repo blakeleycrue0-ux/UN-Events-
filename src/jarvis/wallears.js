@@ -33,11 +33,16 @@ export function createWallEars({ settings, onCommand, onStatus = () => {}, store
   const saveCount = () => store?.set("jarvis-wall-ears", { day: today(), n: e.heardToday });
   loadCount();
 
+  // iPhone only lets audio run if it starts inside a tap: call prime() first thing on the tap.
+  e.prime = () => {
+    try { const Ctx = window.AudioContext || window.webkitAudioContext; ctx ||= new Ctx(); ctx.resume?.(); } catch { /* checked in start */ }
+  };
   e.start = async () => {
     if (e.on) return true;
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    ctx = new Ctx(); await ctx.resume?.();
+    if (!ctx || ctx.state === "closed") ctx = new Ctx();
+    await ctx.resume?.();
     const source = ctx.createMediaStreamSource(stream);
     proc = ctx.createScriptProcessor(4096, 1, 1);
     const step = ctx.sampleRate / RATE;
