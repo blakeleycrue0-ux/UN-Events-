@@ -109,6 +109,9 @@ with sync_playwright() as p:
     wait_said(page, '^Brain says: and why$')
     assert [m['role'] for m in brain[-1]['messages']] == ['user', 'assistant', 'user'], brain[-1]
     assert brain[-1]['lang'] == 'en' and brain[-1]['name'] == 'Crew' and brain[-1]['now']
+    for _ in range(50):
+        if voice and voice[-1]['text'] == 'Brain says: and why': break
+        page.wait_for_timeout(100)
     assert voice[-1]['text'] == 'Brain says: and why' and voice[-1]['lang'] == 'en'
     calm(page)
 
