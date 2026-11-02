@@ -168,7 +168,7 @@
       followUntil: 0,
       busy: false,
       level: 0,
-      limits: { minMS: 350, endMS: 800, maxMS: 7e3, preMS: 600, perDay: 400, gapMS: 1200 },
+      limits: { minMS: 350, endMS: 800, maxMS: 7e3, preMS: 600, perDay: 1500, gapMS: 1200 },
       heardToday: 0,
       day: "",
       last: "",
@@ -273,7 +273,17 @@
       }
     };
     e.finish = async (parts) => {
-      if (e.busy || e.heardToday >= e.limits.perDay || !settings2.key) return;
+      if (e.busy || !settings2.key) return;
+      if (e.day !== today()) {
+        e.day = today();
+        e.heardToday = 0;
+        e.failures = 0;
+      }
+      if (e.heardToday >= e.limits.perDay) {
+        e.failures = Math.max(e.failures, 2);
+        onStatus("error", "l\xEDmite diario de frases");
+        return;
+      }
       const total = parts.reduce((n, b) => n + b.length, 0), samples = new Float32Array(total);
       let o = 0;
       for (const b of parts) {

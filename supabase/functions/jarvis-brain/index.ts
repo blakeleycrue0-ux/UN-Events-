@@ -138,29 +138,37 @@ function geminiSchema(s: any): any {
 }
 // deno-lint-ignore no-explicit-any
 async function askGemini(key: string, system: string, messages: { role: string; content: string }[], tools: any[]) {
-  const models = (Deno.env.get("GEMINI_MODEL") || "gemini-flash-latest,gemini-2.5-flash,gemini-flash-lite-latest,gemini-2.5-flash-lite").split(",").map((m) => m.trim()).filter(Boolean);
-  const body = {
+  // Fast models first; "thinking" is switched off on 2.5 so replies come in about a second.
+  const models = (Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-flash-lite-latest,gemini-flash-latest").split(",").map((m) => m.trim()).filter(Boolean);
+  const started = Date.now();
+  const base = {
     systemInstruction: { parts: [{ text: system }] },
     contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
     tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: geminiSchema(t.input_schema) })) }],
     generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
   };
+  let last = "no model";
   for (const model of models) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000),
-    });
-    // Each model has its own free quota: unavailable or out of quota → try the next one.
-    if (r.status === 404 || r.status === 429 || r.status >= 500) continue;
-    if (!r.ok) throw Error("gemini " + r.status);
+    const left = 16000 - (Date.now() - started);
+    if (left < 2500) break;   // don't keep the user waiting: Claude answers instead
+    const body = /2\.5/.test(model) ? { ...base, generationConfig: { ...base.generationConfig, thinkingConfig: { thinkingBudget: 0 } } } : base;
+    let r: Response;
+    try {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body), signal: AbortSignal.timeout(Math.min(9000, left)),
+      });
+    } catch { last = model + " timeout"; continue; }
+    // Each model has its own free quota: unavailable, out of quota or refusing the request → try the next one.
+    if (!r.ok) { last = model + " " + r.status; continue; }
     const data = await r.json();
     const parts = data?.candidates?.[0]?.content?.parts || [];
     // deno-lint-ignore no-explicit-any
     const content = parts.flatMap((p: any) => p.functionCall ? [{ type: "tool_use", name: p.functionCall.name, input: p.functionCall.args || {} }]
       : typeof p.text === "string" && p.text.trim() ? [{ type: "text", text: p.text }] : []);
-    if (!content.length) throw Error("gemini empty (" + (data?.candidates?.[0]?.finishReason || "no candidate") + ")");
+    if (!content.length) { last = model + " empty (" + (data?.candidates?.[0]?.finishReason || "no candidate") + ")"; continue; }
     return { stop_reason: "end_turn", content, served_by: model };
   }
-  throw Error("gemini: no model available");
+  throw Error("gemini: " + last);
 }
 
 async function emailMe(subject: string, body: string) {

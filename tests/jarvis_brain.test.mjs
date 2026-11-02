@@ -163,7 +163,7 @@ test('with a Gemini key Jarvis thinks for free with Gemini, and its tools still 
  const r=await (await s.handler(req({...convo,messages:[{role:'user',content:'hi'},{role:'assistant',content:'Hello'},{role:'user',content:'play lofi'}]}))).json();
  assert.deepEqual(r,{reply:'Playing lofi on YouTube.',actions:['play']});
  assert.equal(s.calls.filter(c=>c.params).length,0,'Claude not used');
- const g=s.gem[0];assert.match(g.url,/models\/gemini-flash-latest:generateContent$/);assert.equal(g.opts.headers['x-goog-api-key'],'gem-fixture');
+ const g=s.gem[0];assert.match(g.url,/models\/gemini-2\.5-flash:generateContent$/);assert.deepEqual(g.body.generationConfig.thinkingConfig,{thinkingBudget:0});assert.equal(g.opts.headers['x-goog-api-key'],'gem-fixture');
  assert.deepEqual(g.body.contents.map(c=>c.role),['user','model','user']);
  assert.match(g.body.systemInstruction.parts[0].text,/You are Jarvis/);
  const play=g.body.tools[0].functionDeclarations.find(f=>f.name==='play_music');
@@ -171,9 +171,9 @@ test('with a Gemini key Jarvis thinks for free with Gemini, and its tools still 
  assert.equal(s.outbound[0].body.messages[0].payload.action,'play');
 });
 test('Gemini model ladder, and Claude takes over when Gemini is out of free quota',async()=>{
- const ladder=gemSetup((url)=>url.includes('gemini-flash-latest')?new Response('',{status:404}):gemOk([{text:'From 2.5.'}])());
- assert.equal((await (await ladder.handler(req(convo))).json()).reply,'From 2.5.');
- assert.match(ladder.gem[1].url,/gemini-2\.5-flash/);
+ const ladder=gemSetup((url)=>url.includes('gemini-2.5-flash:')?new Response('',{status:400}):gemOk([{text:'From lite.'}])());
+ assert.equal((await (await ladder.handler(req(convo))).json()).reply,'From lite.');
+ assert.match(ladder.gem[1].url,/gemini-2\.5-flash-lite:/);
  const quota=gemSetup(()=>new Response('{"error":{"code":429}}',{status:429}));
  assert.equal((await (await quota.handler(req(convo))).json()).reply,'Claude here.');
  assert.equal(quota.calls.filter(c=>c.params)[0].params.model,'claude-haiku-5-5');

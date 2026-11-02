@@ -24,7 +24,7 @@ export function encodeWav(samples, rate = RATE) {
 export function createWallEars({ settings, onCommand, onStatus = () => {}, store }) {
   const e = {
     on: false, muted: false, mutedUntil: 0, followUntil: 0, busy: false, level: 0,
-    limits: { minMS: 350, endMS: 800, maxMS: 7000, preMS: 600, perDay: 400, gapMS: 1200 },
+    limits: { minMS: 350, endMS: 800, maxMS: 7000, preMS: 600, perDay: 1500, gapMS: 1200 },
     heardToday: 0, day: "", last: "", failures: 0,
   };
   let ctx = null, stream = null, proc = null, ring = [], seg = null, floor = 0.008, lastLoud = 0, segStart = 0, coolUntil = 0;
@@ -84,7 +84,9 @@ export function createWallEars({ settings, onCommand, onStatus = () => {}, store
     }
   };
   e.finish = async (parts) => {
-    if (e.busy || e.heardToday >= e.limits.perDay || !settings.key) return;
+    if (e.busy || !settings.key) return;
+    if (e.day !== today()) { e.day = today(); e.heardToday = 0; e.failures = 0; }   // new day, new count
+    if (e.heardToday >= e.limits.perDay) { e.failures = Math.max(e.failures, 2); onStatus("error", "límite diario de frases"); return; }
     const total = parts.reduce((n, b) => n + b.length, 0), samples = new Float32Array(total);
     let o = 0; for (const b of parts) { samples.set(b, o); o += b.length; }
     e.busy = true; e.heardToday++; saveCount();
