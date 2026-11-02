@@ -1,6 +1,6 @@
 // Jarvis · Mando: your own phone. Arms guard mode when you leave, shows who
 // came in, and alerts you (sound + vibration while the page is open).
-import { $, store, loadSettings, connectHome } from "./jarvis/common.js";
+import { $, store, loadSettings, connectHome, call } from "./jarvis/common.js";
 
 const settings = loadSettings();
 const mando = window.mando = { state: null, lastSeen: 0, home: null, settings, alerts: 0 };
@@ -12,7 +12,7 @@ function connect() {
   $("setup").hidden = true;
   mando.home = connectHome({
     key: settings.key,
-    onEvent: (e) => { if (e.action === "guard-state") onState(e); },
+    onEvent: (e) => { if (e.action === "guard-state") onState(e); if (e.action === "reply") onReply(e); },
     onStatus: (s) => { $("link").textContent = s === "online" ? "Conectado" : "Sin conexión"; $("link").classList.toggle("on", s === "online"); if (s === "online") ask(); },
   });
 }
@@ -31,7 +31,9 @@ mando.onState = onState;
 function render() {
   const s = mando.state, now = Date.now();
   const stale = !s || now - mando.lastSeen > 35000;
-  let state = "unknown", title = "—", sub = "Abre Jarvis en el ordenador";
+  let state = "unknown", title = "—", sub = mando.home && now - mando.started > 6000
+    ? "El ordenador no contesta: recarga Jarvis en el Mac (⟳) y comprueba que la clave es la misma"
+    : "Buscando el ordenador…";
   if (!stale) {
     if (s.alarm) { state = "alarm"; title = "¡Alarma!"; sub = s.intruder ? `Ha entrado: ${s.intruder}` : "Alguien ha entrado"; }
     else if (s.on && now < s.armAt) { state = "pending"; title = "Activando…"; sub = `En ${Math.ceil((s.armAt - now) / 1000)} s`; }
@@ -78,4 +80,65 @@ $("home").onclick = () => { mando.home?.send({ action: "guard", on: false }); $(
 $("silence").onclick = () => mando.home?.send({ action: "guard-silence" });
 $("saveKey").onclick = () => { settings.key = $("key").value.trim(); settings.save(); connect(); };
 $("link").onclick = () => { $("key").value = settings.key; $("setup").hidden = false; };
+// ---------- Hablar desde el móvil ----------
+// The phone's microphone is far better than a closed laptop's. Tap, speak,
+// tap again (or just stop talking): the text goes to the desk, which answers.
+let rec = null, recText = "", lastAsk = 0, recorder = null;
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function sendAsk(text) {
+  text = text.replace(/\s+/g, " ").trim();
+  if (!text) { $("heard").textContent = "No te he oído. Prueba otra vez."; return; }
+  lastAsk = Date.now();
+  $("heard").textContent = "«" + text + "»"; $("reply").hidden = true;
+  if (!mando.home?.send({ action: "ask", text, id: lastAsk })) $("heard").textContent = "Sin conexión con el ordenador.";
+}
+function onReply(e) {
+  if (e.id && e.id !== lastAsk) return;
+  $("reply").textContent = e.text || "(Jarvis no ha dicho nada)"; $("reply").hidden = false;
+}
+mando.onReply = onReply;
+function setTalking(on) { $("talk").classList.toggle("on", on); $("talkLabel").textContent = on ? "Te escucho… toca para enviar" : "Hablar"; }
+function startTalk() {
+  if (SR) {
+    rec = new SR(); recText = "";
+    rec.lang = settings.hear || "es-ES"; rec.interimResults = true; rec.continuous = true;
+    let quiet = null;
+    rec.onresult = (e) => {
+      recText = Array.from(e.results).map((r) => r[0].transcript).join(" ");
+      $("heard").textContent = recText;
+      clearTimeout(quiet); quiet = setTimeout(() => rec?.stop(), 2500);   // stop after a real pause
+    };
+    rec.onerror = (e) => { if (e.error === "not-allowed") $("heard").textContent = "Permite el micrófono para esta página."; };
+    rec.onend = () => { clearTimeout(quiet); const t = recText; rec = null; setTalking(false); sendAsk(t); };
+    try { rec.start(); setTalking(true); } catch { rec = null; }
+    return;
+  }
+  void recordCloud();
+}
+// No recognizer in this browser: record and transcribe with Jarvis's cloud ears.
+async function recordCloud() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = []; recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop()); setTalking(false); recorder = null;
+      $("heard").textContent = "Transcribiendo…";
+      const clip = new Blob(chunks, { type: chunks[0]?.type || "audio/mp4" });
+      const response = await call("jarvis-hear", null, settings.key, { raw: clip, headers: { "Content-Type": clip.type } }).catch(() => null);
+      const data = response ? await response.json().catch(() => ({})) : {};
+      sendAsk(response?.ok ? String(data.text || "") : "");
+    };
+    recorder.start(); setTalking(true);
+    setTimeout(() => { if (recorder?.state === "recording") recorder.stop(); }, 20000);
+  } catch { $("heard").textContent = "Permite el micrófono para esta página."; }
+}
+$("talk").onclick = () => {
+  if (rec) { rec.stop(); return; }
+  if (recorder) { recorder.stop(); return; }
+  startTalk();
+};
+mando.sendAsk = sendAsk;
+
+mando.started = Date.now();
 connect(); render();

@@ -31,6 +31,8 @@ with sync_playwright() as p:
     page = b.new_context(viewport={'width': 390, 'height': 844}).new_page(); errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.route_web_socket('wss://*.supabase.co/**', realtime)
+    # Fake phone speech recognizer: whatever is in window.speech is "heard".
+    page.add_init_script("""window.webkitSpeechRecognition=class{start(){setTimeout(()=>{this.onresult&&this.onresult({results:[[{transcript:window.speech||''}]]})},50);setTimeout(()=>this.stop(),150)} stop(){if(this.done)return;this.done=true;setTimeout(()=>this.onend&&this.onend(),10)} abort(){this.stop()}};window.SpeechRecognition=window.webkitSpeechRecognition;""")
     # The chooser offers the remote; the phone then remembers it.
     page.goto(URL); page.click('#asRemote'); page.wait_for_url('**/mando*')
     assert page.locator('#setup').is_visible()
@@ -51,10 +53,16 @@ with sync_playwright() as p:
     page.wait_for_function("document.body.dataset.state==='alarm'")
     page.screenshot(path='/tmp/mando-alarm.png')
     page.click('#silence'); wait_sent(page, lambda x: x == {'action': 'guard-silence'})
+    # Talk from the phone: the text goes to the desk and the answer shows here.
+    page.evaluate("window.speech='Jarvis, recuérdame estudiar a las ocho'")
+    page.click('#talk'); wait_sent(page, lambda x: x.get('action') == 'ask' and 'estudiar' in x.get('text', ''))
+    ask = next(x for x in channel['sent'] if x.get('action') == 'ask')
+    desk_says({'action': 'reply', 'id': ask['id'], 'text': 'Reminder saved for eight.'})
+    page.wait_for_function("document.getElementById('reply').textContent.includes('Reminder saved')")
     page.click('#home'); wait_sent(page, lambda x: x == {'action': 'guard', 'on': False})
     # Next visit to the home page goes straight to the remote.
     page.goto(URL); page.wait_for_url('**/mando*')
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     assert not errors, errors
-    print('PASS Jarvis remote: chooser link, key setup, asks the desk for state, arm/disarm/silence messages, pending/armed/alarm views with log and alert, remembers its role')
+    print('PASS Jarvis remote: chooser link, key setup, asks the desk for state, arm/disarm/silence messages, talk from the phone microphone with the answer shown, pending/armed/alarm views with log and alert, remembers its role')
     b.close()

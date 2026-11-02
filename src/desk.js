@@ -33,6 +33,7 @@ const STATE_LABEL = { off: "OFFLINE", idle: "STANDBY", listening: "LISTENING", t
 function setState(state, text) {
   desk.state = state; document.body.dataset.state = state; orb.setState(state);
   $("stateLabel").textContent = STATE_LABEL[state] || "STANDBY";
+  duck(state);
   if (state !== "idle") wakeUp();
   if (state === "listening") $("heard").textContent = text || "";
 }
@@ -164,6 +165,7 @@ const ears = desk.ears = createEars({ settings, log, onHeard: (text, via) => voi
 orb.levelSource = () => desk.state === "speaking" ? voice.level() : desk.state === "listening" ? ears.level() : 0;
 async function talk(text, lang) {
   ears.pause();
+  desk.lastSaid = text;
   say(text);
   if (!settings.key) { setState("idle"); ears.resume(); return; }
   await voice.speak(text, lang);
@@ -446,6 +448,15 @@ async function onHome(event) {
   // From the phone remote (/mando).
   if (event.action === "guard") { if (!!event.on !== desk.guard.on) setGuard(!!event.on, "móvil"); else guardSend(); return; }
   if (event.action === "guard-ask") { guardSend(); return; }
+  // Your phone as a microphone: it sends what you said, Jarvis answers out loud here and on the phone.
+  if (event.action === "ask" && event.text) {
+    const text = String(event.text).replace(/\s+/g, " ").trim().slice(0, 500);
+    if (!text) return;
+    voice.stop(); ears.pause(); desk.lastSaid = "";
+    await respond(text);
+    home?.send({ action: "reply", id: event.id || 0, text: desk.lastSaid || "" });
+    return;
+  }
   if (event.action === "guard-silence") { stopAlarm(); return; }
   if (event.action === "arrival" || event.action === "test" || event.action === "unknown") {
     desk.wallSeen = Date.now();
@@ -550,7 +561,15 @@ async function onAgent(m) {
 }
 desk.onAgent = onAgent;
 let playing = true;
+// Music pauses while Jarvis listens and comes back afterwards (only if we paused it).
+function duck(state) {
+  try {
+    if (state === "listening" && desk.music && playing && desk.extension && !desk.ducked) { desk.ducked = true; void extension("pause"); }
+    else if (state === "idle" && desk.ducked) { desk.ducked = false; void extension("resume"); }
+  } catch { /* during start-up */ }
+}
 async function media(action) {
+  desk.ducked = false;   // an explicit command wins over the auto-resume
   if (action === "toggle") action = playing ? "pause" : "resume";
   if (action === "pause") playing = false; if (action === "resume") playing = true;
   $("mPlayIcon").innerHTML = ICONS[playing ? "pause" : "play"];
@@ -563,13 +582,20 @@ $("mPrev").onclick = () => media("previous"); $("mPlay").onclick = () => media("
 
 // ---------- Arranque ----------
 let home = null;
+// The private channel opens as soon as the page loads (before waking Jarvis),
+// so the wall camera and your phone remote always get an answer.
+function connectDesk() {
+  home?.stop(); home = null;
+  if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => { log("canal: " + s); if (s === "online") setTimeout(guardSend, 300); } });
+}
+desk.connectDesk = connectDesk;
 async function start() {
   if (desk.started) return;
   desk.started = true; $("wake").hidden = true; document.body.classList.add("live");
   voice.unlock();
   setState("thinking"); say(t().waking);
   await ears.openMeter();
-  if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
+  if (!home) connectDesk();
   void restoreMemory(); void loadReminders();
   setTimeout(guardSend, 2500);
   void loadWeather(); setInterval(loadWeather, 20 * 60000);
@@ -650,7 +676,7 @@ const bind = (id, key, conv = (v) => v) => { $(id).onchange = () => { settings[k
 bind("name", "name", (v) => v.trim() || "Crew"); bind("lang", "lang"); bind("hear", "hear"); bind("greetOn", "greet");
 bind("quietFrom", "quietFrom", Number); bind("quietTo", "quietTo", Number);
 $("guardPin").onchange = () => { const v = $("guardPin").value.replace(/\D/g, "").slice(0, 4); $("guardPin").value = v; settings.guardPin = v.length === 4 ? v : ""; settings.save(); };
-$("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); home?.stop(); if (desk.started && settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) }); };
+$("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); connectDesk(); };
 $("wakeOn").onchange = () => { settings.wake = $("wakeOn").checked; settings.save(); if (settings.wake) ears.resume(); else ears.pause(); render(); };
 $("city").onchange = async () => {
   const name = $("city").value.trim(); if (!name) return;
@@ -664,3 +690,4 @@ $("testVoice").onclick = async () => { voice.unlock(); await talk(t().online(set
 $("showType").onchange = () => { $("typeForm").hidden = !$("showType").checked; };
 $("toWall").onclick = (e) => { e.preventDefault(); chooseRole("wall"); };
 render();
+connectDesk();

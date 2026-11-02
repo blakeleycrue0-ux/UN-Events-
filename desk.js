@@ -366,7 +366,7 @@
   }
 
   // src/jarvis/ears.js
-  var WAKE = /\b(jarvis|yarvis|jarbis|charvis|harvis|jervis|yervis)\b/i;
+  var WAKE = /\b(jarvis|yarvis|jarbis|yarbis|charvis|harvis|harbis|jervis|yervis|jarvi|yarvi|jarviz|jarvice|chavis|travis)\b/i;
   function afterWake(text) {
     const m = WAKE.exec(text);
     return m ? text.slice(m.index + m[0].length).replace(/^[\s,.:!¡¿?]+/, "").trim() : null;
@@ -755,6 +755,7 @@
     document.body.dataset.state = state;
     orb.setState(state);
     $("stateLabel").textContent = STATE_LABEL[state] || "STANDBY";
+    duck(state);
     if (state !== "idle") wakeUp();
     if (state === "listening") $("heard").textContent = text || "";
   }
@@ -944,6 +945,7 @@
   orb.levelSource = () => desk.state === "speaking" ? voice.level() : desk.state === "listening" ? ears.level() : 0;
   async function talk(text, lang) {
     ears.pause();
+    desk.lastSaid = text;
     say(text);
     if (!settings.key) {
       setState("idle");
@@ -1359,6 +1361,16 @@
       guardSend();
       return;
     }
+    if (event.action === "ask" && event.text) {
+      const text = String(event.text).replace(/\s+/g, " ").trim().slice(0, 500);
+      if (!text) return;
+      voice.stop();
+      ears.pause();
+      desk.lastSaid = "";
+      await respond(text);
+      home?.send({ action: "reply", id: event.id || 0, text: desk.lastSaid || "" });
+      return;
+    }
     if (event.action === "guard-silence") {
       stopAlarm();
       return;
@@ -1508,7 +1520,20 @@
   }
   desk.onAgent = onAgent;
   var playing = true;
+  function duck(state) {
+    try {
+      if (state === "listening" && desk.music && playing && desk.extension && !desk.ducked) {
+        desk.ducked = true;
+        void extension("pause");
+      } else if (state === "idle" && desk.ducked) {
+        desk.ducked = false;
+        void extension("resume");
+      }
+    } catch {
+    }
+  }
   async function media(action) {
+    desk.ducked = false;
     if (action === "toggle") action = playing ? "pause" : "resume";
     if (action === "pause") playing = false;
     if (action === "resume") playing = true;
@@ -1522,6 +1547,15 @@
   $("mPlay").onclick = () => media("toggle");
   $("mNext").onclick = () => media("next");
   var home = null;
+  function connectDesk() {
+    home?.stop();
+    home = null;
+    if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => {
+      log("canal: " + s);
+      if (s === "online") setTimeout(guardSend, 300);
+    } });
+  }
+  desk.connectDesk = connectDesk;
   async function start() {
     if (desk.started) return;
     desk.started = true;
@@ -1531,7 +1565,7 @@
     setState("thinking");
     say(t().waking);
     await ears.openMeter();
-    if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
+    if (!home) connectDesk();
     void restoreMemory();
     void loadReminders();
     setTimeout(guardSend, 2500);
@@ -1691,8 +1725,7 @@
   $("voiceKey").onchange = () => {
     settings.key = $("voiceKey").value.trim();
     settings.save();
-    home?.stop();
-    if (desk.started && settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
+    connectDesk();
   };
   $("wakeOn").onchange = () => {
     settings.wake = $("wakeOn").checked;
@@ -1733,4 +1766,5 @@
     chooseRole("wall");
   };
   render();
+  connectDesk();
 })();

@@ -4,7 +4,7 @@
 // timers, so a recognizer that stalls can never freeze Jarvis.
 import { call } from "./common.js";
 
-export const WAKE = /\b(jarvis|yarvis|jarbis|charvis|harvis|jervis|yervis)\b/i;
+export const WAKE = /\b(jarvis|yarvis|jarbis|yarbis|charvis|harvis|harbis|jervis|yervis|jarvi|yarvi|jarviz|jarvice|chavis|travis)\b/i;
 export function afterWake(text) {
   const m = WAKE.exec(text);
   return m ? text.slice(m.index + m[0].length).replace(/^[\s,.:!¡¿?]+/, "").trim() : null;

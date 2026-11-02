@@ -224,6 +224,22 @@ with sync_playwright() as p:
     assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden()
     calm(page)
 
+    # Your phone as a microphone: it sends the text, Jarvis answers aloud and back to the phone.
+    to_wall.clear()
+    home({'action': 'ask', 'text': 'set a timer for 3 seconds', 'id': 77})
+    wait_voice(page, 'Timer set for 3 seconds')
+    for _ in range(50):
+        if any(x.get('action') == 'reply' and x.get('id') == 77 for x in to_wall): break
+        page.wait_for_timeout(100)
+    r = next(x for x in to_wall if x.get('action') == 'reply')
+    assert 'Timer set for 3 seconds' in r['text'], r
+    calm(page); wait_voice(page, "time's up"); calm(page)
+    # Music pauses while Jarvis listens and comes back after.
+    page.evaluate("extCalls.length=0")
+    page.evaluate("recQueue.push({results:[['what time is it',true]],end:true})"); page.keyboard.press('Space')
+    page.wait_for_function("extCalls.includes('pause')")
+    calm(page); page.wait_for_function("extCalls.includes('resume')")
+
     # A reminder that comes due is spoken on the desk.
     home({'action': 'remind', 'text': 'Time to study maths, Crew.', 'lang': 'en'})
     wait_voice(page, 'Time to study maths'); calm(page)

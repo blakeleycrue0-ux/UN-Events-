@@ -49,6 +49,14 @@
   }
   var homeTopic = async (key) => "jarvis-pc-" + (await sha256hex("jarvis-pc:" + key.trim())).slice(0, 40);
   var config = () => window.SECURITY_SUPABASE_PUBLIC || {};
+  function call(name, body, key, init = {}) {
+    const c = config();
+    return fetch(`${c.url}/functions/v1/${name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-jarvis-key": key, apikey: c.key || "", ...init.headers || {} },
+      body: init.raw ?? JSON.stringify(body)
+    });
+  }
   function connectHome({ key, onEvent, onStatus = () => {
   } }) {
     let ws = null, beat = null, ref = 0, topic = "", stopped = false, retry = null;
@@ -118,6 +126,7 @@
       key: settings.key,
       onEvent: (e) => {
         if (e.action === "guard-state") onState(e);
+        if (e.action === "reply") onReply(e);
       },
       onStatus: (s) => {
         $("link").textContent = s === "online" ? "Conectado" : "Sin conexi\xF3n";
@@ -145,7 +154,7 @@
   function render() {
     const s = mando.state, now = Date.now();
     const stale = !s || now - mando.lastSeen > 35e3;
-    let state = "unknown", title = "\u2014", sub = "Abre Jarvis en el ordenador";
+    let state = "unknown", title = "\u2014", sub = mando.home && now - mando.started > 6e3 ? "El ordenador no contesta: recarga Jarvis en el Mac (\u27F3) y comprueba que la clave es la misma" : "Buscando el ordenador\u2026";
     if (!stale) {
       if (s.alarm) {
         state = "alarm";
@@ -237,6 +246,106 @@
     $("key").value = settings.key;
     $("setup").hidden = false;
   };
+  var rec = null;
+  var recText = "";
+  var lastAsk = 0;
+  var recorder = null;
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  function sendAsk(text) {
+    text = text.replace(/\s+/g, " ").trim();
+    if (!text) {
+      $("heard").textContent = "No te he o\xEDdo. Prueba otra vez.";
+      return;
+    }
+    lastAsk = Date.now();
+    $("heard").textContent = "\xAB" + text + "\xBB";
+    $("reply").hidden = true;
+    if (!mando.home?.send({ action: "ask", text, id: lastAsk })) $("heard").textContent = "Sin conexi\xF3n con el ordenador.";
+  }
+  function onReply(e) {
+    if (e.id && e.id !== lastAsk) return;
+    $("reply").textContent = e.text || "(Jarvis no ha dicho nada)";
+    $("reply").hidden = false;
+  }
+  mando.onReply = onReply;
+  function setTalking(on) {
+    $("talk").classList.toggle("on", on);
+    $("talkLabel").textContent = on ? "Te escucho\u2026 toca para enviar" : "Hablar";
+  }
+  function startTalk() {
+    if (SR) {
+      rec = new SR();
+      recText = "";
+      rec.lang = settings.hear || "es-ES";
+      rec.interimResults = true;
+      rec.continuous = true;
+      let quiet = null;
+      rec.onresult = (e) => {
+        recText = Array.from(e.results).map((r) => r[0].transcript).join(" ");
+        $("heard").textContent = recText;
+        clearTimeout(quiet);
+        quiet = setTimeout(() => rec?.stop(), 2500);
+      };
+      rec.onerror = (e) => {
+        if (e.error === "not-allowed") $("heard").textContent = "Permite el micr\xF3fono para esta p\xE1gina.";
+      };
+      rec.onend = () => {
+        clearTimeout(quiet);
+        const t = recText;
+        rec = null;
+        setTalking(false);
+        sendAsk(t);
+      };
+      try {
+        rec.start();
+        setTalking(true);
+      } catch {
+        rec = null;
+      }
+      return;
+    }
+    void recordCloud();
+  }
+  async function recordCloud() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks = [];
+      recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => {
+        if (e.data?.size) chunks.push(e.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setTalking(false);
+        recorder = null;
+        $("heard").textContent = "Transcribiendo\u2026";
+        const clip = new Blob(chunks, { type: chunks[0]?.type || "audio/mp4" });
+        const response = await call("jarvis-hear", null, settings.key, { raw: clip, headers: { "Content-Type": clip.type } }).catch(() => null);
+        const data = response ? await response.json().catch(() => ({})) : {};
+        sendAsk(response?.ok ? String(data.text || "") : "");
+      };
+      recorder.start();
+      setTalking(true);
+      setTimeout(() => {
+        if (recorder?.state === "recording") recorder.stop();
+      }, 2e4);
+    } catch {
+      $("heard").textContent = "Permite el micr\xF3fono para esta p\xE1gina.";
+    }
+  }
+  $("talk").onclick = () => {
+    if (rec) {
+      rec.stop();
+      return;
+    }
+    if (recorder) {
+      recorder.stop();
+      return;
+    }
+    startTalk();
+  };
+  mando.sendAsk = sendAsk;
+  mando.started = Date.now();
   connect();
   render();
 })();

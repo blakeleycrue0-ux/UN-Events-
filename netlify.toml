@@ -54,8 +54,8 @@
   [headers.values]
     Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
 
-# Your phone's remote: no camera, no microphone.
+# Your phone's remote: microphone for talking to Jarvis, never the camera.
 [[headers]]
   for = "/mando*"
   [headers.values]
-    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Permissions-Policy = "camera=(), microphone=(self), geolocation=()"
