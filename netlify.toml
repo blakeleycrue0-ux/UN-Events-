@@ -9,6 +9,11 @@
   status = 200
 
 [[redirects]]
+  from = "/mando"
+  to = "/mando.html"
+  status = 200
+
+[[redirects]]
   from = "/camara"
   to = "/camara.html"
   status = 200
@@ -48,3 +53,9 @@
   for = "/pared*"
   [headers.values]
     Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
+
+# Your phone's remote: no camera, no microphone.
+[[headers]]
+  for = "/mando*"
+  [headers.values]
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"

@@ -28,6 +28,7 @@
       facing: "user",
       greet: true,
       crop: { cx: 0.5, cy: 0.5, zoom: 1 },
+      guardPin: "",
       wake: true,
       quietFrom: 23,
       quietTo: 8,
@@ -700,6 +701,7 @@
     door: svg('<path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21M4 21h16"/><circle cx="14.5" cy="12" r=".6" fill="currentColor"/>'),
     laptop: svg('<rect x="4.5" y="5" width="15" height="10" rx="1.4"/><path d="M2.5 19h19"/>'),
     mic: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>'),
+    shield: svg('<path d="M12 3l7 3v5.5c0 4.4-3 8.2-7 9.5-4-1.3-7-5.1-7-9.5V6l7-3z"/>'),
     moon: svg('<path d="M19.5 14.6A7.6 7.6 0 1 1 9.4 4.5a6 6 0 0 0 10.1 10.1z"/>')
   };
   function weatherKind(code, night = false) {
@@ -721,6 +723,7 @@
   toCamera();
   window.addEventListener("hashchange", toCamera);
   if (store.get("jarvis-role", "") === "wall") location.replace("pared.html");
+  if (store.get("jarvis-role", "") === "remote") location.replace("mando.html");
   var settings = loadSettings();
   var t = () => T[settings.lang] || T.en;
   var desk = window.desk = {
@@ -985,6 +988,7 @@
       ears.resume();
       return;
     }
+    if (await guardVoice(raw)) return;
     if (desk.agent && /^\s*(stop|para|parar|cancela|cancel|d[ée]jalo|basta)\b/i.test(raw)) {
       await extension("agent-stop");
       desk.agent = null;
@@ -1124,6 +1128,199 @@
     render();
   }
   desk.addTimer = addTimer;
+  desk.guard = store.get("jarvis-guard", { on: false, armAt: 0, log: [] });
+  desk.guardGraceMS = 2e4;
+  desk.guardExitMS = 6e4;
+  var guardArmed = () => desk.guard.on && Date.now() >= (desk.guard.armAt || 0);
+  function guardLog(text) {
+    desk.guard.log.push({ at: Date.now(), text });
+    while (desk.guard.log.length > 20) desk.guard.log.shift();
+  }
+  function guardSend(extra = {}) {
+    home?.send({ action: "guard-state", on: desk.guard.on, armAt: desk.guard.armAt || 0, alarm: !!desk.alarm, intruder: desk.intruder?.who || "", log: desk.guard.log.slice(-8), ...extra });
+  }
+  function saveGuard(extra) {
+    store.set("jarvis-guard", desk.guard);
+    renderGuard();
+    guardSend(extra);
+  }
+  function renderGuard() {
+    const armed = guardArmed(), pending2 = desk.guard.on && !armed;
+    $("guardDot").classList.toggle("armed", armed);
+    $("guardDot").classList.toggle("pending", pending2);
+    $("guardLabel").textContent = desk.alarm ? "ALARM" : armed ? "Guard on" : pending2 ? "Guard soon" : "Guard";
+  }
+  desk.renderGuard = renderGuard;
+  function setGuard(on, why = "") {
+    stopAlarm();
+    closeKeypad();
+    desk.intruder = null;
+    clearTimeout(desk.intruderTimer);
+    desk.guard.on = on;
+    desk.guard.armAt = on ? Date.now() + desk.guardExitMS : 0;
+    guardLog((on ? "Activada" : "Desactivada") + (why ? " \xB7 " + why : ""));
+    saveGuard();
+    clearTimeout(desk.guardArmTimer);
+    if (on) desk.guardArmTimer = setTimeout(() => {
+      renderGuard();
+      guardSend();
+    }, desk.guardExitMS + 50);
+  }
+  desk.setGuard = setGuard;
+  function guardLine(p, action) {
+    const es = settings.lang === "es", name = settings.name;
+    if (action !== "unknown" && p.role === "mom") return { text: `Hi, Mum. ${name} is out, so I'm in charge. What do you need? Pop the code in within twenty seconds, or things get loud.`, lang: "en" };
+    if (action !== "unknown" && p.role === "dad") return { text: `Hello, Dad. ${name} isn't here, and yes, the air conditioning is off. Code in twenty seconds, please, or I start singing.`, lang: "en" };
+    if (action !== "unknown") return es ? { text: `Hola, ${p.name}. ${name} no est\xE1. \xBFQu\xE9 necesitas? Tienes veinte segundos para poner el c\xF3digo.`, lang: "es" } : { text: `Hello, ${p.name}. ${name} is out. What do you need? You've got twenty seconds to enter the code.`, lang: "en" };
+    return es ? { text: `Vaya, hola. ${name} no est\xE1 y a ti no te conozco. \xBFQu\xE9 necesitas? Pon el c\xF3digo en veinte segundos o monto un esc\xE1ndalo.`, lang: "es" } : { text: `Well, hello there. ${name} isn't home, and I don't recognise you. What do you need? Enter the code in twenty seconds, or I raise the alarm.`, lang: "en" };
+  }
+  async function guardIntruder(p, action) {
+    if (desk.intruder) return;
+    desk.intruder = { who: action === "unknown" ? settings.lang === "es" ? "Desconocido" : "Unknown" : p.name, at: Date.now() };
+    guardLog("Ha entrado: " + desk.intruder.who);
+    saveGuard({ alert: "entry" });
+    openKeypad();
+    const line = guardLine(p, action);
+    voice.stop();
+    await talk(line.text, line.lang);
+    if (!desk.intruder) return;
+    desk.intruderEnds = Date.now() + desk.guardGraceMS;
+    desk.intruderTimer = setTimeout(() => {
+      if (desk.intruder) void soundAlarm();
+    }, desk.guardGraceMS);
+  }
+  desk.guardIntruder = guardIntruder;
+  async function soundAlarm() {
+    if (desk.alarm) return;
+    guardLog("Alarma" + (desk.intruder ? " \xB7 " + desk.intruder.who : ""));
+    desk.alarm = true;
+    document.body.classList.add("alarm");
+    saveGuard({ alert: "alarm" });
+    const es = settings.lang === "es";
+    await talk(es ? `Sin c\xF3digo. Alarma activada. ${settings.name} ya est\xE1 avisado.` : `No code. Alarm on. ${settings.name} has been told.`, es ? "es" : "en");
+    if (!desk.alarm) return;
+    const beep = () => {
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        desk.chimeCtx || (desk.chimeCtx = new Ctx());
+        const ctx = desk.chimeCtx, t0 = ctx.currentTime;
+        [880, 660].forEach((f, i) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = "triangle";
+          o.frequency.value = f;
+          o.connect(g);
+          g.connect(ctx.destination);
+          const t2 = t0 + i * 0.4;
+          g.gain.setValueAtTime(0, t2);
+          g.gain.linearRampToValueAtTime(0.12, t2 + 0.03);
+          g.gain.linearRampToValueAtTime(0, t2 + 0.38);
+          o.start(t2);
+          o.stop(t2 + 0.4);
+        });
+      } catch {
+      }
+    };
+    beep();
+    desk.alarmTimer = setInterval(beep, 900);
+    desk.alarmStop = setTimeout(stopAlarm, 6e4);
+  }
+  desk.soundAlarm = soundAlarm;
+  function stopAlarm() {
+    clearInterval(desk.alarmTimer);
+    clearTimeout(desk.alarmStop);
+    const was = desk.alarm;
+    desk.alarm = false;
+    document.body.classList.remove("alarm");
+    if (was) {
+      renderGuard();
+      guardSend();
+    }
+  }
+  desk.stopAlarm = stopAlarm;
+  var typed = "";
+  var wrong = 0;
+  function openKeypad() {
+    typed = "";
+    wrong = 0;
+    drawKeypad();
+    $("keypad").hidden = false;
+    clearInterval(desk.keypadClock);
+    desk.keypadClock = setInterval(() => {
+      const left = desk.intruderEnds ? Math.max(0, Math.ceil((desk.intruderEnds - Date.now()) / 1e3)) : null;
+      $("keypadTime").textContent = desk.alarm ? settings.lang === "es" ? "Alarma activada" : "Alarm on" : left === null ? "" : `${left} s`;
+    }, 250);
+  }
+  function closeKeypad() {
+    $("keypad").hidden = true;
+    clearInterval(desk.keypadClock);
+    typed = "";
+  }
+  function drawKeypad() {
+    [...$("keypadDots").children].forEach((d, i) => d.classList.toggle("on", i < typed.length));
+  }
+  async function keyIn(k) {
+    if ($("keypad").hidden) return;
+    if (k === "clear") typed = "";
+    else if (k === "back") typed = typed.slice(0, -1);
+    else if (/^\d$/.test(k) && typed.length < 4) typed += k;
+    drawKeypad();
+    if (typed.length < 4) return;
+    const ok = /^\d{4}$/.test(settings.guardPin || "") && typed === settings.guardPin;
+    typed = "";
+    drawKeypad();
+    if (ok) {
+      const who = desk.intruder?.who || "";
+      setGuard(false, "c\xF3digo" + (who ? " \xB7 " + who : ""));
+      voice.stop();
+      await talk(settings.lang === "es" ? "C\xF3digo correcto. Todo tuyo." : "Code accepted. Carry on.");
+      ears.resume();
+      return;
+    }
+    wrong++;
+    $("keypadDots").classList.remove("bad");
+    void $("keypadDots").offsetWidth;
+    $("keypadDots").classList.add("bad");
+    if (wrong >= 3) void soundAlarm();
+  }
+  desk.keyIn = keyIn;
+  for (const b of document.querySelectorAll("#keypad [data-key]")) b.onclick = () => void keyIn(b.dataset.key);
+  document.addEventListener("keydown", (e) => {
+    if ($("keypad").hidden) return;
+    if (/^\d$/.test(e.key)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      void keyIn(e.key);
+    }
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      void keyIn("back");
+    }
+  }, true);
+  var LEAVING = /\b(me voy|me marcho|me piro|me las piro|me pires|modo vigilancia|activa (la )?(vigilancia|alarma)|im leaving|i am leaving|im off|guard mode|watch the room|arm the alarm)\b/;
+  var STAYING = /\b(me quedo|cancela( la)? (vigilancia|alarma)|no me voy|im staying|cancel guard)\b/;
+  async function guardVoice(raw) {
+    const text = normalize(raw).replace(/'/g, ""), es = settings.lang === "es";
+    if (LEAVING.test(text) && !desk.guard.on) {
+      setGuard(true, "voz");
+      const noPin = !/^\d{4}$/.test(settings.guardPin || "");
+      await talk(es ? `Vale, ${settings.name}. Vigilo la habitaci\xF3n en un minuto. Que vaya bien.${noPin ? " Por cierto, no hay c\xF3digo puesto: solo tu cara o tu m\xF3vil la desactivan." : ""}` : `Right, ${settings.name}. Guard mode in one minute. Off you go.${noPin ? " By the way, there's no code set, so only your face or your phone can switch it off." : ""}`);
+      ears.resume();
+      return true;
+    }
+    if (STAYING.test(text) && desk.guard.on && !guardArmed()) {
+      setGuard(false, "cancelada");
+      await talk(es ? "Cancelado. Me quedo tranquilo." : "Cancelled. Standing down.");
+      ears.resume();
+      return true;
+    }
+    return false;
+  }
+  desk.guardVoice = guardVoice;
+  renderGuard();
+  if (desk.guard.on && !guardArmed()) desk.guardArmTimer = setTimeout(() => {
+    renderGuard();
+    guardSend();
+  }, desk.guard.armAt - Date.now() + 50);
   async function onHome(event) {
     const at = +event.at || Date.now();
     if (event.action === "wall") {
@@ -1153,9 +1350,43 @@
       ears.resume(true);
       return;
     }
+    if (event.action === "guard") {
+      if (!!event.on !== desk.guard.on) setGuard(!!event.on, "m\xF3vil");
+      else guardSend();
+      return;
+    }
+    if (event.action === "guard-ask") {
+      guardSend();
+      return;
+    }
+    if (event.action === "guard-silence") {
+      stopAlarm();
+      return;
+    }
     if (event.action === "arrival" || event.action === "test" || event.action === "unknown") {
       desk.wallSeen = Date.now();
       const p = event.person || { name: settings.lang === "es" ? "Desconocido" : "Unknown", role: "unknown" };
+      if (event.action !== "test" && desk.guard.on) {
+        if (p.role === "me" && event.action !== "unknown") {
+          if (guardArmed()) {
+            setGuard(false, "has vuelto");
+            desk.arrivals.push({ name: p.name, role: "me", at: Date.now() });
+            store.set("jarvis-arrivals", desk.arrivals);
+            render();
+            await talk(settings.lang === "es" ? `Bienvenido, ${settings.name}. Vigilancia desactivada. Todo en orden.` : `Welcome back, ${settings.name}. Guard is off. All quiet while you were out.`);
+            ears.resume(true);
+          }
+          return;
+        }
+        if (guardArmed()) {
+          desk.arrivals.push({ name: p.name, role: event.action === "unknown" ? "unknown" : p.role, at: Date.now() });
+          store.set("jarvis-arrivals", desk.arrivals);
+          render();
+          orb.flash("alert");
+          await guardIntruder(p, event.action);
+          return;
+        }
+      }
       if (event.action !== "test") {
         desk.arrivals.push({ name: p.name, role: event.action === "unknown" ? "unknown" : p.role, at: Date.now() });
         while (desk.arrivals.length > 50) desk.arrivals.shift();
@@ -1303,6 +1534,7 @@
     if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
     void restoreMemory();
     void loadReminders();
+    setTimeout(guardSend, 2500);
     void loadWeather();
     setInterval(loadWeather, 20 * 6e4);
     try {
@@ -1369,6 +1601,7 @@
   };
   function openSettings() {
     for (const id of ["name", "lang", "hear", "city"]) $(id).value = settings[id];
+    $("guardPin").value = settings.guardPin || "";
     $("voiceKey").value = settings.key;
     $("wakeOn").checked = settings.wake;
     $("greetOn").checked = settings.greet;
@@ -1449,6 +1682,12 @@
   bind("greetOn", "greet");
   bind("quietFrom", "quietFrom", Number);
   bind("quietTo", "quietTo", Number);
+  $("guardPin").onchange = () => {
+    const v = $("guardPin").value.replace(/\D/g, "").slice(0, 4);
+    $("guardPin").value = v;
+    settings.guardPin = v.length === 4 ? v : "";
+    settings.save();
+  };
   $("voiceKey").onchange = () => {
     settings.key = $("voiceKey").value.trim();
     settings.save();

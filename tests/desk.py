@@ -192,6 +192,38 @@ with sync_playwright() as p:
     page.screenshot(path='/tmp/desk-reminders.png')
     page.locator('#reminders button').click()
     page.wait_for_function("document.getElementById('remindersCard').hidden")
+    # Guard mode: "me voy" arms it after the exit delay; Mum gets a cheeky question and the keypad.
+    page.evaluate("()=>{desk.settings.guardPin='2580'; desk.guardExitMS=300; desk.guardGraceMS=1500}")
+    page.evaluate("recQueue.push({results:[['Jarvis me voy',true]],end:true})"); page.keyboard.press('Space')
+    wait_voice(page, 'Guard mode in one minute')
+    assert page.evaluate("desk.guard.on") and any(x.get('action') == 'guard-state' and x.get('on') for x in to_wall)
+    calm(page); page.wait_for_timeout(400)
+    page.wait_for_function("document.getElementById('guardLabel').textContent==='Guard on'")
+    home({'action': 'arrival', 'person': {'name': 'Mamá', 'role': 'mom', 'greeting': ''}})
+    wait_voice(page, 'Pop the code in')
+    assert page.locator('#keypad').is_visible() and any(x.get('alert') == 'entry' and x.get('intruder') == 'Mamá' for x in to_wall)
+    page.keyboard.type('1111'); page.wait_for_timeout(200)
+    assert page.evaluate("desk.guard.on && !desk.alarm"), 'a wrong code keeps it armed'
+    page.keyboard.type('2580'); wait_voice(page, 'Code accepted')
+    assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden()
+    calm(page)
+    # Armed from the phone; a stranger with no code sets off the gentle alarm; the phone can silence it.
+    home({'action': 'guard', 'on': True}); page.wait_for_timeout(500)
+    page.wait_for_function("document.getElementById('guardLabel').textContent==='Guard on'")
+    home({'action': 'unknown', 'count': 1}); wait_voice(page, "don't recognise you")
+    page.wait_for_function("desk.alarm===true", timeout=8000)
+    wait_voice(page, 'No code. Alarm on')
+    assert page.evaluate("document.body.classList.contains('alarm')") and any(x.get('alert') == 'alarm' for x in to_wall)
+    page.screenshot(path='/tmp/desk-alarm.png')
+    home({'action': 'guard-silence'}); page.wait_for_function("desk.alarm===false")
+    assert page.evaluate("desk.guard.on"), 'silencing keeps watching'
+    calm(page)
+    # You walk in: your face switches it off.
+    home({'action': 'arrival', 'person': {'name': 'Crew', 'role': 'me', 'greeting': ''}})
+    wait_voice(page, 'Guard is off')
+    assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden()
+    calm(page)
+
     # A reminder that comes due is spoken on the desk.
     home({'action': 'remind', 'text': 'Time to study maths, Crew.', 'lang': 'en'})
     wait_voice(page, 'Time to study maths'); calm(page)

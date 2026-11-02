@@ -28,6 +28,7 @@
       facing: "user",
       greet: true,
       crop: { cx: 0.5, cy: 0.5, zoom: 1 },
+      guardPin: "",
       wake: true,
       quietFrom: 23,
       quietTo: 8,

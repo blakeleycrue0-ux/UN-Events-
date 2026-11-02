@@ -12,6 +12,7 @@ import { ICONS, weatherKind } from "./jarvis/icons.js";
 const toCamera = () => { if (/invite=[a-f0-9]{64}/i.test(location.hash)) location.replace("camara.html" + location.hash); };
 toCamera(); window.addEventListener("hashchange", toCamera);
 if (store.get("jarvis-role", "") === "wall") location.replace("pared.html");
+if (store.get("jarvis-role", "") === "remote") location.replace("mando.html");
 
 const settings = loadSettings();
 const t = () => T[settings.lang] || T.en;
@@ -179,6 +180,7 @@ async function respond(raw) {
   $("heard").textContent = "«" + raw + "»";
   // Answer to a question from the browser agent ("Shall I hand it in?").
   if (desk.ask) { const id = desk.ask; desk.ask = 0; await extension("agent-answer", { ask: id, text: raw }); setState("idle"); ears.resume(); return; }
+  if (await guardVoice(raw)) return;
   if (desk.agent && /^\s*(stop|para|parar|cancela|cancel|d[ée]jalo|basta)\b/i.test(raw)) {
     await extension("agent-stop"); desk.agent = null; renderAgent();
     await talk(settings.lang === "es" ? "Vale, lo dejo." : "Alright, I've stopped."); ears.resume(); return;
@@ -293,6 +295,140 @@ function addTimer(ms, label) {
 }
 desk.addTimer = addTimer;
 
+// ---------- Modo vigilancia ----------
+// Armed when you leave ("Jarvis, me voy" or the phone remote). Whoever comes in
+// that isn't you gets a cheeky question and 20 s to type the code; otherwise a
+// gentle alarm sounds and your phone hears about it. Your own face disarms it.
+desk.guard = store.get("jarvis-guard", { on: false, armAt: 0, log: [] });
+desk.guardGraceMS = 20000; desk.guardExitMS = 60000;
+const guardArmed = () => desk.guard.on && Date.now() >= (desk.guard.armAt || 0);
+function guardLog(text) { desk.guard.log.push({ at: Date.now(), text }); while (desk.guard.log.length > 20) desk.guard.log.shift(); }
+function guardSend(extra = {}) {
+  home?.send({ action: "guard-state", on: desk.guard.on, armAt: desk.guard.armAt || 0, alarm: !!desk.alarm, intruder: desk.intruder?.who || "", log: desk.guard.log.slice(-8), ...extra });
+}
+function saveGuard(extra) { store.set("jarvis-guard", desk.guard); renderGuard(); guardSend(extra); }
+function renderGuard() {
+  const armed = guardArmed(), pending = desk.guard.on && !armed;
+  $("guardDot").classList.toggle("armed", armed); $("guardDot").classList.toggle("pending", pending);
+  $("guardLabel").textContent = desk.alarm ? "ALARM" : armed ? "Guard on" : pending ? "Guard soon" : "Guard";
+}
+desk.renderGuard = renderGuard;
+function setGuard(on, why = "") {
+  stopAlarm(); closeKeypad(); desk.intruder = null; clearTimeout(desk.intruderTimer);
+  desk.guard.on = on; desk.guard.armAt = on ? Date.now() + desk.guardExitMS : 0;
+  guardLog((on ? "Activada" : "Desactivada") + (why ? " · " + why : ""));
+  saveGuard();
+  clearTimeout(desk.guardArmTimer);
+  if (on) desk.guardArmTimer = setTimeout(() => { renderGuard(); guardSend(); }, desk.guardExitMS + 50);
+}
+desk.setGuard = setGuard;
+function guardLine(p, action) {
+  const es = settings.lang === "es", name = settings.name;
+  if (action !== "unknown" && p.role === "mom") return { text: `Hi, Mum. ${name} is out, so I'm in charge. What do you need? Pop the code in within twenty seconds, or things get loud.`, lang: "en" };
+  if (action !== "unknown" && p.role === "dad") return { text: `Hello, Dad. ${name} isn't here, and yes, the air conditioning is off. Code in twenty seconds, please, or I start singing.`, lang: "en" };
+  if (action !== "unknown") return es ? { text: `Hola, ${p.name}. ${name} no está. ¿Qué necesitas? Tienes veinte segundos para poner el código.`, lang: "es" } : { text: `Hello, ${p.name}. ${name} is out. What do you need? You've got twenty seconds to enter the code.`, lang: "en" };
+  return es ? { text: `Vaya, hola. ${name} no está y a ti no te conozco. ¿Qué necesitas? Pon el código en veinte segundos o monto un escándalo.`, lang: "es" }
+    : { text: `Well, hello there. ${name} isn't home, and I don't recognise you. What do you need? Enter the code in twenty seconds, or I raise the alarm.`, lang: "en" };
+}
+async function guardIntruder(p, action) {
+  if (desk.intruder) return;
+  desk.intruder = { who: action === "unknown" ? (settings.lang === "es" ? "Desconocido" : "Unknown") : p.name, at: Date.now() };
+  guardLog("Ha entrado: " + desk.intruder.who); saveGuard({ alert: "entry" });
+  openKeypad();
+  const line = guardLine(p, action);
+  voice.stop(); await talk(line.text, line.lang);
+  if (!desk.intruder) return;   // the code was typed while talking
+  desk.intruderEnds = Date.now() + desk.guardGraceMS;
+  desk.intruderTimer = setTimeout(() => { if (desk.intruder) void soundAlarm(); }, desk.guardGraceMS);
+}
+desk.guardIntruder = guardIntruder;
+async function soundAlarm() {
+  if (desk.alarm) return;
+  guardLog("Alarma" + (desk.intruder ? " · " + desk.intruder.who : ""));
+  desk.alarm = true; document.body.classList.add("alarm"); saveGuard({ alert: "alarm" });
+  const es = settings.lang === "es";
+  await talk(es ? `Sin código. Alarma activada. ${settings.name} ya está avisado.` : `No code. Alarm on. ${settings.name} has been told.`, es ? "es" : "en");
+  if (!desk.alarm) return;
+  // A soft two-tone siren: noticeable, not ear-splitting. Stops by itself after a minute.
+  const beep = () => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext; desk.chimeCtx ||= new Ctx();
+      const ctx = desk.chimeCtx, t0 = ctx.currentTime;
+      [880, 660].forEach((f, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain(); o.type = "triangle"; o.frequency.value = f;
+        o.connect(g); g.connect(ctx.destination); const t = t0 + i * 0.4;
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + 0.03); g.gain.linearRampToValueAtTime(0, t + 0.38);
+        o.start(t); o.stop(t + 0.4);
+      });
+    } catch { /* no audio */ }
+  };
+  beep(); desk.alarmTimer = setInterval(beep, 900);
+  desk.alarmStop = setTimeout(stopAlarm, 60000);
+}
+desk.soundAlarm = soundAlarm;
+function stopAlarm() {
+  clearInterval(desk.alarmTimer); clearTimeout(desk.alarmStop);
+  const was = desk.alarm; desk.alarm = false; document.body.classList.remove("alarm");
+  if (was) { renderGuard(); guardSend(); }
+}
+desk.stopAlarm = stopAlarm;
+// Keypad on the desk screen (mouse or keyboard digits).
+let typed = "", wrong = 0;
+function openKeypad() {
+  typed = ""; wrong = 0; drawKeypad(); $("keypad").hidden = false;
+  clearInterval(desk.keypadClock);
+  desk.keypadClock = setInterval(() => {
+    const left = desk.intruderEnds ? Math.max(0, Math.ceil((desk.intruderEnds - Date.now()) / 1000)) : null;
+    $("keypadTime").textContent = desk.alarm ? (settings.lang === "es" ? "Alarma activada" : "Alarm on") : left === null ? "" : `${left} s`;
+  }, 250);
+}
+function closeKeypad() { $("keypad").hidden = true; clearInterval(desk.keypadClock); typed = ""; }
+function drawKeypad() { [...$("keypadDots").children].forEach((d, i) => d.classList.toggle("on", i < typed.length)); }
+async function keyIn(k) {
+  if ($("keypad").hidden) return;
+  if (k === "clear") typed = ""; else if (k === "back") typed = typed.slice(0, -1); else if (/^\d$/.test(k) && typed.length < 4) typed += k;
+  drawKeypad();
+  if (typed.length < 4) return;
+  const ok = /^\d{4}$/.test(settings.guardPin || "") && typed === settings.guardPin;
+  typed = ""; drawKeypad();
+  if (ok) {
+    const who = desk.intruder?.who || "";
+    setGuard(false, "código" + (who ? " · " + who : ""));
+    voice.stop(); await talk(settings.lang === "es" ? "Código correcto. Todo tuyo." : "Code accepted. Carry on."); ears.resume();
+    return;
+  }
+  wrong++; $("keypadDots").classList.remove("bad"); void $("keypadDots").offsetWidth; $("keypadDots").classList.add("bad");
+  if (wrong >= 3) void soundAlarm();
+}
+desk.keyIn = keyIn;
+for (const b of document.querySelectorAll("#keypad [data-key]")) b.onclick = () => void keyIn(b.dataset.key);
+document.addEventListener("keydown", (e) => {
+  if ($("keypad").hidden) return;
+  if (/^\d$/.test(e.key)) { e.preventDefault(); e.stopImmediatePropagation(); void keyIn(e.key); }
+  if (e.key === "Backspace") { e.preventDefault(); void keyIn("back"); }
+}, true);
+// Voice: arm when leaving; while not yet armed, "me quedo" cancels. Never disarms by voice once armed.
+const LEAVING = /\b(me voy|me marcho|me piro|me las piro|me pires|modo vigilancia|activa (la )?(vigilancia|alarma)|im leaving|i am leaving|im off|guard mode|watch the room|arm the alarm)\b/;
+const STAYING = /\b(me quedo|cancela( la)? (vigilancia|alarma)|no me voy|im staying|cancel guard)\b/;
+async function guardVoice(raw) {
+  const text = normalize(raw).replace(/'/g, ""), es = settings.lang === "es";
+  if (LEAVING.test(text) && !desk.guard.on) {
+    setGuard(true, "voz");
+    const noPin = !/^\d{4}$/.test(settings.guardPin || "");
+    await talk(es ? `Vale, ${settings.name}. Vigilo la habitación en un minuto. Que vaya bien.${noPin ? " Por cierto, no hay código puesto: solo tu cara o tu móvil la desactivan." : ""}`
+      : `Right, ${settings.name}. Guard mode in one minute. Off you go.${noPin ? " By the way, there's no code set, so only your face or your phone can switch it off." : ""}`);
+    ears.resume(); return true;
+  }
+  if (STAYING.test(text) && desk.guard.on && !guardArmed()) {
+    setGuard(false, "cancelada");
+    await talk(es ? "Cancelado. Me quedo tranquilo." : "Cancelled. Standing down."); ears.resume(); return true;
+  }
+  return false;
+}
+desk.guardVoice = guardVoice;
+renderGuard();
+if (desk.guard.on && !guardArmed()) desk.guardArmTimer = setTimeout(() => { renderGuard(); guardSend(); }, desk.guard.armAt - Date.now() + 50);
+
 // ---------- La puerta (eventos del móvil) ----------
 async function onHome(event) {
   const at = +event.at || Date.now();
@@ -307,9 +443,30 @@ async function onHome(event) {
     if (desk.voice.speaking || ears.mode === "direct") { toast(text); return; }
     await talk(text, event.lang === "es" ? "es" : event.lang === "en" ? "en" : settings.lang); ears.resume(true); return;
   }
+  // From the phone remote (/mando).
+  if (event.action === "guard") { if (!!event.on !== desk.guard.on) setGuard(!!event.on, "móvil"); else guardSend(); return; }
+  if (event.action === "guard-ask") { guardSend(); return; }
+  if (event.action === "guard-silence") { stopAlarm(); return; }
   if (event.action === "arrival" || event.action === "test" || event.action === "unknown") {
     desk.wallSeen = Date.now();
     const p = event.person || { name: settings.lang === "es" ? "Desconocido" : "Unknown", role: "unknown" };
+    // Guard mode first: you disarm it by walking in; anyone else gets the code question.
+    if (event.action !== "test" && desk.guard.on) {
+      if (p.role === "me" && event.action !== "unknown") {
+        if (guardArmed()) {
+          setGuard(false, "has vuelto");
+          desk.arrivals.push({ name: p.name, role: "me", at: Date.now() }); store.set("jarvis-arrivals", desk.arrivals); render();
+          await talk(settings.lang === "es" ? `Bienvenido, ${settings.name}. Vigilancia desactivada. Todo en orden.` : `Welcome back, ${settings.name}. Guard is off. All quiet while you were out.`);
+          ears.resume(true);
+        }
+        return;   // still inside the exit minute: you're on your way out
+      }
+      if (guardArmed()) {
+        desk.arrivals.push({ name: p.name, role: event.action === "unknown" ? "unknown" : p.role, at: Date.now() });
+        store.set("jarvis-arrivals", desk.arrivals); render(); orb.flash("alert");
+        await guardIntruder(p, event.action); return;
+      }
+    }
     if (event.action !== "test") {
       desk.arrivals.push({ name: p.name, role: event.action === "unknown" ? "unknown" : p.role, at: Date.now() });
       while (desk.arrivals.length > 50) desk.arrivals.shift();
@@ -414,6 +571,7 @@ async function start() {
   await ears.openMeter();
   if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
   void restoreMemory(); void loadReminders();
+  setTimeout(guardSend, 2500);
   void loadWeather(); setInterval(loadWeather, 20 * 60000);
   try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch {}
   if (!settings.key) { say(t().needKey); setState("idle"); ears.background(); return; }
@@ -443,6 +601,7 @@ $("typeForm").onsubmit = (e) => { e.preventDefault(); const v = $("typeInput").v
 // ---------- Ajustes ----------
 function openSettings() {
   for (const id of ["name", "lang", "hear", "city"]) $(id).value = settings[id];
+  $("guardPin").value = settings.guardPin || "";
   $("voiceKey").value = settings.key; $("wakeOn").checked = settings.wake; $("greetOn").checked = settings.greet;
   $("quietFrom").value = settings.quietFrom; $("quietTo").value = settings.quietTo;
   $("memoryList").replaceChildren(...desk.memory.map((m, i) => {
@@ -490,6 +649,7 @@ $("closeSettings").onclick = () => { $("settings").hidden = true; };
 const bind = (id, key, conv = (v) => v) => { $(id).onchange = () => { settings[key] = conv($(id).type === "checkbox" ? $(id).checked : $(id).value); settings.save(); render(); }; };
 bind("name", "name", (v) => v.trim() || "Crew"); bind("lang", "lang"); bind("hear", "hear"); bind("greetOn", "greet");
 bind("quietFrom", "quietFrom", Number); bind("quietTo", "quietTo", Number);
+$("guardPin").onchange = () => { const v = $("guardPin").value.replace(/\D/g, "").slice(0, 4); $("guardPin").value = v; settings.guardPin = v.length === 4 ? v : ""; settings.save(); };
 $("voiceKey").onchange = () => { settings.key = $("voiceKey").value.trim(); settings.save(); home?.stop(); if (desk.started && settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) }); };
 $("wakeOn").onchange = () => { settings.wake = $("wakeOn").checked; settings.save(); if (settings.wake) ears.resume(); else ears.pause(); render(); };
 $("city").onchange = async () => {

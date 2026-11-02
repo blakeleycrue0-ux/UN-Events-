@@ -17,6 +17,7 @@
       <div class="status">
         <span class="stat" title="Cámara de la puerta"><span id="wallDot" class="dot"></span><span class="ico" data-icon="door"></span><span>Door</span></span>
         <span class="stat" title="Escuchar «Jarvis…»"><span id="earDot" class="dot"></span><span class="ico" data-icon="mic"></span><span>Voice</span></span>
+        <span class="stat guard-stat" title="Modo vigilancia"><span id="guardDot" class="dot"></span><span class="ico" data-icon="shield"></span><span id="guardLabel">Guard</span></span>
         <span class="stat" title="Extensión de Jarvis en Chrome"><span id="extDot" class="dot"></span><span class="ico" data-icon="laptop"></span><span>Extension</span></span>
         <button id="openSettings" class="icon-btn" aria-label="Ajustes"><span class="ico" data-icon="gear"></span></button>
       </div>
@@ -81,6 +82,20 @@
       </section>
     </div>
 
+    <div id="keypad" class="overlay keypad" hidden>
+      <div class="keypad-card">
+        <div class="keypad-title">Código de la alarma</div>
+        <div id="keypadDots" class="keypad-dots"><span></span><span></span><span></span><span></span></div>
+        <div id="keypadTime" class="keypad-time"></div>
+        <div class="keys">
+          <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+          <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+          <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+          <button data-key="clear" class="soft">Borrar</button><button data-key="0">0</button><button data-key="back" class="soft">⌫</button>
+        </div>
+      </div>
+    </div>
+
     <form id="typeForm" class="type-form" hidden><input id="typeInput" autocomplete="off" placeholder="Type to Jarvis…" /></form>
     <div id="toasts" class="toasts"></div>
 
@@ -92,6 +107,7 @@
         <div class="choices">
           <button id="asDesk" class="choice"><b>Escritorio</b><span>El Chromebook: habla, escucha, pone música y saluda a quien entra.</span></button>
           <button id="asWall" class="choice"><b>Pared</b><span>El móvil de la pared: solo mira quién entra por la puerta.</span></button>
+          <a id="asRemote" class="choice" href="mando.html"><b>Mando</b><span>Tu móvil: activa la vigilancia al salir y te avisa si entra alguien.</span></a>
         </div>
       </div>
     </div>
@@ -117,6 +133,10 @@
       <h3>Cámara de la pared</h3>
       <div class="peek"><img id="peekImg" alt="" hidden /><p id="peekInfo" class="peek-info">Conectando con el móvil de la pared…</p></div>
       <div class="row"><button id="camFront" class="pill">Delantera</button><button id="camBack" class="pill">Trasera</button></div>
+
+      <h3>Modo vigilancia</h3>
+      <p class="muted">Di «Jarvis, me voy» al salir (o usa tu móvil en <b>/mando</b>). Si entra alguien que no eres tú, Jarvis le habla y tiene 20 segundos para poner el código; si no, suena una alarma suave. Cuando entras tú, se desactiva sola.</p>
+      <label>Código (4 números)<input id="guardPin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Ej. 2580" /></label>
 
       <h3>Recordatorios</h3>
       <p class="muted">«Jarvis, recuérdame a las 8 que tengo examen»: a esa hora te lo dice en voz alta (o por email, si está configurado). Los guardados salen en el panel de la derecha.</p>

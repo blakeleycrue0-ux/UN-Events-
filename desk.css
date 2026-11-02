@@ -192,3 +192,24 @@ body.night .side { opacity: .5; }
 .reminders span { font-size: calc(var(--u) * .95); font-weight: 300; color: var(--soft); line-height: 1.35; }
 .reminders button { color: var(--faint); font-size: calc(var(--u) * .8); padding: 0 4px; }
 .reminders button:hover { color: var(--soft); }
+
+/* Guard mode */
+.dot.armed { background: #f5a524; box-shadow: 0 0 10px rgba(245, 165, 36, .8); }
+.dot.pending { background: #f5a524; animation: pend 1.2s ease-in-out infinite; }
+@keyframes pend { 50% { opacity: .25; } }
+body.alarm .backdrop .glow { background: radial-gradient(45% 45% at 50% 50%, rgba(255, 70, 80, .28), transparent 70%); animation: alarmGlow 1s ease-in-out infinite; }
+@keyframes alarmGlow { 50% { opacity: .35; } }
+.keypad { z-index: 9; }
+.keypad-card { display: grid; gap: 22px; justify-items: center; }
+.keypad-title { font-size: 13px; letter-spacing: .32em; text-transform: uppercase; color: var(--accent); }
+.keypad-dots { display: flex; gap: 16px; }
+.keypad-dots span { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--soft); }
+.keypad-dots span.on { background: var(--text, #f2f5f8); }
+.keypad-dots.bad { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+.keypad-time { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.keys { display: grid; grid-template-columns: repeat(3, 84px); gap: 14px; }
+.keys button { height: 84px; border-radius: 50%; border: 1px solid var(--hair); font-size: 28px; font-weight: 300; color: var(--text, #f2f5f8); background: rgba(255, 255, 255, .03); }
+.keys button:hover { border-color: rgba(169, 207, 255, .45); }
+.keys button.soft { font-size: 13px; color: var(--muted); }
+a.choice { text-decoration: none; }
