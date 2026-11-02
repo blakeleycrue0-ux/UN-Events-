@@ -373,7 +373,7 @@
   function createEars({ settings: settings2, onHeard, onState = () => {
   }, log: log2 = () => {
   } }) {
-    const ears2 = { listening: false, mode: "", paused: false, limits: { silenceMS: 1200, directMS: 7e3, followMS: 6e3, maxMS: 15e3 }, blocked: false };
+    const ears2 = { listening: false, mode: "", paused: false, limits: { silenceMS: 2200, directMS: 8e3, followMS: 6e3, maxMS: 45e3 }, blocked: false };
     let session = null, restart = null, quickFails = 0, mic = null, analyser = null, data = null;
     const Recognition = () => window.SpeechRecognition || window.webkitSpeechRecognition;
     ears2.openMeter = async () => {
@@ -1027,6 +1027,7 @@
       if (remember && Array.isArray(data.remember)) {
         for (const fact of data.remember) addMemory(fact);
       }
+      if ((data.actions || []).some((a) => String(a).startsWith("reminder:"))) void loadReminders();
       const play = (data.actions || []).includes("play");
       if (play) {
         const m = /play(?:ing)? (.+?)(?: on (?:youtube|spotify))?[.!]?$/i.exec(reply);
@@ -1041,6 +1042,52 @@
     }
   }
   desk.think = think;
+  function whenLabel(iso) {
+    const d = new Date(iso), now = /* @__PURE__ */ new Date(), es = settings.lang === "es";
+    const hm = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diff = Math.round((day(d) - day(now)) / 864e5);
+    if (diff === 0) return hm;
+    if (diff === 1) return (es ? "Ma\xF1ana " : "Tomorrow ") + hm;
+    return d.toLocaleDateString(es ? "es-ES" : "en-GB", { weekday: "short", day: "numeric", month: "short" }) + " " + hm;
+  }
+  async function loadReminders() {
+    if (!settings.key) return;
+    try {
+      const response = await call("jarvis-call", { action: "reminders" }, settings.key);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(data.reminders)) return;
+      desk.reminders = data.reminders;
+      renderReminders();
+    } catch {
+    }
+  }
+  desk.loadReminders = loadReminders;
+  function renderReminders() {
+    const list = desk.reminders || [];
+    $("remindersCard").hidden = !list.length;
+    $("remindersSub").textContent = list.length ? String(list.length) : "";
+    $("reminders").replaceChildren(...list.map((r) => {
+      const li = document.createElement("li");
+      const when = document.createElement("time");
+      when.textContent = whenLabel(r.due_at);
+      const text = document.createElement("span");
+      text.textContent = r.text + (r.via === "email" ? " (email)" : "");
+      const x = document.createElement("button");
+      x.textContent = "\u2715";
+      x.title = settings.lang === "es" ? "Borrar" : "Delete";
+      x.onclick = async () => {
+        await call("jarvis-call", { action: "forget", id: r.id }, settings.key).catch(() => {
+        });
+        void loadReminders();
+      };
+      li.append(when, text, x);
+      return li;
+    }));
+  }
+  setInterval(() => {
+    if (desk.started) void loadReminders();
+  }, 6e4);
   async function restoreMemory() {
     if (desk.memory.length || !settings.key) return;
     try {
@@ -1097,6 +1144,7 @@
       orb.flash("alert");
       chime("alert");
       const text = String(event.text).slice(0, 400);
+      setTimeout(() => void loadReminders(), 1500);
       if (desk.voice.speaking || ears.mode === "direct") {
         toast(text);
         return;
@@ -1254,6 +1302,7 @@
     await ears.openMeter();
     if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
     void restoreMemory();
+    void loadReminders();
     void loadWeather();
     setInterval(loadWeather, 20 * 6e4);
     try {
@@ -1342,6 +1391,11 @@
     }));
     $("micLog").textContent = desk.log.slice(-16).join("\n");
     $("settings").hidden = false;
+    navigator.mediaDevices?.enumerateDevices?.().then((all) => {
+      const mic = all.find((d) => d.kind === "audioinput" && d.deviceId === "default") || all.find((d) => d.kind === "audioinput");
+      $("micName").textContent = mic?.label ? "Usando: " + mic.label.replace(/^Default - |^Predeterminado - /, "") : "No encuentro ning\xFAn micr\xF3fono.";
+    }).catch(() => {
+    });
     startPeek();
   }
   function startPeek() {

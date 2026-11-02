@@ -12,6 +12,7 @@ function setup({env={},due=[]}={}){
  const fetch=async(url,opts={})=>{url=String(url);out.push({url,opts,body:opts.body});
   if(url.includes('/rest/v1/rpc/jarvis_cron_check'))return Response.json(JSON.parse(opts.body).token==='cron-secret-1234567890');
   if(url.includes('/rest/v1/jarvis_state'))return Response.json([{name:'Crew',memory:['Maths exam Friday']}]);
+  if(url.includes('/rest/v1/jarvis_reminders?done=eq.false&order='))return Response.json([{id:'0b6f2c1e-1111-4222-8333-944455556666',due_at:'2026-11-03T07:00:00Z',text:'Exam',via:'chromebook'}]);
   if(url.includes('/rest/v1/jarvis_reminders?done=eq.false'))return Response.json(due);
   if(url.includes('/rest/v1/jarvis_reminders?id='))return Response.json([{id:1}]);
   if(url.includes('api.resend.com'))return Response.json({id:'e1'});
@@ -42,4 +43,13 @@ test('cron needs the Vault secret; due reminders are spoken on the desk or email
  assert.deepEqual(await (await mail.handler(cron('cron-secret-1234567890'))).json(),{delivered:['email']});
  const nomail=setup({due:[{id:3,text:'Bins',via:'email',lang:'en'}]});
  assert.deepEqual(await (await nomail.handler(cron('cron-secret-1234567890'))).json(),{delivered:['desk']},'no email set up: said on the desk');
+});
+
+test('the desk lists the reminders really saved, and can delete one',async()=>{
+ const s=setup();
+ assert.deepEqual(await (await s.handler(desk({action:'reminders'}))).json(),{reminders:[{id:'0b6f2c1e-1111-4222-8333-944455556666',due_at:'2026-11-03T07:00:00Z',text:'Exam',via:'chromebook'}]});
+ assert.equal((await s.handler(desk({action:'reminders'},{key:'nope'}))).status,401);
+ const f=await s.handler(desk({action:'forget',id:'0b6f2c1e-1111-4222-8333-944455556666'}));assert.equal(f.status,200);
+ const del=s.out.find(o=>o.opts.method==='DELETE');assert.match(del.url,/jarvis_reminders\?id=eq\.0b6f2c1e-1111-4222-8333-944455556666&done=eq\.false$/);
+ assert.equal((await setup().handler(desk({action:'forget',id:'x;drop'}))).status,400);
 });

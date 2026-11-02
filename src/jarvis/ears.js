@@ -11,7 +11,7 @@ export function afterWake(text) {
 }
 
 export function createEars({ settings, onHeard, onState = () => {}, log = () => {} }) {
-  const ears = { listening: false, mode: "", paused: false, limits: { silenceMS: 1200, directMS: 7000, followMS: 6000, maxMS: 15000 }, blocked: false };
+  const ears = { listening: false, mode: "", paused: false, limits: { silenceMS: 2200, directMS: 8000, followMS: 6000, maxMS: 45000 }, blocked: false };
   let session = null, restart = null, quickFails = 0, mic = null, analyser = null, data = null;
   const Recognition = () => window.SpeechRecognition || window.webkitSpeechRecognition;
 

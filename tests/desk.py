@@ -53,6 +53,7 @@ def weather(route):
                   body=json.dumps({'hourly': {'time': [time.strftime('%Y-%m-%dT%H:00', time.localtime(time.time() + 3600 * h)) for h in range(-1, 8)], 'temperature_2m': [20, 21, 22, 22, 21, 19, 18, 17, 16], 'weather_code': [1, 1, 2, 3, 61, 61, 3, 0, 0]}, 'current': {'temperature_2m': 21.4, 'weather_code': 1}, 'daily': {'temperature_2m_max': [24], 'temperature_2m_min': [15], 'precipitation_probability_max': [10]}}))
 
 to_wall = []
+saved_reminders = []
 PIXEL = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=='
 
 def realtime(ws):
@@ -95,7 +96,14 @@ with sync_playwright() as p:
     calls = []
     def jarvis_call(route):
         calls.append(json.loads(route.request.post_data or '{}'))
-        route.fulfill(status=200, headers={'Access-Control-Allow-Origin': '*'}, content_type='application/json', body=json.dumps({'name': 'Crew', 'memory': ['Crew supports Real Mallorca.'], 'calls': False}))
+        body = json.loads(route.request.post_data or '{}')
+        if body.get('action') == 'reminders':
+            out = {'reminders': saved_reminders}
+        elif body.get('action') == 'forget':
+            saved_reminders[:] = [r for r in saved_reminders if r['id'] != body.get('id')]; out = {'ok': True}
+        else:
+            out = {'name': 'Crew', 'memory': ['Crew supports Real Mallorca.']}
+        route.fulfill(status=200, headers={'Access-Control-Allow-Origin': '*'}, content_type='application/json', body=json.dumps(out))
     page.route('https://*.supabase.co/functions/v1/jarvis-call', jarvis_call)
     page.route('https://api.open-meteo.com/**', weather)
     page.route_web_socket('wss://*.supabase.co/**', realtime)
@@ -175,6 +183,15 @@ with sync_playwright() as p:
     page.wait_for_function("document.getElementById('agentCard').classList.contains('done')")
     page.screenshot(path='/tmp/desk-agent.png')
     calm(page)
+    # Saved reminders show in the side panel, read from the database, and can be deleted.
+    due = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(time.time() + 86400)) + 'Z'
+    saved_reminders.append({'id': '0b6f2c1e-1111-4222-8333-944455556666', 'due_at': due, 'text': 'Maths exam', 'via': 'chromebook'})
+    page.evaluate("desk.loadReminders()")
+    page.wait_for_function("!document.getElementById('remindersCard').hidden && document.getElementById('reminders').textContent.includes('Maths exam')")
+    assert 'Tomorrow' in page.locator('#reminders').inner_text()
+    page.screenshot(path='/tmp/desk-reminders.png')
+    page.locator('#reminders button').click()
+    page.wait_for_function("document.getElementById('remindersCard').hidden")
     # A reminder that comes due is spoken on the desk.
     home({'action': 'remind', 'text': 'Time to study maths, Crew.', 'lang': 'en'})
     wait_voice(page, 'Time to study maths'); calm(page)

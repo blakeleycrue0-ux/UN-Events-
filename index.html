@@ -70,6 +70,10 @@
             <button id="mNext" class="ctl" aria-label="Siguiente"><span class="ico" data-icon="next"></span></button>
           </div>
         </div>
+        <div id="remindersCard" class="block" hidden>
+          <div class="label">Reminders <span id="remindersSub" class="sub"></span></div>
+          <ul id="reminders" class="reminders"></ul>
+        </div>
         <div id="memoryCard" class="block" hidden>
           <div class="label">Memory</div>
           <ul id="memory" class="memory"></ul>
@@ -115,7 +119,11 @@
       <div class="row"><button id="camFront" class="pill">Delantera</button><button id="camBack" class="pill">Trasera</button></div>
 
       <h3>Recordatorios</h3>
-      <p class="muted">«Jarvis, recuérdame a las 8 que tengo examen»: a esa hora te lo dice en voz alta (o por email, si está configurado).</p>
+      <p class="muted">«Jarvis, recuérdame a las 8 que tengo examen»: a esa hora te lo dice en voz alta (o por email, si está configurado). Los guardados salen en el panel de la derecha.</p>
+
+      <h3>Micrófono</h3>
+      <p id="micName" class="muted"></p>
+      <p class="muted">Jarvis usa el micrófono elegido en el Mac: Ajustes del Sistema → Sonido → Entrada.</p>
 
       <h3>Memoria</h3>
       <ul id="memoryList" class="memory-list"></ul>

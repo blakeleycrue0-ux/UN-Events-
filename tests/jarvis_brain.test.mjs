@@ -81,7 +81,7 @@ test('Claude gets strict tools and its choices reach the Chromebook channel or t
  assert.equal(msg.topic,'jarvis-pc-'+createHash('sha256').update('jarvis-pc:clave-larga-de-prueba').digest('hex').slice(0,40));
  assert.equal(msg.event,'command');assert.equal(msg.private,false);
  assert.deepEqual({...msg.payload,at:0},{action:'play',service:'youtube',query:'lofi beats',at:0});
- const open=setup(tool('open_site',{site:'teams'}));assert.deepEqual(await (await open.handler(req(convo))).json(),{reply:'Done.',actions:['open:teams']});
+ const open=setup(tool('open_site',{site:'teams'}));assert.deepEqual(await (await open.handler(req(convo))).json(),{reply:'Opened.',actions:['open:teams']});
  assert.equal(open.outbound[0].body.messages[0].payload.site,'teams');
  const bad=setup(tool('open_site',{site:'evil.com'}));await bad.handler(req(convo));assert.equal(bad.outbound.length,0,'Unknown sites are never sent');
  const pause=setup(tool('media_control',{action:'pause'}));await pause.handler(req(convo));assert.equal(pause.outbound[0].body.messages[0].payload.action,'pause');
@@ -125,4 +125,14 @@ test('reminders are stored with an exact time; past or garbled times are refused
   const b=setup(tool('set_reminder',{due:bad,text:'x',via:'desk'},'Done.'));
   assert.deepEqual(await (await b.handler(req(convo))).json(),{reply:"I couldn't save that reminder.",actions:['reminder:failed']});assert.equal(b.outbound.length,0);
  }
+});
+
+test('with no words from Claude, Jarvis says what it actually did',async()=>{
+ const say=async(name,input)=>(await (await setup(tool(name,input)).handler(req(convo))).json()).reply;
+ assert.equal(await say('media_control',{action:'pause'}),'Done.');
+ assert.equal(await say('play_music',{query:'lofi',service:'youtube'}),'Playing it now.');
+ assert.equal(await say('browser_task',{task:'Check Teams'}),"On it. I'll tell you when it's done.");
+ assert.equal(await say('set_reminder',{due:new Date(Date.now()+3600e3).toISOString(),text:'Study',via:'desk'}),'Reminder saved.');
+ const empty=setup(()=>({stop_reason:'end_turn',content:[]}));
+ assert.equal((await (await empty.handler(req(convo))).json()).reply,"Sorry, I didn't catch that. Could you say it again?");
 });

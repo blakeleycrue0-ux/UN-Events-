@@ -3,6 +3,8 @@
 //   on the desk computer (or by email when Resend is set up).
 // - POST {action: "state"} with the Jarvis key: what Jarvis remembers, so a
 //   new computer running the desk gets its memory back.
+// - POST {action: "reminders"} / {action: "forget", id}: the pending reminders
+//   as saved in the database, for the desk's panel.
 // (The name is historical: it once handled phone calls too.)
 
 const env = (name: string) => (Deno.env.get(name) || "").trim().replace(/^["']+|["']+$/g, "");
@@ -97,6 +99,15 @@ Deno.serve(async (request: Request) => {
     let body: any = {};
     try { body = await request.json(); } catch { /* defaults */ }
     if (body.action === "state") { const who = await profile(); return json(200, { name: who.name, memory: who.memory }); }
+    // The desk shows what is really saved, straight from the database.
+    if (body.action === "reminders") {
+      const list = await rows("jarvis_reminders?done=eq.false&order=due_at.asc&limit=12&select=id,due_at,text,via");
+      return json(200, { reminders: list });
+    }
+    if (body.action === "forget" && /^[0-9a-f-]{36}$/.test(String(body.id || ""))) {
+      await db(`jarvis_reminders?id=eq.${body.id}&done=eq.false`, { method: "DELETE" });
+      return json(200, { ok: true });
+    }
     return json(400, { error: "Unknown action" });
   } catch (error) {
     console.log("jarvis-call error", step, String((error as Error).message).slice(0, 200));

@@ -216,6 +216,7 @@ async function think(raw, { remember = true, event = false } = {}) {
     const reply = data.refused || !data.reply ? t().refused : data.reply;
     history.push({ role: "assistant", content: reply });
     if (remember && Array.isArray(data.remember)) { for (const fact of data.remember) addMemory(fact); }
+    if ((data.actions || []).some((a) => String(a).startsWith("reminder:"))) void loadReminders();
     const play = (data.actions || []).includes("play");
     if (play) { const m = /play(?:ing)? (.+?)(?: on (?:youtube|spotify))?[.!]?$/i.exec(reply); desk.music = { query: m ? m[1] : raw, service: /spotify/i.test(reply + raw) ? "spotify" : "youtube" }; store.set("jarvis-music", desk.music); }
     render();
@@ -226,6 +227,42 @@ async function think(raw, { remember = true, event = false } = {}) {
   }
 }
 desk.think = think;
+// ---------- Recordatorios guardados ----------
+// Read straight from the database, so what you see is what will happen.
+function whenLabel(iso) {
+  const d = new Date(iso), now = new Date(), es = settings.lang === "es";
+  const hm = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(now)) / 86400000);
+  if (diff === 0) return hm;
+  if (diff === 1) return (es ? "Mañana " : "Tomorrow ") + hm;
+  return d.toLocaleDateString(es ? "es-ES" : "en-GB", { weekday: "short", day: "numeric", month: "short" }) + " " + hm;
+}
+async function loadReminders() {
+  if (!settings.key) return;
+  try {
+    const response = await call("jarvis-call", { action: "reminders" }, settings.key);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.reminders)) return;
+    desk.reminders = data.reminders; renderReminders();
+  } catch { /* offline: keep the last list */ }
+}
+desk.loadReminders = loadReminders;
+function renderReminders() {
+  const list = desk.reminders || [];
+  $("remindersCard").hidden = !list.length;
+  $("remindersSub").textContent = list.length ? String(list.length) : "";
+  $("reminders").replaceChildren(...list.map((r) => {
+    const li = document.createElement("li");
+    const when = document.createElement("time"); when.textContent = whenLabel(r.due_at);
+    const text = document.createElement("span"); text.textContent = r.text + (r.via === "email" ? " (email)" : "");
+    const x = document.createElement("button"); x.textContent = "✕"; x.title = settings.lang === "es" ? "Borrar" : "Delete";
+    x.onclick = async () => { await call("jarvis-call", { action: "forget", id: r.id }, settings.key).catch(() => {}); void loadReminders(); };
+    li.append(when, text, x); return li;
+  }));
+}
+setInterval(() => { if (desk.started) void loadReminders(); }, 60000);
+
 // New computer: bring back what Jarvis remembers from Supabase.
 async function restoreMemory() {
   if (desk.memory.length || !settings.key) return;
@@ -266,6 +303,7 @@ async function onHome(event) {
   if (event.action === "remind" && event.text) {
     wakeUp(); orb.flash("alert"); chime("alert");
     const text = String(event.text).slice(0, 400);
+    setTimeout(() => void loadReminders(), 1500);
     if (desk.voice.speaking || ears.mode === "direct") { toast(text); return; }
     await talk(text, event.lang === "es" ? "es" : event.lang === "en" ? "en" : settings.lang); ears.resume(true); return;
   }
@@ -375,7 +413,7 @@ async function start() {
   setState("thinking"); say(t().waking);
   await ears.openMeter();
   if (settings.key) home = connectHome({ key: settings.key, onEvent: (e) => void onHome(e), onStatus: (s) => log("canal: " + s) });
-  void restoreMemory();
+  void restoreMemory(); void loadReminders();
   void loadWeather(); setInterval(loadWeather, 20 * 60000);
   try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch {}
   if (!settings.key) { say(t().needKey); setState("idle"); ears.background(); return; }
@@ -415,6 +453,10 @@ function openSettings() {
   }));
   $("micLog").textContent = desk.log.slice(-16).join("\n");
   $("settings").hidden = false;
+  navigator.mediaDevices?.enumerateDevices?.().then((all) => {
+    const mic = all.find((d) => d.kind === "audioinput" && d.deviceId === "default") || all.find((d) => d.kind === "audioinput");
+    $("micName").textContent = mic?.label ? "Usando: " + mic.label.replace(/^Default - |^Predeterminado - /, "") : "No encuentro ningún micrófono.";
+  }).catch(() => {});
   startPeek();
 }
 // ---------- Ver la cámara de la pared ----------

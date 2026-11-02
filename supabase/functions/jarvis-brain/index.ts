@@ -228,7 +228,18 @@ Deno.serve(async (request: Request) => {
         reply = lang === "English" ? "I couldn't reach your computer." : "No he podido llegar a tu ordenador.";
       }
     }
-    if (!reply) reply = lang === "English" ? "Done." : "Hecho.";
+    if (!reply) {
+      // No words from Claude: say what was actually done.
+      const en = lang === "English", has = (p: string) => actions.some((a) => a.startsWith(p));
+      reply = has("reminder:") && !has("reminder:failed") ? (en ? "Reminder saved." : "Recordatorio guardado.")
+        : has("play") ? (en ? "Playing it now." : "Ya suena.")
+        : has("agent") ? (en ? "On it. I'll tell you when it's done." : "Me pongo con ello. Te aviso al terminar.")
+        : has("open:") ? (en ? "Opened." : "Abierto.")
+        : has("search") ? (en ? "Here are the results." : "Aquí tienes los resultados.")
+        : has("remember") ? (en ? "Noted." : "Apuntado.")
+        : actions.length ? (en ? "Done." : "Hecho.")
+        : (en ? "Sorry, I didn't catch that. Could you say it again?" : "Perdona, no te he entendido. ¿Me lo repites?");
+    }
     return json(200, { reply: reply.slice(0, 600), actions, ...(remembered.length ? { remember: remembered } : {}) });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError)
