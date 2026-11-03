@@ -1899,7 +1899,7 @@
   }
   async function guardIntruder(p, action) {
     if (desk.intruder) return;
-    desk.intruder = { who: action === "unknown" ? settings.lang === "es" ? "Desconocido" : "Unknown" : p.name, at: Date.now() };
+    desk.intruder = { who: action === "unknown" ? settings.lang === "es" ? "Desconocido" : "Unknown" : p.name, role: action === "unknown" ? "" : p.role || "", at: Date.now() };
     guardLog("Ha entrado: " + desk.intruder.who);
     saveGuard({ alert: "entry" });
     home?.send({ action: "snap", reason: "entry", who: desk.intruder.who });
@@ -2010,10 +2010,17 @@
     drawKeypad();
     if (ok) {
       const who = desk.intruder?.who || "";
+      desk.lastIn = desk.intruder ? { ...desk.intruder } : null;
       setGuard(false, "c\xF3digo" + (who ? " \xB7 " + who : ""));
       const since = desk.guard.leftAt || 0, summary = since ? whoCameIn(since) : "";
+      const out = summary ? (settings.lang === "es" ? " Mientras no estabas: " : " While you were out: ") + summary : "";
+      if (desk.lastIn?.role === "me") {
+        voice.stop();
+        await homecoming(out);
+        return;
+      }
       voice.stop();
-      await talk((settings.lang === "es" ? "C\xF3digo correcto. Todo tuyo. " : "Code accepted. Carry on. ") + (summary ? (settings.lang === "es" ? "Mientras no estabas: " : "While you were out: ") + summary : ""));
+      await talk((settings.lang === "es" ? "C\xF3digo correcto. Todo tuyo. " : "Code accepted. Carry on. ") + out);
       ears.resume();
       return;
     }
@@ -2343,8 +2350,55 @@
   $("mPlay").onclick = () => media("toggle");
   $("mNext").onclick = () => media("next");
   var INTRO = { video: "pAgnJDJN4VA", query: "AC/DC Back in Black" };
-  function introMusic() {
+  function songDb() {
+    return new Promise((resolve, reject) => {
+      const r = indexedDB.open("jarvis-song", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("song");
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  }
+  async function songGet() {
+    try {
+      const db = await songDb();
+      return await new Promise((res) => {
+        const q = db.transaction("song").objectStore("song").get("intro");
+        q.onsuccess = () => res(q.result || null);
+        q.onerror = () => res(null);
+      });
+    } catch {
+      return null;
+    }
+  }
+  async function songSet(file) {
+    const db = await songDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction("song", "readwrite");
+      file ? tx.objectStore("song").put(file, "intro") : tx.objectStore("song").delete("intro");
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+  desk.songSet = songSet;
+  async function introMusic() {
     stopIntro();
+    const own = await songGet();
+    if (own) {
+      const a = new Audio(URL.createObjectURL(own));
+      a.volume = 1;
+      const intro2 = desk.intro = { audio: a, playing: false };
+      a.onplaying = () => {
+        intro2.playing = true;
+      };
+      a.onended = () => {
+        if (desk.intro === intro2) stopIntro();
+      };
+      a.play().catch(() => {
+      });
+      desk.music = { query: own.name ? own.name.replace(/\.[a-z0-9]+$/i, "") : "Tu canci\xF3n", service: "" };
+      render();
+      return;
+    }
     const f = document.createElement("iframe");
     f.id = "introPlayer";
     f.className = "intro-player";
@@ -2373,18 +2427,32 @@
     }, 8e3);
   }
   function introCommand(func, args = []) {
+    const a = desk.intro?.audio;
+    if (a) {
+      if (func === "pauseVideo") a.pause();
+      if (func === "playVideo") void a.play().catch(() => {
+      });
+      if (func === "setVolume") a.volume = Math.max(0, Math.min(1, args[0] / 100));
+      return;
+    }
     try {
       desk.intro?.frame.contentWindow.postMessage(JSON.stringify({ event: "command", func, args }), "*");
     } catch {
     }
   }
   function stopIntro() {
-    desk.intro?.frame.remove();
+    const i = desk.intro;
     desk.intro = null;
+    if (!i) return;
+    i.frame?.remove();
+    if (i.audio) {
+      i.audio.pause();
+      URL.revokeObjectURL(i.audio.src);
+    }
   }
   desk.stopIntro = stopIntro;
   window.addEventListener("message", (m) => {
-    if (!desk.intro || m.source !== desk.intro.frame.contentWindow) return;
+    if (!desk.intro?.frame || m.source !== desk.intro.frame.contentWindow) return;
     let data = m.data;
     try {
       if (typeof data === "string") data = JSON.parse(data);
@@ -2398,8 +2466,7 @@
     if (data?.info?.playerState === 1) desk.intro.playing = true;
     if (data?.info?.playerState === 0) stopIntro();
   });
-  async function clapIntro() {
-    if (!desk.started || settings.clap === false || Date.now() - (desk.clapAt || 0) < 2e4) return;
+  async function homecoming(extra = "") {
     desk.clapAt = Date.now();
     if (desk.sleep || desk.sunrise) exitSleep();
     wakeUp();
@@ -2409,13 +2476,18 @@
     orb.flash("arrival");
     orb.burst?.();
     void extension("focus");
-    introMusic();
+    await introMusic();
     const es = settings.lang === "es", temp = desk.weather?.temp;
-    const line = es ? `Bienvenido a casa, ${settings.name}. Todos los sistemas en l\xEDnea.${Number.isFinite(temp) ? ` Fuera hace ${Math.round(temp)} grados.` : ""}` : `Welcome home, ${settings.name}. All systems online.${Number.isFinite(temp) ? ` It's ${Math.round(temp)} degrees outside.` : ""}`;
+    const line = (es ? `Bienvenido a casa, ${settings.name}. Todos los sistemas en l\xEDnea.${Number.isFinite(temp) ? ` Fuera hace ${Math.round(temp)} grados.` : ""}` : `Welcome home, ${settings.name}. All systems online.${Number.isFinite(temp) ? ` It's ${Math.round(temp)} degrees outside.` : ""}`) + extra;
     setTimeout(() => introCommand("setVolume", [35]), 1200);
     await talk(line);
     introCommand("setVolume", [100]);
     ears.resume();
+  }
+  desk.homecoming = homecoming;
+  async function clapIntro() {
+    if (!desk.started || settings.clap === false || Date.now() - (desk.clapAt || 0) < 2e4) return;
+    await homecoming();
   }
   desk.clapIntro = clapIntro;
   var home = null;
@@ -2526,6 +2598,9 @@
     $("wakeTime").value = desk.wake.time || "";
     fillVoices();
     $("clapOn").checked = settings.clap !== false;
+    void songGet().then((f) => {
+      $("songInfo").textContent = f ? "Canci\xF3n guardada: " + (f.name || "tu canci\xF3n") : "Sin canci\xF3n propia: usar\xE9 YouTube (puede salir un anuncio).";
+    });
     $("voiceKey").value = settings.key;
     $("wakeOn").checked = settings.wake;
     $("greetOn").checked = settings.greet;
@@ -2660,6 +2735,21 @@
   } catch {
   }
   desk.fillVoices = fillVoices;
+  $("songFile").onchange = async () => {
+    const f = $("songFile").files?.[0];
+    if (!f) return;
+    try {
+      await songSet(f);
+      $("songInfo").textContent = "Canci\xF3n guardada: " + f.name;
+    } catch {
+      $("songInfo").textContent = "No se pudo guardar la canci\xF3n.";
+    }
+  };
+  $("songClear").onclick = async () => {
+    await songSet(null).catch(() => {
+    });
+    $("songInfo").textContent = "Sin canci\xF3n propia: usar\xE9 YouTube.";
+  };
   $("clapOn").onchange = () => {
     settings.clap = $("clapOn").checked;
     settings.save();

@@ -288,17 +288,13 @@ a.choice { text-decoration: none; }
 }
 @keyframes hudDrift { to { transform: translate(28px, 28px); } }
 @keyframes hudPulse { 50% { opacity: .55; } }
-.hud-scan { position: absolute; left: 0; right: 0; height: 24vh; top: -24vh; pointer-events: none;
-  background: linear-gradient(transparent, rgba(120, 210, 255, .025) 60%, rgba(150, 230, 255, .07) 96%, transparent);
-  animation: hudScan 9s linear infinite; }
-@keyframes hudScan { to { transform: translateY(148vh); } }
 .hud-corners i { position: absolute; width: 46px; height: 46px; border: 1px solid rgba(150, 215, 255, .35); }
 .hud-corners i:nth-child(1) { top: 18px; left: 18px; border-right: 0; border-bottom: 0; }
 .hud-corners i:nth-child(2) { top: 18px; right: 18px; border-left: 0; border-bottom: 0; }
 .hud-corners i:nth-child(3) { bottom: 18px; left: 18px; border-right: 0; border-top: 0; }
 .hud-corners i:nth-child(4) { bottom: 18px; right: 18px; border-left: 0; border-top: 0; }
 body[data-state="listening"] .hud-cells, body[data-state="speaking"] .hud-cells { animation-duration: 12s, 1.6s; }
-body.night .hud-grid, body.night .hud-cells, body.night .hud-scan { opacity: .35; }
+body.night .hud-grid, body.night .hud-cells { opacity: .35; }
 /* Double clap: the screen powers up. */
 body.boot .hud-grid, body.boot .hud-cells { animation: hudBoot 1.6s ease-out both, hudDrift 40s linear infinite; }
 body.boot .core { animation: coreBoot 1.4s cubic-bezier(.2, .8, .2, 1) both; }

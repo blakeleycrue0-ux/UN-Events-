@@ -717,7 +717,7 @@ function guardLine(p, action) {
 }
 async function guardIntruder(p, action) {
   if (desk.intruder) return;
-  desk.intruder = { who: action === "unknown" ? (settings.lang === "es" ? "Desconocido" : "Unknown") : p.name, at: Date.now() };
+  desk.intruder = { who: action === "unknown" ? (settings.lang === "es" ? "Desconocido" : "Unknown") : p.name, role: action === "unknown" ? "" : p.role || "", at: Date.now() };
   guardLog("Ha entrado: " + desk.intruder.who); saveGuard({ alert: "entry" });
   home?.send({ action: "snap", reason: "entry", who: desk.intruder.who });   // the wall takes a photo
   notifyPhone(settings.lang === "es" ? "Alguien ha entrado" : "Someone came in", settings.lang === "es" ? `${desk.intruder.who} tiene 10 segundos para poner el código.` : `${desk.intruder.who} has 10 seconds to enter the code.`);
@@ -791,9 +791,13 @@ async function keyIn(k) {
   typed = ""; drawKeypad();
   if (ok) {
     const who = desk.intruder?.who || "";
+    desk.lastIn = desk.intruder ? { ...desk.intruder } : null;
     setGuard(false, "código" + (who ? " · " + who : ""));
     const since = desk.guard.leftAt || 0, summary = since ? whoCameIn(since) : "";
-    voice.stop(); await talk((settings.lang === "es" ? "Código correcto. Todo tuyo. " : "Code accepted. Carry on. ") + (summary ? (settings.lang === "es" ? "Mientras no estabas: " : "While you were out: ") + summary : "")); ears.resume();
+    const out = summary ? (settings.lang === "es" ? " Mientras no estabas: " : " While you were out: ") + summary : "";
+    // You said "me voy" and now you're back: the full welcome home, with the song.
+    if (desk.lastIn?.role === "me") { voice.stop(); await homecoming(out); return; }
+    voice.stop(); await talk((settings.lang === "es" ? "Código correcto. Todo tuyo. " : "Code accepted. Carry on. ") + out); ears.resume();
     return;
   }
   wrong++; $("keypadDots").classList.remove("bad"); void $("keypadDots").offsetWidth; $("keypadDots").classList.add("bad");
@@ -1007,8 +1011,28 @@ $("mPrev").onclick = () => media("previous"); $("mPlay").onclick = () => media("
 // Back in Black plays inside Jarvis (a small YouTube player, no new tab). If
 // YouTube won't play it here, the extension plays it in a tab instead.
 const INTRO = { video: "pAgnJDJN4VA", query: "AC/DC Back in Black" };
-function introMusic() {
+// Your own song file (picked in settings, kept only in this browser): no ads, no YouTube.
+function songDb() {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open("jarvis-song", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("song");
+    r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+  });
+}
+async function songGet() { try { const db = await songDb(); return await new Promise((res) => { const q = db.transaction("song").objectStore("song").get("intro"); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch { return null; } }
+async function songSet(file) { const db = await songDb(); await new Promise((res, rej) => { const tx = db.transaction("song", "readwrite"); file ? tx.objectStore("song").put(file, "intro") : tx.objectStore("song").delete("intro"); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+desk.songSet = songSet;
+async function introMusic() {
   stopIntro();
+  const own = await songGet();
+  if (own) {
+    const a = new Audio(URL.createObjectURL(own)); a.volume = 1;
+    const intro = desk.intro = { audio: a, playing: false };
+    a.onplaying = () => { intro.playing = true; }; a.onended = () => { if (desk.intro === intro) stopIntro(); };
+    a.play().catch(() => {});
+    desk.music = { query: own.name ? own.name.replace(/\.[a-z0-9]+$/i, "") : "Tu canción", service: "" }; render();
+    return;
+  }
   const f = document.createElement("iframe");
   f.id = "introPlayer"; f.className = "intro-player"; f.title = "Back in Black";
   f.allow = "autoplay; encrypted-media";
@@ -1021,33 +1045,40 @@ function introMusic() {
   setTimeout(() => { if (desk.intro === intro && !intro.playing) { stopIntro(); void extension("play", { service: "youtube", query: INTRO.query, lang: settings.lang }); } }, 8000);
 }
 function introCommand(func, args = []) {
+  const a = desk.intro?.audio;
+  if (a) { if (func === "pauseVideo") a.pause(); if (func === "playVideo") void a.play().catch(() => {}); if (func === "setVolume") a.volume = Math.max(0, Math.min(1, args[0] / 100)); return; }
   try { desk.intro?.frame.contentWindow.postMessage(JSON.stringify({ event: "command", func, args }), "*"); } catch {}
 }
-function stopIntro() { desk.intro?.frame.remove(); desk.intro = null; }
+function stopIntro() { const i = desk.intro; desk.intro = null; if (!i) return; i.frame?.remove(); if (i.audio) { i.audio.pause(); URL.revokeObjectURL(i.audio.src); } }
 desk.stopIntro = stopIntro;
 window.addEventListener("message", (m) => {
-  if (!desk.intro || m.source !== desk.intro.frame.contentWindow) return;
+  if (!desk.intro?.frame || m.source !== desk.intro.frame.contentWindow) return;
   let data = m.data; try { if (typeof data === "string") data = JSON.parse(data); } catch { return; }
   if (data?.event === "onError") { stopIntro(); void extension("play", { service: "youtube", query: INTRO.query, lang: settings.lang }); }
   if (data?.info?.playerState === 1) desk.intro.playing = true;
   if (data?.info?.playerState === 0) stopIntro();   // the song ended
 });
-async function clapIntro() {
-  if (!desk.started || settings.clap === false || Date.now() - (desk.clapAt || 0) < 20000) return;
+// The full "welcome home": the screen powers up, the song plays, Jarvis greets you.
+async function homecoming(extra = "") {
   desk.clapAt = Date.now();
   if (desk.sleep || desk.sunrise) exitSleep();
   wakeUp(); document.body.classList.remove("boot"); void document.body.offsetWidth; document.body.classList.add("boot");
   orb.flash("arrival"); orb.burst?.();
-  void extension("focus");   // brings this Jarvis window to the front (newer extension)
-  introMusic();
+  void extension("focus");   // brings this Jarvis window to the front (extension 1.4.3+)
+  await introMusic();
   const es = settings.lang === "es", temp = desk.weather?.temp;
-  const line = es
+  const line = (es
     ? `Bienvenido a casa, ${settings.name}. Todos los sistemas en línea.${Number.isFinite(temp) ? ` Fuera hace ${Math.round(temp)} grados.` : ""}`
-    : `Welcome home, ${settings.name}. All systems online.${Number.isFinite(temp) ? ` It's ${Math.round(temp)} degrees outside.` : ""}`;
+    : `Welcome home, ${settings.name}. All systems online.${Number.isFinite(temp) ? ` It's ${Math.round(temp)} degrees outside.` : ""}`) + extra;
   setTimeout(() => introCommand("setVolume", [35]), 1200);
   await talk(line);
   introCommand("setVolume", [100]);
   ears.resume();
+}
+desk.homecoming = homecoming;
+async function clapIntro() {
+  if (!desk.started || settings.clap === false || Date.now() - (desk.clapAt || 0) < 20000) return;
+  await homecoming();
 }
 desk.clapIntro = clapIntro;
 
@@ -1105,6 +1136,7 @@ function openSettings() {
   for (const id of ["name", "lang", "hear", "city"]) $(id).value = settings[id];
   $("guardPin").value = settings.guardPin || ""; $("wakeTime").value = desk.wake.time || "";
   fillVoices(); $("clapOn").checked = settings.clap !== false;
+  void songGet().then((f) => { $("songInfo").textContent = f ? "Canción guardada: " + (f.name || "tu canción") : "Sin canción propia: usaré YouTube (puede salir un anuncio)."; });
   $("voiceKey").value = settings.key; $("wakeOn").checked = settings.wake; $("greetOn").checked = settings.greet;
   $("quietFrom").value = settings.quietFrom; $("quietTo").value = settings.quietTo;
   $("memoryList").replaceChildren(...desk.memory.map((m, i) => {
@@ -1179,6 +1211,11 @@ function fillVoices() {
 }
 try { window.speechSynthesis?.addEventListener?.("voiceschanged", fillVoices); } catch {}
 desk.fillVoices = fillVoices;
+$("songFile").onchange = async () => {
+  const f = $("songFile").files?.[0]; if (!f) return;
+  try { await songSet(f); $("songInfo").textContent = "Canción guardada: " + f.name; } catch { $("songInfo").textContent = "No se pudo guardar la canción."; }
+};
+$("songClear").onclick = async () => { await songSet(null).catch(() => {}); $("songInfo").textContent = "Sin canción propia: usaré YouTube."; };
 $("clapOn").onchange = () => { settings.clap = $("clapOn").checked; settings.save(); };
 $("testClap").onclick = () => { $("settings").hidden = true; desk.clapAt = 0; void clapIntro(); };
 $("voiceMode").onchange = () => { settings.voiceMode = $("voiceMode").value; settings.save(); };

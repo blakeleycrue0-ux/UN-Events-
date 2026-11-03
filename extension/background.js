@@ -36,11 +36,25 @@ function disconnect() {
   if (socket) { const old = socket; socket = null; try { old.close(); } catch {} }
 }
 
+// The Jarvis desk tab on this computer (not the phone pages).
+async function showDesk(openIfMissing = false) {
+  const tabs = await chrome.tabs.query({ url: ["https://unevents.netlify.app/*", "http://127.0.0.1:8001/*"] });
+  const tab = tabs.find((t) => !/\/(mando|pared|camara)/.test(t.url || ""));
+  if (tab) {
+    await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+    await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+    return true;
+  }
+  if (openIfMissing) await chrome.windows.create({ url: "https://unevents.netlify.app/", focused: true, state: "maximized" }).catch(() => {});
+  return false;
+}
 async function run(command) {
   // Ignore stale or repeated messages.
   const at = +command?.at || 0;
   if (!at || at <= lastAt || Math.abs(Date.now() - at) > 120000) return;
   lastAt = at;
+  // Double clap heard by the wall phone: show Jarvis (or open it if it was closed).
+  if (command.action === "clap") { await showDesk(true); return; }
   const plan = jarvisPlan(command);
   if (!plan) return;
   chrome.storage.local.set({ last: { command: { ...command }, at: Date.now() } });
@@ -108,7 +122,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message.action === "ping") { reply({ ok: true, state: lastStatus, agent: !!agent.job }); return; }
     // Double clap on the desk: bring the Jarvis window and tab to the front.
     if (message.action === "focus" && sender?.tab) {
-      void chrome.windows.update(sender.tab.windowId, { focused: true, drawAttention: true }).catch(() => {});
+      void chrome.windows.update(sender.tab.windowId, { focused: true }).catch(() => {});
       void chrome.tabs.update(sender.tab.id, { active: true }).catch(() => {});
       reply({ ok: true }); return;
     }

@@ -704,7 +704,7 @@
       }, 6e3);
     },
     onClap: () => {
-      wall.home?.send({ action: "clap" });
+      wall.home?.send({ action: "clap", at: Date.now() });
       $("wallHeard").textContent = "\u{1F44F}\u{1F44F}";
       clearTimeout(wall.heardTimer);
       wall.heardTimer = setTimeout(() => {
