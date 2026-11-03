@@ -25,7 +25,7 @@ export function createOrb(canvas, { count = 900 } = {}) {
     raf = requestAnimationFrame(frame);
     if (document.hidden) return;
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    const { w, h } = size(), cx = w / 2, cy = h / 2, base = Math.min(w, h) * 0.33;
+    const { w, h } = size(), cx = w / 2, cy = h / 2, base = Math.min(w, h) * 0.25;   // room to grow: never touches the edges
     const target = now < flashUntil ? flashColor : PALETTE[state] || PALETTE.idle;
     color = color.map((c, i) => c + (target[i] - c) * Math.min(1, dt * 4));
     const want = Math.max(orb.levelSource() || 0, state === "thinking" ? 0.25 : 0);
@@ -36,7 +36,7 @@ export function createOrb(canvas, { count = 900 } = {}) {
     ctx.clearRect(0, 0, w, h);
     // Soft halo
     const [r, g, b] = color.map(Math.round);
-    const halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.9);
+    const halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, Math.min(R * 1.9, Math.min(w, h) * 0.49));
     halo.addColorStop(0, `rgba(${r},${g},${b},${0.16 + level * 0.18})`); halo.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = halo; ctx.fillRect(0, 0, w, h);
     // Orbit rings while thinking or on events

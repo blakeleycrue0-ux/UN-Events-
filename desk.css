@@ -88,7 +88,9 @@ body.night .side { opacity: .5; }
 
 /* ---------- Core ---------- */
 .core { display: grid; justify-items: center; align-content: center; text-align: center; gap: calc(var(--u) * 1.2); min-width: 0; }
-.orb { width: min(58vh, 100%); aspect-ratio: 1; cursor: pointer; }
+.orb { width: min(58vh, 100%); aspect-ratio: 1; cursor: pointer; transform: scale(1.32);
+  /* Bigger drawing area with soft round edges: the orb can swell freely, no square border. */
+  -webkit-mask-image: radial-gradient(circle closest-side, #000 72%, transparent 100%); mask-image: radial-gradient(circle closest-side, #000 72%, transparent 100%); }
 .say { margin: 0; max-width: 28ch; min-height: 2.7em; font-size: calc(var(--u) * 1.75); font-weight: 300; line-height: 1.32; letter-spacing: -.01em; text-wrap: balance; color: var(--text); }
 .say.pop { animation: rise .7s cubic-bezier(.2, .8, .2, 1); }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); filter: blur(4px); } }
