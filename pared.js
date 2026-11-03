@@ -632,7 +632,7 @@
     store,
     onCommand: (text, via) => {
       if (!wall.home) return;
-      wall.expectReply = true;
+      wall.expectReply = via === "wake-only";
       if (via === "wake-only") wall.home.send({ action: "ask-wake" });
       else wall.home.send({ action: "ask", text, id: Date.now(), from: "wall" });
       $("wallHeard").textContent = "\xAB" + (via === "wake-only" ? "Jarvis" : text) + "\xBB";

@@ -182,7 +182,7 @@ async function heard(text, via) {
   if (via === "error") { say(t().notHeard); setState("idle"); ears.resume(); return; }
   // While the wall phone listens, it handles "Jarvis…" (avoids answering twice).
   if (via === "wake" && wallListening()) { ears.resume(); return; }
-  if (via === "wake" && !text) { await talk(pick(t().yes)); ears.resume(true); return; }
+  if (via === "wake" && !text) { await talk(pick(t().yes)); ears.resume(true)   /* you said only "Jarvis": now listen to what follows */; return; }
   if (!text) { setState("idle"); ears.resume(); return; }
   await respond(text);
 }
@@ -200,11 +200,11 @@ async function respond(raw) {
   const local = quick(raw, settings.lang, settings.name);
   if (local) {
     if (local.timer) addTimer(local.timer.ms, local.timer.label);
-    await talk(local.say); ears.resume(true); return;
+    await talk(local.say); ears.resume(); return;
   }
   setState("thinking");
   const reply = await think(raw);
-  await talk(reply); ears.resume(true);
+  await talk(reply); ears.resume();
 }
 desk.respond = respond;
 
@@ -318,7 +318,7 @@ async function freeVoice(raw) {
   if (/(quien|alguien) (ha )?entrad|ha entrado alguien|quien ha venido|who came in|anyone (come|came) in|did anyone come/.test(text)) {
     const since = desk.guard.leftAt && desk.guard.backAt >= desk.guard.leftAt && Date.now() - desk.guard.backAt < 6 * 3600000 ? desk.guard.leftAt : new Date().setHours(0, 0, 0, 0);
     const label = since === desk.guard.leftAt ? (es ? "Mientras no estabas: " : "While you were out: ") : (es ? "Hoy: " : "Today: ");
-    await talk(label + whoCameIn(since)); ears.resume(true); return true;
+    await talk(label + whoCameIn(since)); ears.resume(); return true;
   }
   if (/donde (esta|estara|he dejado) (mi|el) (movil|telefono)|encuentra (mi|el) (movil|telefono)|busca (mi|el) (movil|telefono)|find my phone|where is my phone|wheres my phone/.test(text)) {
     notifyPhone(es ? "📍 ¡Estoy aquí!" : "📍 Here I am!", es ? "Jarvis te está buscando" : "Jarvis is looking for you", "find");
@@ -568,7 +568,7 @@ async function ringSunrise(target) {
   const text = es
     ? `Buenos días, ${settings.name}. Son las ${hm}. ${w ? w + "." : ""} ${due ? `Hoy tienes ${due} ${due === 1 ? "recordatorio" : "recordatorios"}.` : "Hoy no tienes nada apuntado."} Arriba, que el día no se conquista solo.${hwLine}`
     : `Good morning, ${settings.name}. It's ${hm}. ${w ? w + "." : ""} ${due ? `You have ${due} ${due === 1 ? "reminder" : "reminders"} today.` : "Nothing on the list today."} Up you get, the day won't conquer itself.${hwLine}`;
-  await talk(text.replace(/\s+/g, " ").trim(), es ? "es" : "en"); ears.resume(true);
+  await talk(text.replace(/\s+/g, " ").trim(), es ? "es" : "en"); ears.resume();
 }
 function sunriseTick() {
   const now = Date.now(), target = wakeTarget(now);
@@ -838,7 +838,7 @@ async function onHome(event) {
     const text = String(event.text).slice(0, 400);
     setTimeout(() => void loadReminders(), 1500);
     if (desk.voice.speaking || ears.mode === "direct") { toast(text); return; }
-    await talk(text, event.lang === "es" ? "es" : event.lang === "en" ? "en" : settings.lang); ears.resume(true); return;
+    await talk(text, event.lang === "es" ? "es" : event.lang === "en" ? "en" : settings.lang); ears.resume(); return;
   }
   // Something Jarvis is watching (email, Teams, Instagram): important things are said out loud.
   if (event.action === "feed" && event.item) {
@@ -848,7 +848,7 @@ async function onHome(event) {
     wakeUp(); orb.flash(f.level === "call" ? "alert" : "arrival"); chime(f.level === "call" ? "alert" : undefined);
     const line = String(f.say || f.title).slice(0, 400);
     if (desk.voice.speaking || ears.mode === "direct") { toast(line); return; }
-    await talk(line, "es"); ears.resume(true); return;
+    await talk(line, "es"); ears.resume(); return;
   }
   // From the phone remote (/mando).
   if (event.action === "guard") { if (!!event.on !== desk.guard.on) setGuard(!!event.on, "móvil"); else guardSend(); return; }
@@ -968,7 +968,7 @@ async function onAgent(m) {
   if (m.kind === "done") {
     Object.assign(desk.agent, { done: true, say: m.stopped ? "" : m.summary }); renderAgent();
     setTimeout(() => { if (desk.agent?.done) { desk.agent = null; renderAgent(); } }, 90000);
-    if (m.summary && !m.stopped) { if (desk.voice.speaking || ears.mode === "direct") toast(m.summary); else { await talk(m.summary); ears.resume(true); } }
+    if (m.summary && !m.stopped) { if (desk.voice.speaking || ears.mode === "direct") toast(m.summary); else { await talk(m.summary); ears.resume(); } }
   }
 }
 desk.onAgent = onAgent;

@@ -133,16 +133,20 @@ with sync_playwright() as p:
     assert sockets[0]['topic'] == 'realtime:jarvis-pc-' + hashlib.sha256(b'jarvis-pc:mi-clave-secreta').hexdigest()[:40]
     calm(page)
 
-    # "Jarvis …" in the background goes to Claude with memory and live context; then a follow-up without the name.
-    page.evaluate("recQueue.push({results:[['Jarvis what is the meaning of life',false]],end:false},{results:[['and why',true]],end:true})")
+    # "Jarvis …" in the background goes to Claude with memory and live context.
+    page.evaluate("recQueue.push({results:[['Jarvis what is the meaning of life',false]],end:false})")
     wait_voice(page, '^Brain says: what is the meaning of life$')
-    wait_voice(page, '^Brain says: and why$')
-    assert [m['role'] for m in brain[-1]['messages']] == ['user', 'assistant', 'user']
     assert 'Calvià: 21°C' in brain[-1]['context'] and brain[-1]['lang'] == 'en' and brain[-1]['memory'] == ['Crew supports Real Mallorca.']
     calm(page)
+    # Studying aloud right after a reply: without "Jarvis" nothing is sent.
     n = len(brain)
-    page.evaluate("recQueue.push({results:[['so I told my friend',false]],end:false})"); page.wait_for_timeout(3500)
-    assert len(brain) == n, 'speech without "Jarvis" is ignored'
+    page.evaluate("recQueue.push({results:[['and why is the mitochondria the powerhouse',true]],end:true})"); page.wait_for_timeout(3500)
+    assert len(brain) == n, 'speech without "Jarvis" is ignored, even right after a reply'
+    # A bare "Jarvis": it answers and then takes the next phrase without the name.
+    page.evaluate("recQueue.push({results:[['Jarvis',true]],end:true},{results:[['and why',true]],end:true})")
+    wait_voice(page, '^Brain says: and why$')
+    assert [m['role'] for m in brain[-1]['messages']] == ['user', 'assistant', 'user']
+    calm(page)
 
     # Space bar: direct question. Claude plays music and remembers things.
     brain_replies['play some lofi'] = {'reply': 'Playing lofi beats on YouTube.', 'actions': ['play']}
@@ -410,5 +414,5 @@ with sync_playwright() as p:
     # A device that chose "wall" goes to the wall page.
     page.goto(URL); page.evaluate("localStorage.setItem('jarvis-role','\"wall\"')"); page.goto(URL); page.wait_for_url('**/pared.html')
     assert not errors, errors
-    print('PASS Jarvis desk: device chooser; wake greeting; home channel on the key-derived topic; weather; "Jarvis…" background listening with follow-up; Space to talk; music card; long-term memory sent to Claude and editable; local timers; door events (Mum, Dad custom, stranger, your daily briefing then welcome back, silent at night); agent task card with spoken confirmation; reminders; music buttons through the extension bridge; fits 1366×768')
+    print('PASS Jarvis desk: device chooser; wake greeting; home channel on the key-derived topic; weather; "Jarvis…" background listening (nothing without the name, follow-up only after a bare "Jarvis"); Space to talk; music card; long-term memory sent to Claude and editable; local timers; door events (Mum, Dad custom, stranger, your daily briefing then welcome back, silent at night); agent task card with spoken confirmation; reminders; music buttons through the extension bridge; fits 1366×768')
     b.close()

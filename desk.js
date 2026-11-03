@@ -1095,13 +1095,13 @@
     if (local) {
       if (local.timer) addTimer(local.timer.ms, local.timer.label);
       await talk(local.say);
-      ears.resume(true);
+      ears.resume();
       return;
     }
     setState("thinking");
     const reply = await think(raw);
     await talk(reply);
-    ears.resume(true);
+    ears.resume();
   }
   desk.respond = respond;
   async function think(raw, { remember = true, event = false } = {}) {
@@ -1232,7 +1232,7 @@
       const since = desk.guard.leftAt && desk.guard.backAt >= desk.guard.leftAt && Date.now() - desk.guard.backAt < 6 * 36e5 ? desk.guard.leftAt : (/* @__PURE__ */ new Date()).setHours(0, 0, 0, 0);
       const label = since === desk.guard.leftAt ? es ? "Mientras no estabas: " : "While you were out: " : es ? "Hoy: " : "Today: ";
       await talk(label + whoCameIn(since));
-      ears.resume(true);
+      ears.resume();
       return true;
     }
     if (/donde (esta|estara|he dejado) (mi|el) (movil|telefono)|encuentra (mi|el) (movil|telefono)|busca (mi|el) (movil|telefono)|find my phone|where is my phone|wheres my phone/.test(text)) {
@@ -1577,7 +1577,7 @@
     $("sunriseMsg").textContent = es ? `Buenos d\xEDas, ${settings.name}` : `Good morning, ${settings.name}`;
     const text = es ? `Buenos d\xEDas, ${settings.name}. Son las ${hm}. ${w ? w + "." : ""} ${due ? `Hoy tienes ${due} ${due === 1 ? "recordatorio" : "recordatorios"}.` : "Hoy no tienes nada apuntado."} Arriba, que el d\xEDa no se conquista solo.${hwLine}` : `Good morning, ${settings.name}. It's ${hm}. ${w ? w + "." : ""} ${due ? `You have ${due} ${due === 1 ? "reminder" : "reminders"} today.` : "Nothing on the list today."} Up you get, the day won't conquer itself.${hwLine}`;
     await talk(text.replace(/\s+/g, " ").trim(), es ? "es" : "en");
-    ears.resume(true);
+    ears.resume();
   }
   function sunriseTick() {
     const now = Date.now(), target = wakeTarget(now);
@@ -1985,7 +1985,7 @@
         return;
       }
       await talk(text, event.lang === "es" ? "es" : event.lang === "en" ? "en" : settings.lang);
-      ears.resume(true);
+      ears.resume();
       return;
     }
     if (event.action === "feed" && event.item) {
@@ -2001,7 +2001,7 @@
         return;
       }
       await talk(line, "es");
-      ears.resume(true);
+      ears.resume();
       return;
     }
     if (event.action === "guard") {
@@ -2190,7 +2190,7 @@
         if (desk.voice.speaking || ears.mode === "direct") toast(m.summary);
         else {
           await talk(m.summary);
-          ears.resume(true);
+          ears.resume();
         }
       }
     }

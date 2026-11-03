@@ -1,6 +1,6 @@
 // Jarvis's ears on the Chromebook. Chrome's speech recognizer listens in the
 // background and reacts only to "Jarvis…"; a direct session (Space, click,
-// or right after a reply) takes anything you say. Every session has its own
+// or right after a bare "Jarvis") takes anything you say. Every session has its own
 // timers, so a recognizer that stalls can never freeze Jarvis.
 import { call } from "./common.js";
 

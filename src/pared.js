@@ -236,7 +236,8 @@ wall.ears = createWallEars({
   settings, store,
   onCommand: (text, via) => {
     if (!wall.home) return;
-    wall.expectReply = true;
+    // Only after a bare "Jarvis" ("¿Sí?") is the next phrase taken without the name.
+    wall.expectReply = via === "wake-only";
     if (via === "wake-only") wall.home.send({ action: "ask-wake" });
     else wall.home.send({ action: "ask", text, id: Date.now(), from: "wall" });
     $("wallHeard").textContent = "«" + (via === "wake-only" ? "Jarvis" : text) + "»";
