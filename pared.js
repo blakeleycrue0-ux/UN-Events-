@@ -347,7 +347,10 @@
     busy: false,
     enrolling: null,
     loop: null,
-    threshold: 0.55,
+    threshold: 0.62,
+    strangerBelow: 0.45,
+    margin: 0.06,
+    votes: [],
     absenceMS: 9e4,
     seen: {},
     lastUnknown: 0,
@@ -452,9 +455,18 @@
       score: Math.max(...p.samples.map((known) => wall.detector.similarity(embedding, known)))
     })).sort((a, b) => b.score - a.score);
     const [best, second] = scores;
-    if (!best || best.score < wall.threshold || second && best.score - second.score < 0.03) return { score: best?.score || 0 };
+    if (!best || best.score < wall.strangerBelow) return { score: best?.score || 0, stranger: true };
+    if (best.score < wall.threshold || second && best.score - second.score < wall.margin) return { score: best.score, unsure: true };
     return best;
   }
+  function vote(key, now = Date.now()) {
+    wall.votes = wall.votes.filter((v) => now - v.at < 2500);
+    wall.votes.push({ key, at: now });
+    const mine = wall.votes.filter((v) => v.key === key).length;
+    const others = wall.votes.filter((v) => v.key !== key && v.key !== "unsure").length;
+    return key === "stranger" ? mine >= 5 && others === 0 : mine >= 3 && mine >= others * 2;
+  }
+  wall.vote = vote;
   wall.identify = identify;
   async function startCamera() {
     wall.stream?.getTracks().forEach((t) => t.stop());
@@ -678,13 +690,19 @@
     const now = Date.now(), names = [];
     let unknown = 0;
     for (const face of found) {
-      const match = known ? identify(face.embedding) : {};
+      const match = known ? identify(face.embedding) : { stranger: true };
       if (!match.person) {
-        unknown++;
+        if (match.unsure) {
+          vote("unsure", now);
+          names.push("\xBF\u2026?");
+          continue;
+        }
+        if (vote("stranger", now)) unknown++;
         continue;
       }
       const p = match.person;
       names.push(displayName(p));
+      if (!vote(p.id, now)) continue;
       const away = now - (wall.seen[p.id] || 0) > wall.absenceMS;
       wall.seen[p.id] = now;
       if (away) {
@@ -704,13 +722,15 @@
       endEnroll();
       return;
     }
-    if (found.length !== 1 || found[0].score < 0.6) {
+    if (found.length !== 1 || found[0].score < 0.7) {
       $("faceInfo").textContent = found.length > 1 ? "Hay m\xE1s de una cara. Que se ponga solo." : "No veo bien la cara. Mira a la c\xE1mara.";
       return;
     }
+    if (Date.now() - (e.lastAt || 0) < 400) return;
+    e.lastAt = Date.now();
     e.samples.push(found[0].embedding.map((x) => Math.round(x * 1e4) / 1e4));
-    $("faceInfo").textContent = `Aprendiendo la cara de ${displayName(person)}\u2026 ${e.samples.length}/5`;
-    if (e.samples.length >= 5) {
+    $("faceInfo").textContent = `Aprendiendo la cara de ${displayName(person)}\u2026 ${e.samples.length}/8 \xB7 gira un poco la cabeza y ac\xE9rcate y al\xE9jate de la puerta`;
+    if (e.samples.length >= 8) {
       person.samples = e.samples;
       endEnroll();
       if (!savePeople()) {

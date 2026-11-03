@@ -6,7 +6,7 @@ import { createWallEars } from "./jarvis/wallears.js";
 const settings = loadSettings();
 const wall = window.wall = {
   started: false, stream: null, detector: null, busy: false, enrolling: null, loop: null,
-  threshold: 0.55, absenceMS: 90000, seen: {}, lastUnknown: 0, sent: [], settings,
+  threshold: 0.62, strangerBelow: 0.45, margin: 0.06, votes: [], absenceMS: 90000, seen: {}, lastUnknown: 0, sent: [], settings,
 };
 store.set("jarvis-role", "wall");
 
@@ -84,14 +84,27 @@ wall.people = loadPeople();
 const savePeople = () => store.set("jarvis-people", wall.people);
 const displayName = (p) => (p.role === "me" ? settings.name : p.name);
 // Best person for a face, only when clearly ahead of everyone else (family looks alike).
+// In between "clearly someone" and "clearly a stranger" the answer is "not sure":
+// nothing is said, so Dad is never greeted as Mum from one blurry frame.
 function identify(embedding) {
   const scores = wall.people.filter((p) => p.samples?.length).map((p) => ({
     person: p, score: Math.max(...p.samples.map((known) => wall.detector.similarity(embedding, known))),
   })).sort((a, b) => b.score - a.score);
   const [best, second] = scores;
-  if (!best || best.score < wall.threshold || (second && best.score - second.score < 0.03)) return { score: best?.score || 0 };
+  if (!best || best.score < wall.strangerBelow) return { score: best?.score || 0, stranger: true };
+  if (best.score < wall.threshold || (second && best.score - second.score < wall.margin)) return { score: best.score, unsure: true };
   return best;
 }
+// One frame is not enough: someone is announced only after several frames in a
+// row agree (and nobody else came close in that time).
+function vote(key, now = Date.now()) {
+  wall.votes = wall.votes.filter((v) => now - v.at < 2500);
+  wall.votes.push({ key, at: now });
+  const mine = wall.votes.filter((v) => v.key === key).length;
+  const others = wall.votes.filter((v) => v.key !== key && v.key !== "unsure").length;
+  return key === "stranger" ? mine >= 5 && others === 0 : mine >= 3 && mine >= others * 2;
+}
+wall.vote = vote;
 wall.identify = identify;
 
 // ---------- Cámara y encuadre ----------
@@ -273,10 +286,15 @@ function onFaces(found) {
   const now = Date.now(), names = [];
   let unknown = 0;
   for (const face of found) {
-    const match = known ? identify(face.embedding) : {};
-    if (!match.person) { unknown++; continue; }
+    const match = known ? identify(face.embedding) : { stranger: true };
+    if (!match.person) {
+      if (match.unsure) { vote("unsure", now); names.push("¿…?"); continue; }
+      if (vote("stranger", now)) unknown++;
+      continue;
+    }
     const p = match.person;
     names.push(displayName(p));
+    if (!vote(p.id, now)) continue;   // wait until a few frames agree
     const away = now - (wall.seen[p.id] || 0) > wall.absenceMS;
     wall.seen[p.id] = now;
     if (away) {
@@ -292,13 +310,16 @@ function onFaces(found) {
 function enrollStep(found) {
   const e = wall.enrolling, person = wall.people.find((p) => p.id === e.personId);
   if (!person) { endEnroll(); return; }
-  if (found.length !== 1 || found[0].score < 0.6) {
+  if (found.length !== 1 || found[0].score < 0.7) {
     $("faceInfo").textContent = found.length > 1 ? "Hay más de una cara. Que se ponga solo." : "No veo bien la cara. Mira a la cámara.";
     return;
   }
+  // Spaced out, so the samples cover a few angles and distances (not 5 copies of one frame).
+  if (Date.now() - (e.lastAt || 0) < 400) return;
+  e.lastAt = Date.now();
   e.samples.push(found[0].embedding.map((x) => Math.round(x * 1e4) / 1e4));
-  $("faceInfo").textContent = `Aprendiendo la cara de ${displayName(person)}… ${e.samples.length}/5`;
-  if (e.samples.length >= 5) {
+  $("faceInfo").textContent = `Aprendiendo la cara de ${displayName(person)}… ${e.samples.length}/8 · gira un poco la cabeza y acércate y aléjate de la puerta`;
+  if (e.samples.length >= 8) {
     person.samples = e.samples; endEnroll();
     if (!savePeople()) { $("faceInfo").textContent = "No se pudo guardar en este navegador."; return; }
     renderPeople();

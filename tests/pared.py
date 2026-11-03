@@ -81,13 +81,13 @@ with sync_playwright() as p:
     page.click('#wall', position={'x': 50, 'y': 100})
     page.evaluate(FAKE, A)
     page.click('.add-person summary'); page.select_option('#personRole', 'me'); page.click('#addPerson')
-    page.wait_for_function("wall.people.find(p=>p.role==='me')?.samples.length===5", timeout=10000)
+    page.wait_for_function("wall.people.find(p=>p.role==='me')?.samples.length===8", timeout=15000)
     page.evaluate('v=>{window.nextFace=v}', B)
     page.select_option('#personRole', 'mom'); page.fill('#personName', 'Mamá'); page.click('#addPerson')
-    page.wait_for_function("wall.people.find(p=>p.role==='mom')?.samples.length===5", timeout=10000)
+    page.wait_for_function("wall.people.find(p=>p.role==='mom')?.samples.length===8", timeout=15000)
     page.evaluate('v=>{window.nextFace=v}', C)
     page.select_option('#personRole', 'dad'); page.fill('#personName', 'Papá'); page.fill('#personGreeting', 'Hello Dad, the AC is off.'); page.click('#addPerson')
-    page.wait_for_function("wall.people.find(p=>p.role==='dad')?.samples.length===5", timeout=10000)
+    page.wait_for_function("wall.people.find(p=>p.role==='dad')?.samples.length===8", timeout=15000)
     assert page.locator('#people').inner_text().count('cara registrada') == 3
     # Enrolling no longer blocks the greeting: Dad is welcomed straight away.
     assert wait_event(page, 'arrival')['person']['name'] == 'Papá'
@@ -126,6 +126,9 @@ with sync_playwright() as p:
     assert wait_event(page, 'arrival', 3)['person']['greeting'] == 'Hello Dad, the AC is off.'
     page.evaluate('v=>{window.nextFace=v; wall.lastUnknown=0}', D)
     assert wait_event(page, 'unknown')['count'] == 1
+    # One stray frame that looks like Mum is not enough: it needs several frames in a row.
+    assert page.evaluate("(()=>{wall.votes=[];const t=Date.now();return [wall.vote('mom',t),wall.vote('dad',t+100),wall.vote('dad',t+200),wall.vote('dad',t+300)]})()") == [False, False, False, True]
+    assert page.evaluate("(()=>{wall.votes=[];const t=Date.now();return [1,2,3,4,5].map(i=>wall.vote('stranger',t+i*100))})()") == [False, False, False, False, True]
     page.wait_for_timeout(2500); assert len([e for e in events if e['kind'] == 'unknown']) == 1, 'strangers reported at most every 2 minutes'
     assert 'Papá' in page.locator('#wallSeen').inner_text()
 
