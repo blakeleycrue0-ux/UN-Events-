@@ -7,6 +7,7 @@
 // deaf while Jarvis talks, and there's a daily cap.
 import { call } from "./common.js";
 import { afterWake } from "./ears.js";
+import { createClapDetector } from "./clap.js";
 
 const RATE = 16000;
 
@@ -21,12 +22,14 @@ export function encodeWav(samples, rate = RATE) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-export function createWallEars({ settings, onCommand, onStatus = () => {}, store }) {
+export function createWallEars({ settings, onCommand, onStatus = () => {}, onClap = () => {}, store }) {
   const e = {
     on: false, muted: false, mutedUntil: 0, followUntil: 0, busy: false, level: 0,
     limits: { minMS: 350, endMS: 800, maxMS: 7000, preMS: 600, perDay: 1500, gapMS: 1200 },
     heardToday: 0, day: "", last: "", failures: 0,
   };
+  // Double clap → the desk wakes up (checked on the raw audio, every ~10 ms).
+  e.clap = createClapDetector({ onDouble: () => { if (!e.muted) onClap(); } });
   let ctx = null, stream = null, proc = null, ring = [], seg = null, floor = 0.008, lastLoud = 0, segStart = 0, coolUntil = 0;
   const today = () => new Date().toDateString();
   const loadCount = () => { const c = store?.get("jarvis-wall-ears", null); e.day = c?.day || today(); e.heardToday = e.day === today() ? c?.n || 0 : 0; };
@@ -48,6 +51,7 @@ export function createWallEars({ settings, onCommand, onStatus = () => {}, store
     const step = ctx.sampleRate / RATE;
     proc.onaudioprocess = (ev) => {
       const input = ev.inputBuffer.getChannelData(0), out = new Float32Array(Math.floor(input.length / step));
+      e.clap.samples(input, ctx.sampleRate, performance.now());
       let sum = 0;
       for (let i = 0; i < out.length; i++) { const v = input[Math.floor(i * step)]; out[i] = v; sum += v * v; }
       e.feed(out, Math.sqrt(sum / Math.max(1, out.length)));

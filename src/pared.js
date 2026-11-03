@@ -256,6 +256,7 @@ wall.ears = createWallEars({
     $("wallHeard").textContent = "«" + (via === "wake-only" ? "Jarvis" : text) + "»";
     clearTimeout(wall.heardTimer); wall.heardTimer = setTimeout(() => { $("wallHeard").textContent = ""; }, 6000);
   },
+  onClap: () => { wall.home?.send({ action: "clap" }); $("wallHeard").textContent = "👏👏"; clearTimeout(wall.heardTimer); wall.heardTimer = setTimeout(() => { $("wallHeard").textContent = ""; }, 3000); },
   onStatus: (s, detail) => {
     $("earDot").classList.toggle("on", s === "listening" || (s === "error" && wall.ears.on));
     if (s === "error") {

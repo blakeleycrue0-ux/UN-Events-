@@ -383,6 +383,16 @@ with sync_playwright() as p:
     assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == []
     page.click('#closeSettings')
 
+    # Double clap on the wall phone: "Welcome home" and the Iron Man song inside Jarvis.
+    page.route('https://www.youtube-nocookie.com/**', lambda r: r.fulfill(status=200, headers={'Content-Type': 'text/html'}, body='<html></html>'))
+    calm(page); home({'action': 'clap'})
+    wait_voice(page, '^Welcome home, Crew. All systems online')
+    assert page.evaluate("!!document.getElementById('introPlayer') && document.getElementById('introPlayer').src.includes('pAgnJDJN4VA')")
+    assert page.evaluate("document.body.classList.contains('boot')")
+    n = len(voice); home({'action': 'clap'}); page.wait_for_timeout(600); assert len(voice) == n, 'not again within 20 s'
+    page.evaluate("desk.media('pause')"); assert page.evaluate("!!desk.intro"), 'the music buttons control the song'
+    page.evaluate("desk.stopIntro()"); calm(page)
+
     # Something important in Teams: Jarvis says it out loud.
     calm(page)
     home({'action': 'feed', 'item': {'id': 'f1', 'source': 'teams', 'title': 'Nota de Matemáticas', 'say': 'Crew, le han puesto un 8,5 en Matemáticas.', 'level': 'call'}})

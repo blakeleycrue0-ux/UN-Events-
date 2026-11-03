@@ -263,3 +263,46 @@ a.choice { text-decoration: none; }
 .items b { font-size: calc(var(--u) * .85); font-weight: 400; color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .items li.soon b { color: #f5a524; } .items li.late b { color: #ff5a64; }
 .items button { color: var(--faint); font-size: calc(var(--u) * .8); padding: 0 4px; }
+
+/* ---------- Clean HUD (v3) ---------- */
+/* Fewer things on screen: no status labels on top, no door list. */
+.status .stat { display: none !important; }
+.door-block { display: none !important; }
+/* Hologram grid behind everything: fine lines, bigger squares, a slow drift and a scan line. */
+.hud-grid, .hud-cells { position: absolute; inset: -60px; pointer-events: none; }
+.hud-grid {
+  background-image:
+    linear-gradient(rgba(140, 200, 255, .085) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140, 200, 255, .085) 1px, transparent 1px);
+  background-size: 28px 28px;
+  -webkit-mask-image: radial-gradient(75% 70% at 50% 50%, #000 30%, transparent 85%); mask-image: radial-gradient(75% 70% at 50% 50%, #000 30%, transparent 85%);
+  animation: hudDrift 40s linear infinite;
+}
+.hud-cells {
+  background-image:
+    linear-gradient(rgba(140, 220, 255, .17) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140, 220, 255, .17) 1px, transparent 1px);
+  background-size: 140px 140px;
+  -webkit-mask-image: radial-gradient(60% 60% at 50% 50%, #000 20%, transparent 80%); mask-image: radial-gradient(60% 60% at 50% 50%, #000 20%, transparent 80%);
+  animation: hudDrift 40s linear infinite reverse, hudPulse 6s ease-in-out infinite;
+}
+@keyframes hudDrift { to { transform: translate(28px, 28px); } }
+@keyframes hudPulse { 50% { opacity: .55; } }
+.hud-scan { position: absolute; left: 0; right: 0; height: 24vh; top: -24vh; pointer-events: none;
+  background: linear-gradient(transparent, rgba(120, 210, 255, .025) 60%, rgba(150, 230, 255, .07) 96%, transparent);
+  animation: hudScan 9s linear infinite; }
+@keyframes hudScan { to { transform: translateY(148vh); } }
+.hud-corners i { position: absolute; width: 46px; height: 46px; border: 1px solid rgba(150, 215, 255, .35); }
+.hud-corners i:nth-child(1) { top: 18px; left: 18px; border-right: 0; border-bottom: 0; }
+.hud-corners i:nth-child(2) { top: 18px; right: 18px; border-left: 0; border-bottom: 0; }
+.hud-corners i:nth-child(3) { bottom: 18px; left: 18px; border-right: 0; border-top: 0; }
+.hud-corners i:nth-child(4) { bottom: 18px; right: 18px; border-left: 0; border-top: 0; }
+body[data-state="listening"] .hud-cells, body[data-state="speaking"] .hud-cells { animation-duration: 12s, 1.6s; }
+body.night .hud-grid, body.night .hud-cells, body.night .hud-scan { opacity: .35; }
+/* Double clap: the screen powers up. */
+body.boot .hud-grid, body.boot .hud-cells { animation: hudBoot 1.6s ease-out both, hudDrift 40s linear infinite; }
+body.boot .core { animation: coreBoot 1.4s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes hudBoot { 0% { opacity: 0; filter: brightness(3); } 30% { opacity: 1; filter: brightness(2.5); } 100% { opacity: 1; filter: none; } }
+@keyframes coreBoot { 0% { transform: scale(.6); opacity: 0; filter: brightness(3) blur(6px); } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: none; filter: none; } }
+/* The welcome-home song plays in a tiny player, out of sight. */
+.intro-player { position: fixed; left: -400px; bottom: 0; width: 320px; height: 180px; border: 0; opacity: .01; pointer-events: none; }

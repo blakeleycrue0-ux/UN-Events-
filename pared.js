@@ -133,6 +133,51 @@
     return m ? text.slice(m.index + m[0].length).replace(/^[\s,.:!¡¿?]+/, "").trim() : null;
   }
 
+  // src/jarvis/clap.js
+  function createClapDetector({ onDouble, min = 0.25 } = {}) {
+    let floor = 0.01, prev = 0.01, onset = null, lastClap = -1e9, coolUntil = -1e9;
+    const d = { claps: 0 };
+    d.feed = (peak, rms, t) => {
+      if (onset) {
+        const dt = t - onset.t;
+        if (dt > 40 && dt < 160) onset.tail = Math.max(onset.tail, rms);
+        if (dt >= 160) {
+          if (onset.tail < onset.rms * 0.4) clap(onset.t);
+          onset = null;
+        }
+      }
+      if (!onset && peak > min && peak > floor * 8 && rms > prev * 2.5) onset = { t, rms: Math.max(rms, 1e-4), tail: 0 };
+      if (!onset && rms < floor * 4) floor = floor * 0.98 + rms * 0.02;
+      prev = Math.max(rms, 1e-4);
+    };
+    function clap(t) {
+      d.claps++;
+      if (t < coolUntil) return;
+      const gap = t - lastClap;
+      if (gap > 150 && gap < 800) {
+        lastClap = -1e9;
+        coolUntil = t + 3e3;
+        onDouble?.();
+        return;
+      }
+      lastClap = t;
+    }
+    d.samples = (input, rate, t0) => {
+      const size = Math.max(64, Math.round(rate / 100));
+      for (let i = 0; i < input.length; i += size) {
+        let peak = 0, sum = 0;
+        const end = Math.min(input.length, i + size);
+        for (let j = i; j < end; j++) {
+          const v = input[j], a = v < 0 ? -v : v;
+          if (a > peak) peak = a;
+          sum += v * v;
+        }
+        d.feed(peak, Math.sqrt(sum / (end - i)), t0 + i / rate * 1e3);
+      }
+    };
+    return d;
+  }
+
   // src/jarvis/wallears.js
   var RATE = 16e3;
   function encodeWav(samples, rate = RATE) {
@@ -160,6 +205,7 @@
     return new Blob([buffer], { type: "audio/wav" });
   }
   function createWallEars({ settings: settings2, onCommand, onStatus = () => {
+  }, onClap = () => {
   }, store: store2 }) {
     const e = {
       on: false,
@@ -174,6 +220,9 @@
       last: "",
       failures: 0
     };
+    e.clap = createClapDetector({ onDouble: () => {
+      if (!e.muted) onClap();
+    } });
     let ctx = null, stream = null, proc = null, ring = [], seg = null, floor = 8e-3, lastLoud = 0, segStart = 0, coolUntil = 0;
     const today = () => (/* @__PURE__ */ new Date()).toDateString();
     const loadCount = () => {
@@ -202,6 +251,7 @@
       const step = ctx.sampleRate / RATE;
       proc.onaudioprocess = (ev) => {
         const input = ev.inputBuffer.getChannelData(0), out = new Float32Array(Math.floor(input.length / step));
+        e.clap.samples(input, ctx.sampleRate, performance.now());
         let sum = 0;
         for (let i = 0; i < out.length; i++) {
           const v = input[Math.floor(i * step)];
@@ -652,6 +702,14 @@
       wall.heardTimer = setTimeout(() => {
         $("wallHeard").textContent = "";
       }, 6e3);
+    },
+    onClap: () => {
+      wall.home?.send({ action: "clap" });
+      $("wallHeard").textContent = "\u{1F44F}\u{1F44F}";
+      clearTimeout(wall.heardTimer);
+      wall.heardTimer = setTimeout(() => {
+        $("wallHeard").textContent = "";
+      }, 3e3);
     },
     onStatus: (s, detail) => {
       $("earDot").classList.toggle("on", s === "listening" || s === "error" && wall.ears.on);

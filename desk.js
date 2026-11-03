@@ -692,23 +692,51 @@
 
   // src/jarvis/orb.js
   var PALETTE = {
-    off: [120, 130, 150],
-    idle: [140, 190, 255],
-    listening: [60, 230, 255],
-    thinking: [170, 140, 255],
-    speaking: [120, 210, 255],
+    off: [110, 140, 170],
+    idle: [80, 210, 255],
+    listening: [70, 255, 200],
+    thinking: [170, 130, 255],
+    speaking: [120, 235, 255],
     blocked: [255, 170, 80],
-    alert: [255, 80, 90],
+    alert: [255, 70, 90],
     arrival: [90, 255, 170]
   };
-  function createOrb(canvas, { count = 900 } = {}) {
+  var MOTION = {
+    // spin (rad/s), ripple size, ripple speed
+    off: [0.12, 0.03, 0.6],
+    idle: [0.45, 0.07, 1.1],
+    listening: [0.9, 0.12, 2.2],
+    thinking: [2.4, 0.14, 3.2],
+    speaking: [1.1, 0.16, 2.8],
+    blocked: [0.3, 0.05, 1]
+  };
+  function createOrb(canvas, { count = 340, links = 3 } = {}) {
     const ctx = canvas.getContext("2d");
     const pts = [];
     for (let i = 0; i < count; i++) {
       const y = 1 - i / (count - 1) * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963229728653;
-      pts.push({ x: Math.cos(th) * r, y, z: Math.sin(th) * r, seed: Math.random() * 6.28 });
+      pts.push({ x: Math.cos(th) * r, y, z: Math.sin(th) * r, a: Math.random() * 6.28, b: Math.random() * 6.28, f: 0.6 + Math.random() * 0.9, sx: 0, sy: 0, sz: 0 });
     }
-    let state = "off", color = [...PALETTE.off], spin = 0, level = 0, flashUntil = 0, flashColor = null, raf = 0, last = performance.now();
+    const edges = [], seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < count; i++) {
+      const near = [];
+      for (let j = 0; j < count; j++) {
+        if (i === j) continue;
+        const d = (pts[i].x - pts[j].x) ** 2 + (pts[i].y - pts[j].y) ** 2 + (pts[i].z - pts[j].z) ** 2;
+        near.push([d, j]);
+      }
+      near.sort((p, q) => p[0] - q[0]);
+      for (const [, j] of near.slice(0, links)) {
+        const key = i < j ? i + ":" + j : j + ":" + i;
+        if (!seen.has(key)) {
+          seen.add(key);
+          edges.push([i, j]);
+        }
+      }
+    }
+    for (let k = 0; k < count / 6; k++) edges.push([Math.floor(Math.random() * count), Math.floor(Math.random() * count)]);
+    let state = "off", color = [...PALETTE.off], spinY = 0, spinX = 0, level = 0, flashUntil = 0, flashColor = null, raf = 0, last = performance.now();
+    let burst = 0, motion = [...MOTION.off];
     const orb2 = { levelSource: () => 0 };
     orb2.setState = (s) => {
       state = s;
@@ -716,6 +744,10 @@
     orb2.flash = (kind) => {
       flashColor = PALETTE[kind] || PALETTE.alert;
       flashUntil = performance.now() + 1600;
+      burst = Math.max(burst, 0.55);
+    };
+    orb2.burst = () => {
+      burst = 1;
     };
     function size() {
       const r = canvas.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -730,52 +762,83 @@
       if (document.hidden) return;
       const dt = Math.min(0.05, (now - last) / 1e3);
       last = now;
+      const t2 = now / 1e3;
       const { w, h } = size(), cx = w / 2, cy = h / 2, base = Math.min(w, h) * 0.25;
       const target = now < flashUntil ? flashColor : PALETTE[state] || PALETTE.idle;
-      color = color.map((c, i) => c + (target[i] - c) * Math.min(1, dt * 4));
-      const want = Math.max(orb2.levelSource() || 0, state === "thinking" ? 0.25 : 0);
-      level += (want - level) * Math.min(1, dt * 10);
-      spin += dt * (state === "thinking" ? 1.6 : state === "speaking" ? 0.7 : state === "listening" ? 0.5 : 0.18);
-      const breathe = state === "off" ? 0.9 : 1 + Math.sin(now / 1400) * 0.025;
-      const R = base * breathe * (1 + level * 0.28);
+      color = color.map((c, i) => c + (target[i] - c) * Math.min(1, dt * 5));
+      const want = Math.max(orb2.levelSource() || 0, state === "thinking" ? 0.3 : 0);
+      level += (want - level) * Math.min(1, dt * 14);
+      const goal = MOTION[state] || MOTION.idle;
+      motion = motion.map((m, i) => m + (goal[i] - m) * Math.min(1, dt * 3));
+      burst = Math.max(0, burst - dt * 1.4);
+      const [spin, ripple, rippleSpeed] = motion;
+      spinY += dt * (spin + level * 2.2);
+      spinX += dt * (spin * 0.35 + level * 0.6);
+      const breathe = 1 + Math.sin(t2 * 1.7) * 0.03 + Math.sin(t2 * 0.63) * 0.02;
+      const blast = Math.sin(Math.min(1, 1 - burst) * Math.PI) * burst;
+      const R = base * breathe * (1 + level * 0.32 + blast * 0.45);
+      const amp = ripple + level * 0.26;
       ctx.clearRect(0, 0, w, h);
       const [r, g, b] = color.map(Math.round);
-      const halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, Math.min(R * 1.9, Math.min(w, h) * 0.49));
-      halo.addColorStop(0, `rgba(${r},${g},${b},${0.16 + level * 0.18})`);
+      const halo = ctx.createRadialGradient(cx, cy, R * 0.1, cx, cy, Math.min(R * 2, Math.min(w, h) * 0.49));
+      halo.addColorStop(0, `rgba(${r},${g},${b},${0.22 + level * 0.25 + burst * 0.2})`);
+      halo.addColorStop(0.45, `rgba(${r},${g},${b},${0.06 + level * 0.08})`);
       halo.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = halo;
       ctx.fillRect(0, 0, w, h);
+      const cy1 = Math.cos(spinY), sy1 = Math.sin(spinY), cx1 = Math.cos(spinX * 0.7 + 0.35), sx1 = Math.sin(spinX * 0.7 + 0.35);
+      for (const p of pts) {
+        const wave = 1 + amp * Math.sin(t2 * rippleSpeed * p.f + p.a) * Math.cos(t2 * rippleSpeed * 0.7 + p.b + p.y * 3) + burst * 0.5 * Math.sin(p.a * 3) + 0.04 * Math.sin(t2 * 9 + p.b) * level;
+        let x = p.x * cy1 - p.z * sy1, z = p.x * sy1 + p.z * cy1, y = p.y;
+        const y2 = y * cx1 - z * sx1;
+        z = y * sx1 + z * cx1;
+        y = y2;
+        const persp = 2 / (2.7 - z);
+        p.sx = cx + x * R * wave * persp;
+        p.sy = cy + y * R * wave * persp;
+        p.sz = z;
+      }
+      ctx.globalCompositeOperation = "lighter";
+      const lw = Math.max(0.6, w / 1100);
+      for (let layer = 0; layer < 3; layer++) {
+        ctx.beginPath();
+        for (const [i, j] of edges) {
+          const z = (pts[i].sz + pts[j].sz) / 2, l = z < -0.33 ? 0 : z < 0.33 ? 1 : 2;
+          if (l !== layer) continue;
+          ctx.moveTo(pts[i].sx, pts[i].sy);
+          ctx.lineTo(pts[j].sx, pts[j].sy);
+        }
+        ctx.strokeStyle = `rgba(${r},${g},${b},${[0.08, 0.2, 0.42][layer] * (0.75 + level * 0.9 + burst)})`;
+        ctx.lineWidth = lw * (layer + 1) * 0.7;
+        ctx.stroke();
+      }
+      const dot = Math.max(1.2, w / 420);
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i], depth = (p.sz + 1) / 2;
+        const sparkle = Math.sin(t2 * 6 + i * 1.7) > 0.985 ? 1 : 0;
+        const a = 0.15 + depth * 0.7 + sparkle * 0.5;
+        const s = dot * (0.5 + depth * 1.1 + sparkle * 1.5 + level * 0.6);
+        ctx.fillStyle = sparkle ? `rgba(255,255,255,${a})` : `rgba(${r},${g},${b},${a})`;
+        ctx.fillRect(p.sx - s / 2, p.sy - s / 2, s, s);
+      }
       if (state === "thinking" || now < flashUntil) {
-        ctx.lineWidth = Math.max(1, w / 900);
+        ctx.lineWidth = lw * 1.2;
         for (let k = 0; k < 3; k++) {
-          ctx.strokeStyle = `rgba(${r},${g},${b},${0.35 - k * 0.09})`;
+          ctx.strokeStyle = `rgba(${r},${g},${b},${0.4 - k * 0.1})`;
           ctx.beginPath();
-          ctx.ellipse(cx, cy, R * (1.18 + k * 0.12), R * (0.32 + k * 0.08), spin * (k % 2 ? -1.3 : 1) + k, 0, Math.PI * 2);
+          ctx.ellipse(cx, cy, R * (1.25 + k * 0.13), R * (0.3 + k * 0.09), spinY * (k % 2 ? -1.5 : 1.2) + k, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
-      const cs = Math.cos(spin), sn = Math.sin(spin), tilt = 0.35, ct = Math.cos(tilt), st = Math.sin(tilt);
-      const dot = Math.max(1, w / 520);
-      for (const p of pts) {
-        let x = p.x * cs - p.z * sn, z = p.x * sn + p.z * cs, y = p.y;
-        const y2 = y * ct - z * st;
-        z = y * st + z * ct;
-        y = y2;
-        const wobble = 1 + Math.sin(now / 380 + p.seed) * 0.04 * (0.4 + level * 2.2);
-        const persp = 1.9 / (2.6 - z);
-        const px = cx + x * R * wobble * persp, py = cy + y * R * wobble * persp;
-        const a = 0.18 + (z + 1) * 0.38;
-        ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
-        const s = dot * (0.6 + (z + 1) * 0.55);
-        ctx.fillRect(px - s / 2, py - s / 2, s, s);
-      }
-      const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.55);
-      core.addColorStop(0, `rgba(255,255,255,${0.18 + level * 0.3})`);
-      core.addColorStop(1, "rgba(255,255,255,0)");
+      const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.6);
+      core.addColorStop(0, `rgba(255,255,255,${0.35 + level * 0.45 + burst * 0.4})`);
+      core.addColorStop(0.25, `rgba(${r},${g},${b},${0.25 + level * 0.3})`);
+      core.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = core;
       ctx.beginPath();
-      ctx.arc(cx, cy, R * 0.55, 0, Math.PI * 2);
+      ctx.arc(cx, cy, R * 0.6, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
     }
     raf = requestAnimationFrame(frame);
     orb2.stop = () => cancelAnimationFrame(raf);
@@ -851,7 +914,7 @@
     while (desk.log.length > 60) desk.log.shift();
     if (!$("settings").hidden) $("micLog").textContent = desk.log.slice(-16).join("\n");
   };
-  var orb = createOrb($("orb"));
+  var orb = desk.orb = createOrb($("orb"));
   var STATE_LABEL = { off: "OFFLINE", idle: "STANDBY", listening: "LISTENING", thinking: "THINKING", speaking: "SPEAKING", blocked: "MIC BLOCKED" };
   function setState(state, text) {
     desk.state = state;
@@ -1163,6 +1226,10 @@
       }
       if ((data.actions || []).some((a) => String(a).startsWith("reminder:"))) void loadReminders();
       if (data.lists) applyLists(data.lists);
+      if (desk.intro) for (const a of data.actions || []) {
+        if (["pause", "resume", "next", "previous", "louder", "quieter"].includes(a)) void media(a);
+        if (a === "play") stopIntro();
+      }
       const play = (data.actions || []).includes("play");
       if (play) {
         const m = /play(?:ing)? (.+?)(?: on (?:youtube|spotify))?[.!]?$/i.exec(reply);
@@ -2068,6 +2135,10 @@
       }
       return;
     }
+    if (event.action === "clap") {
+      await clapIntro();
+      return;
+    }
     if (event.action === "ask-wake") {
       voice.stop();
       await talk(pick(t().yes));
@@ -2248,6 +2319,18 @@
   async function media(action) {
     desk.ducked = false;
     if (action === "toggle") action = playing ? "pause" : "resume";
+    if (desk.intro) {
+      if (action === "pause") {
+        introCommand("pauseVideo");
+        playing = false;
+      } else if (action === "resume") {
+        introCommand("playVideo");
+        playing = true;
+      } else if (action === "louder" || action === "quieter") introCommand("setVolume", [action === "louder" ? 100 : 40]);
+      else stopIntro();
+      $("mPlayIcon").innerHTML = ICONS[playing ? "pause" : "play"];
+      return true;
+    }
     if (action === "pause") playing = false;
     if (action === "resume") playing = true;
     $("mPlayIcon").innerHTML = ICONS[playing ? "pause" : "play"];
@@ -2259,6 +2342,82 @@
   $("mPrev").onclick = () => media("previous");
   $("mPlay").onclick = () => media("toggle");
   $("mNext").onclick = () => media("next");
+  var INTRO = { video: "pAgnJDJN4VA", query: "AC/DC Back in Black" };
+  function introMusic() {
+    stopIntro();
+    const f = document.createElement("iframe");
+    f.id = "introPlayer";
+    f.className = "intro-player";
+    f.title = "Back in Black";
+    f.allow = "autoplay; encrypted-media";
+    f.src = `https://www.youtube-nocookie.com/embed/${INTRO.video}?autoplay=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(location.origin)}`;
+    const intro = desk.intro = { frame: f, playing: false };
+    const hello = () => {
+      try {
+        f.contentWindow.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*");
+      } catch {
+      }
+    };
+    f.onload = () => {
+      hello();
+      setTimeout(hello, 800);
+    };
+    document.body.append(f);
+    desk.music = { query: "Back in Black \xB7 AC/DC", service: "youtube" };
+    render();
+    setTimeout(() => {
+      if (desk.intro === intro && !intro.playing) {
+        stopIntro();
+        void extension("play", { service: "youtube", query: INTRO.query, lang: settings.lang });
+      }
+    }, 8e3);
+  }
+  function introCommand(func, args = []) {
+    try {
+      desk.intro?.frame.contentWindow.postMessage(JSON.stringify({ event: "command", func, args }), "*");
+    } catch {
+    }
+  }
+  function stopIntro() {
+    desk.intro?.frame.remove();
+    desk.intro = null;
+  }
+  desk.stopIntro = stopIntro;
+  window.addEventListener("message", (m) => {
+    if (!desk.intro || m.source !== desk.intro.frame.contentWindow) return;
+    let data = m.data;
+    try {
+      if (typeof data === "string") data = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (data?.event === "onError") {
+      stopIntro();
+      void extension("play", { service: "youtube", query: INTRO.query, lang: settings.lang });
+    }
+    if (data?.info?.playerState === 1) desk.intro.playing = true;
+    if (data?.info?.playerState === 0) stopIntro();
+  });
+  async function clapIntro() {
+    if (!desk.started || settings.clap === false || Date.now() - (desk.clapAt || 0) < 2e4) return;
+    desk.clapAt = Date.now();
+    if (desk.sleep || desk.sunrise) exitSleep();
+    wakeUp();
+    document.body.classList.remove("boot");
+    void document.body.offsetWidth;
+    document.body.classList.add("boot");
+    orb.flash("arrival");
+    orb.burst?.();
+    void extension("focus");
+    introMusic();
+    const es = settings.lang === "es", temp = desk.weather?.temp;
+    const line = es ? `Bienvenido a casa, ${settings.name}. Todos los sistemas en l\xEDnea.${Number.isFinite(temp) ? ` Fuera hace ${Math.round(temp)} grados.` : ""}` : `Welcome home, ${settings.name}. All systems online.${Number.isFinite(temp) ? ` It's ${Math.round(temp)} degrees outside.` : ""}`;
+    setTimeout(() => introCommand("setVolume", [35]), 1200);
+    await talk(line);
+    introCommand("setVolume", [100]);
+    ears.resume();
+  }
+  desk.clapIntro = clapIntro;
   var home = null;
   var wallListening = () => Date.now() - (desk.wallEarsAt || 0) < 15e4;
   desk.wallListening = wallListening;
@@ -2366,6 +2525,7 @@
     $("guardPin").value = settings.guardPin || "";
     $("wakeTime").value = desk.wake.time || "";
     fillVoices();
+    $("clapOn").checked = settings.clap !== false;
     $("voiceKey").value = settings.key;
     $("wakeOn").checked = settings.wake;
     $("greetOn").checked = settings.greet;
@@ -2500,6 +2660,15 @@
   } catch {
   }
   desk.fillVoices = fillVoices;
+  $("clapOn").onchange = () => {
+    settings.clap = $("clapOn").checked;
+    settings.save();
+  };
+  $("testClap").onclick = () => {
+    $("settings").hidden = true;
+    desk.clapAt = 0;
+    void clapIntro();
+  };
   $("voiceMode").onchange = () => {
     settings.voiceMode = $("voiceMode").value;
     settings.save();

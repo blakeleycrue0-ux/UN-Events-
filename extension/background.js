@@ -106,6 +106,12 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   // From the Jarvis desk page on this Chromebook (bridge.js): instant, no internet.
   if (message?.bridge) {
     if (message.action === "ping") { reply({ ok: true, state: lastStatus, agent: !!agent.job }); return; }
+    // Double clap on the desk: bring the Jarvis window and tab to the front.
+    if (message.action === "focus" && sender?.tab) {
+      void chrome.windows.update(sender.tab.windowId, { focused: true, drawAttention: true }).catch(() => {});
+      void chrome.tabs.update(sender.tab.id, { active: true }).catch(() => {});
+      reply({ ok: true }); return;
+    }
     if (message.action === "agent-answer") { agentAnswer(+message.ask, message.text); reply({ ok: true }); return; }
     const plan = jarvisPlan({ action: message.action, query: message.query, site: message.site, service: message.service, task: message.task, lang: message.lang });
     if (plan?.kind === "play") { void play(plan, message).then(() => reply({ ok: true })); return true; }

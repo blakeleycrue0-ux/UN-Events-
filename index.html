@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="desk.css" />
   </head>
   <body data-state="off">
-    <div class="backdrop" aria-hidden="true"><div class="glow"></div><div class="grain"></div></div>
+    <div class="backdrop" aria-hidden="true"><div class="glow"></div><div class="hud-grid"></div><div class="hud-cells"></div><div class="hud-scan"></div><div class="hud-corners"><i></i><i></i><i></i><i></i></div><div class="grain"></div></div>
 
     <header class="topbar">
       <div class="brand"><span class="mark"></span>JARVIS<span id="stateLabel" class="state-label">STANDBY</span></div>
@@ -67,7 +67,7 @@
           <div id="agentSay" class="agent-say"></div>
           <div class="agent-bar"><span></span></div>
         </div>
-        <div class="block">
+        <div class="block door-block">
           <div class="label">Door <span id="wallText" class="sub"></span></div>
           <ul id="arrivals" class="arrivals"></ul>
         </div>
@@ -147,6 +147,8 @@
       <label>Yo le hablo en<select id="hear"><option value="es-ES">Español</option><option value="en-US">English</option></select></label>
       <label class="check"><input id="wakeOn" type="checkbox" /> Escuchar siempre «Jarvis…»</label>
       <label class="check"><input id="greetOn" type="checkbox" /> Saludar a quien entra</label>
+      <label class="check"><input id="clapOn" type="checkbox" /> Doble palmada: «Bienvenido a casa» con música</label>
+      <div class="row"><button id="testClap" class="pill">Probar la doble palmada</button></div>
       <label class="check"><input id="showType" type="checkbox" /> Escribir en vez de hablar</label>
       <div class="two"><label>Modo noche desde<input id="quietFrom" type="number" min="0" max="23" /></label><label>hasta<input id="quietTo" type="number" min="0" max="23" /></label></div>
       <label>Ciudad del tiempo<input id="city" autocomplete="off" /></label>
