@@ -47,8 +47,8 @@ test('Claude sees task, steps, page and screenshot, treating page text as untrus
 test('only http(s) navigation; plain text answers become done',async()=>{
  const js=await (await setup(use('navigate',{url:'javascript:alert(1)',say:'x'})).handler(req(body))).json();
  assert.equal(js.action.type,'wait');
- const ok=await (await setup(use('navigate',{url:'https://classroom.google.com',say:'Opening Classroom'})).handler(req(body))).json();
- assert.deepEqual(ok.action,{type:'navigate',url:'https://classroom.google.com/',say:'Opening Classroom'});
+ const ok=await (await setup(use('navigate',{url:'https://teams.microsoft.com',say:'Opening Teams'})).handler(req(body))).json();
+ assert.deepEqual(ok.action,{type:'navigate',url:'https://teams.microsoft.com/',say:'Opening Teams'});
  const text=await (await setup(()=>({stop_reason:'end_turn',content:[{type:'text',text:'You have two assignments.'}]})).handler(req(body))).json();
  assert.deepEqual(text.action,{type:'done',summary:'You have two assignments.'});
 });

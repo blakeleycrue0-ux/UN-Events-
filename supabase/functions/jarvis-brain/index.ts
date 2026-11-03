@@ -8,7 +8,7 @@ const FALLBACK_MODELS = ["claude-opus-5-5", "claude-opus-5", "claude-fable-5-1",
 // What Jarvis can do on the user's computer (through the Jarvis Chrome extension)
 // and by email. The extension only accepts these fixed actions; it never opens
 // an arbitrary URL from a message.
-const SITES = ["youtube", "spotify", "teams", "gmail", "classroom", "netflix", "google", "calendar"];
+const SITES = ["youtube", "spotify", "teams", "gmail", "netflix", "google", "calendar"];
 const TOOLS = [
   {
     name: "play_music", strict: true,
@@ -27,7 +27,7 @@ const TOOLS = [
   },
   {
     name: "open_site", strict: true,
-    description: "Open a site on the computer. 'teams' is Microsoft Teams (school assignments), 'classroom' is Google Classroom.",
+    description: "Open a site on the computer. 'teams' is Microsoft Teams (school: assignments, grades, class posts).",
     input_schema: { type: "object", additionalProperties: false, required: ["site"], properties: {
       site: { type: "string", enum: SITES },
     } },
@@ -51,7 +51,7 @@ const TOOLS = [
   },
   {
     name: "browser_task", strict: true,
-    description: "Do a multi-step job in the computer's web browser for the user: check Teams or Classroom assignments, read or search emails in Gmail, find, open or download files in Drive, fill in a form, hand in work. It runs in the background; the user is asked by voice before anything that can't be undone, and the result is spoken when it finishes.",
+    description: "Do a multi-step job in the computer's web browser for the user: check Teams assignments or grades, read or search emails in Gmail, find, open or download files in Drive, fill in a form, hand in work. It runs in the background; the user is asked by voice before anything that can't be undone, and the result is spoken when it finishes.",
     input_schema: { type: "object", additionalProperties: false, required: ["task"], properties: {
       task: { type: "string", description: "Complete, self-contained instruction in English, with every detail the user gave (which subject, which file, what to check)." },
     } },
@@ -244,7 +244,8 @@ Deno.serve(async (request: Request) => {
     `with no markdown, lists, emoji or URLs. Be warm, witty and a little dry, like a loyal butler AI. ${name} may talk to you in Spanish or English; ` +
     `always reply in ${lang}. You can control ${name}'s Chrome browser with your tools (music on YouTube or Spotify, pause or skip, ` +
     `open sites, Google searches), send ${name} emails and set reminders. When you use a tool, say in a few words what you did. ` +
-    `You can do almost anything in the browser with browser_task, which drives Chrome like a person (real clicks and typing): use it for anything beyond simply opening a site or playing music, e.g. a specific playlist or album, liking a song, a particular YouTube video, reading Teams or Classroom assignments, reading or searching emails, finding, downloading or handing in files, filling forms, comparing prices, booking or checking something on a website. Just say you're on it: the result is spoken when it's done. ` +
+    `You can do almost anything in the browser with browser_task, which drives Chrome like a person (real clicks and typing): use it for anything beyond simply opening a site or playing music, e.g. a specific playlist or album, liking a song, a particular YouTube video, reading Teams assignments or grades, reading or searching emails, finding, downloading or handing in files, filling forms, comparing prices, booking or checking something on a website. Just say you're on it: the result is spoken when it's done. ` +
+    `${name}'s school uses only Microsoft Teams: never open, check or mention Google Classroom. ` +
     `You keep ${name}'s homework list and countdowns on screen (add_homework, homework_done, add_countdown, remove_countdown); work out dates from the local date given. ` +
     (homework.length ? `Current homework: ${homework.join("; ")}. ` : `The homework list is empty. `) +
     (countdowns.length ? `Current countdowns: ${countdowns.join("; ")}. ` : "") +
