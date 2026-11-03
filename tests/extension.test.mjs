@@ -102,3 +102,27 @@ test('agent clicks and types for real (DevTools input), like a person; falls bac
  assert.ok(cmds.some(([m,p])=>m==='Input.dispatchKeyEvent'&&p.key==='Escape'));
  assert.equal(attached,1,'attached once per job');
 });
+test('watching: every 10 minutes, in its own minimised window, each enabled site is read and sent to Jarvis',async()=>{
+ const store={key:'clave-larga'},session={},calls=[],opened=[],windows=[];
+ const pages={'https://teams.microsoft.com/v2/':{signIn:false,text:'Actividad: nueva nota de Matemáticas'},'https://outlook.office.com/mail/inbox':{signIn:true,text:''},
+  'https://www.instagram.com/cd.calvia/':{signIn:false,items:[{id:'ABC',title:'Nueva publicación',text:'Partido el sábado',url:'https://www.instagram.com/p/ABC/'}]}};
+ let current='';const listeners={};const on=(n)=>({addListener:(f)=>(listeners[n]=f)});
+ const chrome={storage:{local:{get:async(k)=>typeof k==='string'?{[k]:store[k]}:Object.fromEntries([].concat(k).map(x=>[x,store[x]])),set:async(o)=>Object.assign(store,o)},session:{get:async(k)=>({[k]:session[k]}),set:async(o)=>Object.assign(session,o)}},
+  windows:{create:async(o)=>{windows.push(o);return {id:9,tabs:[{id:5}]}},get:async()=>({tabs:[{id:5}]})},
+  tabs:{update:async(id,o)=>{current=o.url;opened.push(o.url)},get:async()=>({status:'complete'})},
+  scripting:{executeScript:async(o)=>[{result:pages[current]}]},alarms:{onAlarm:on('alarm')},runtime:{onMessage:on('message')}};
+ const fetch=async(url,opts)=>{const body=JSON.parse(opts.body);calls.push({url,body,key:opts.headers['x-jarvis-key']});
+  if(body.action==='watch-config')return Response.json({teams:true,school:true,instagramOn:true,instagram:'cd.calvia'});
+  return Response.json(body.source==='teams'?{added:1,called:true}:{baseline:true,added:0})};
+ const ctx=vm.createContext({chrome,fetch,Response,JARVIS_CONFIG:{url:'https://x.supabase.co',anonKey:'anon'},setTimeout:(f)=>setTimeout(f,0),Date,console,String,Object,JSON});
+ vm.runInContext(fs.readFileSync('extension/watch.js','utf8'),ctx);
+ await vm.runInContext('watchAll(true)',ctx);
+ const plain=(x)=>JSON.parse(JSON.stringify(x));
+ assert.deepEqual(plain(windows),[{url:'about:blank',focused:false,state:'minimized'}]);
+ assert.deepEqual(opened,['https://teams.microsoft.com/v2/','https://outlook.office.com/mail/inbox','https://www.instagram.com/cd.calvia/','about:blank']);
+ assert.ok(calls.every(c=>c.url==='https://x.supabase.co/functions/v1/jarvis-call'&&c.key==='clave-larga'));
+ assert.deepEqual(calls.slice(1).map(c=>[c.body.source,c.body.text||c.body.items[0].id]),[['teams','Actividad: nueva nota de Matemáticas'],['instagram','ABC']]);
+ assert.deepEqual(plain(store.watchReport.report),{teams:'1 nuevo(s) · te he llamado',school:'inicia sesión en Chrome',instagram:'listo (primera vez)'});
+ // Not again until 10 minutes have passed.
+ await vm.runInContext('watchAll()',ctx);assert.equal(calls.length,3);
+});

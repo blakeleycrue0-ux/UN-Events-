@@ -22,6 +22,10 @@
         <button id="leave" class="btn primary">Me voy · activar</button>
         <button id="home" class="btn">Estoy en casa · desactivar</button>
       </div>
+      <section id="feedBox" class="feed">
+        <div class="feed-head"><h2>En directo</h2><button id="watchOpen" class="chip">Vigilancia</button></div>
+        <ul id="feed"><li class="muted">Aquí verás lo que Jarvis vigila: emails, Teams, Instagram y la puerta.</li></ul>
+      </section>
       <section id="pushBox" class="push" hidden>
         <button id="pushOn" class="btn">Activar notificaciones</button>
         <p id="pushInfo" class="muted"></p>
@@ -33,6 +37,22 @@
 
     <div id="ringing" class="ring-sheet" hidden><b>¡Aquí estoy!</b><span>Jarvis te está buscando</span><button id="found" class="btn primary">Encontrado</button></div>
     <div id="viewer" class="sheet" hidden><img id="viewerImg" alt="" /></div>
+    <div id="watchSheet" class="sheet" hidden>
+      <div class="card watch-card">
+        <h2>Vigilancia</h2>
+        <p id="watchStatus" class="muted">Cargando…</p>
+        <label class="row"><input id="wTeams" type="checkbox" /> Teams (desde Chrome en el Mac)</label>
+        <label class="row"><input id="wSchool" type="checkbox" /> Correo del insti (Outlook, desde el Mac)</label>
+        <label class="row"><input id="wInsta" type="checkbox" /> Instagram del club</label>
+        <input id="wInstagram" placeholder="Cuenta de Instagram, ej. cdcalvia" autocomplete="off" />
+        <label class="field">Llamadas máximas al día <input id="wCalls" type="number" min="0" max="20" /></label>
+        <label class="field">No llamar de <input id="wQuietFrom" type="time" /> a <input id="wQuietTo" type="time" /></label>
+        <textarea id="wRules" rows="3" maxlength="400" placeholder="Reglas para Jarvis, ej.: llámame siempre si escribe mi madre o el entrenador; no me llames por notas de inglés."></textarea>
+        <button id="wSave" class="btn primary">Guardar</button>
+        <button id="wTest" class="btn">Probar llamada</button>
+        <button id="wClose" class="btn">Cerrar</button>
+      </div>
+    </div>
     <div id="setup" class="sheet" hidden>
       <div class="card">
         <h2>Mando de Jarvis</h2>

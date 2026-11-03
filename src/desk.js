@@ -733,6 +733,11 @@ async function soundAlarm() {
   desk.alarm = true; document.body.classList.add("alarm"); saveGuard({ alert: "alarm" });
   home?.send({ action: "snap", reason: "alarm", who: desk.intruder?.who || "" });
   notifyPhone(settings.lang === "es" ? "¡ALARMA!" : "ALARM!", settings.lang === "es" ? `${desk.intruder?.who || "Alguien"} no ha puesto el código.` : `${desk.intruder?.who || "Someone"} didn't enter the code.`);
+  // Like the butler of the mansion: a real phone call (when Twilio is set up).
+  if (settings.key) {
+    const who = desk.intruder?.who && desk.intruder.who !== "Unknown" && desk.intruder.who !== "Desconocido" ? desk.intruder.who : "alguien";
+    void call("jarvis-call", { action: "alert", title: "Alarma: ha entrado " + who, say: `${settings.name}, soy Jarvis. Ha entrado ${who} en su habitación y no ha puesto el código. La alarma está sonando. Le sugiero volver cuanto antes.` }, settings.key).catch(() => {});
+  }
   const es = settings.lang === "es";
   $("intruderBanner").hidden = false;
   // Over the top on purpose: a sweeping siren, red pulsing screen and a dramatic butler.
@@ -834,6 +839,16 @@ async function onHome(event) {
     setTimeout(() => void loadReminders(), 1500);
     if (desk.voice.speaking || ears.mode === "direct") { toast(text); return; }
     await talk(text, event.lang === "es" ? "es" : event.lang === "en" ? "en" : settings.lang); ears.resume(true); return;
+  }
+  // Something Jarvis is watching (email, Teams, Instagram): important things are said out loud.
+  if (event.action === "feed" && event.item) {
+    const f = event.item;
+    desk.feed = [f, ...(desk.feed || [])].slice(0, 20);
+    if (f.level === "info" || desk.sleep || desk.guard.on) return;
+    wakeUp(); orb.flash(f.level === "call" ? "alert" : "arrival"); chime(f.level === "call" ? "alert" : undefined);
+    const line = String(f.say || f.title).slice(0, 400);
+    if (desk.voice.speaking || ears.mode === "direct") { toast(line); return; }
+    await talk(line, "es"); ears.resume(true); return;
   }
   // From the phone remote (/mando).
   if (event.action === "guard") { if (!!event.on !== desk.guard.on) setGuard(!!event.on, "móvil"); else guardSend(); return; }

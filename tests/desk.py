@@ -379,6 +379,13 @@ with sync_playwright() as p:
     assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == []
     page.click('#closeSettings')
 
+    # Something important in Teams: Jarvis says it out loud.
+    calm(page)
+    home({'action': 'feed', 'item': {'id': 'f1', 'source': 'teams', 'title': 'Nota de Matemáticas', 'say': 'Crew, le han puesto un 8,5 en Matemáticas.', 'level': 'call'}})
+    wait_voice(page, 'un 8,5 en Matemáticas'); calm(page)
+    n = len(voice); home({'action': 'feed', 'item': {'id': 'f2', 'source': 'gmail', 'title': 'Oferta', 'say': 'Rebajas', 'level': 'info'}}); page.wait_for_timeout(600)
+    assert len(voice) == n, 'unimportant things stay quiet'
+
     # Cloud voice out of credit: Jarvis still talks with the computer's own voice.
     page.unroute('https://*.supabase.co/functions/v1/jarvis-voice')
     page.route('https://*.supabase.co/functions/v1/jarvis-voice', lambda r: r.fulfill(status=502, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, body='{"error":"ElevenLabs quota reached"}'))

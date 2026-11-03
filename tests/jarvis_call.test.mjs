@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {transform} from 'esbuild';
 const source=await fs.readFile(new URL('../supabase/functions/jarvis-call/index.ts',import.meta.url),'utf8');
-assert.ok(!/twilio/i.test(source.replace(/once handled phone calls/,'')),'no phone calls any more');
 const {code}=await transform(source,{loader:'ts',target:'es2022'});
 const BASE='https://fixture.supabase.co/functions/v1/jarvis-call';
 const ENV={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',SUPABASE_URL:'https://fixture.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service'};

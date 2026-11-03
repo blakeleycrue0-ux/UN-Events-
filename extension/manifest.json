@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Jarvis para Chromebook",
-  "version": "1.3.0",
-  "description": "Deja que Jarvis haga cosas en este Chromebook: música, webs y tareas de varios pasos (Teams, Gmail, descargas) con tu confirmación.",
+  "version": "1.4.0",
+  "description": "Deja que Jarvis haga cosas en este ordenador (música, webs, tareas) y vigile Teams, el correo del insti e Instagram para avisarte.",
   "permissions": ["storage", "tabs", "scripting", "alarms", "downloads", "debugger"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },

@@ -50,3 +50,24 @@ body[data-state="alarm"] .ring { border-color: var(--bad); box-shadow: 0 0 80px 
 .ring-sheet b { font-size: 40px; } .ring-sheet span { font-size: 18px; }
 .ring-sheet .btn { background: #06121f; color: #fff; }
 #viewer img { max-width: 100%; max-height: 90vh; border-radius: 16px; }
+
+.feed { display: grid; gap: 10px; }
+.feed-head { display: flex; justify-content: space-between; align-items: center; }
+.feed h2 { font-size: 12px; letter-spacing: .26em; text-transform: uppercase; color: var(--muted); font-weight: 500; margin: 0; }
+.chip { border: 1px solid var(--hair); background: rgba(255, 255, 255, .04); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+.feed ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.feed li.item { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: start; padding: 12px 14px; border: 1px solid var(--hair); border-radius: 16px; background: rgba(255, 255, 255, .03); animation: drop .5s ease both; }
+.feed li.item.notify { border-color: rgba(169, 207, 255, .45); }
+.feed li.item.call { border-color: rgba(255, 90, 100, .6); background: rgba(255, 90, 100, .07); }
+.feed .src { grid-row: span 2; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); padding-top: 3px; min-width: 64px; }
+.feed .t { font-weight: 600; }
+.feed .b { grid-column: 2 / 4; color: var(--soft); font-size: 14px; }
+.feed time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.feed a { color: inherit; text-decoration: none; }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
+.watch-card { max-height: 92vh; overflow: auto; }
+.watch-card .row { display: flex; gap: 10px; align-items: center; }
+.watch-card .row input { width: auto; }
+.watch-card .field { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--soft); font-size: 14px; }
+.watch-card .field input { width: auto; padding: 8px 10px; }
+.watch-card textarea { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--hair); background: rgba(255, 255, 255, .04); color: inherit; font: inherit; font-size: 14px; resize: vertical; }

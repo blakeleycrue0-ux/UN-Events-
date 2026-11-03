@@ -1,7 +1,10 @@
 const $ = (id) => document.getElementById(id);
 const labels = { conectado: "✓ Conectado. Ya puedes pedirle cosas a Jarvis.", desconectado: "Reconectando…", "sin-clave": "Falta la clave de Jarvis.", error: "No se puede conectar" };
 async function render() {
-  const { key, status, last } = await chrome.storage.local.get(["key", "status", "last"]);
+  const { key, status, last, watchReport } = await chrome.storage.local.get(["key", "status", "last", "watchReport"]);
+  const names = { teams: "Teams", school: "Correo del insti", instagram: "Instagram", error: "Error" };
+  if (watchReport) $("watch").textContent = `Última vez: ${new Date(watchReport.at).toLocaleTimeString()} · ` +
+    (Object.entries(watchReport.report).map(([k, v]) => `${names[k] || k}: ${v}`).join(" · ") || "nada activado");
   if (key && !$("key").value) $("key").value = key;
   const state = status?.state || "sin-clave";
   $("state").className = state === "conectado" ? "ok" : "";
@@ -13,5 +16,6 @@ $("save").onclick = async () => {
   chrome.runtime.sendMessage("reconnect");
   $("state").textContent = "Conectando…";
 };
+$("watchNow").onclick = () => { chrome.runtime.sendMessage("watch-now"); $("watch").textContent = "Mirando… (tarda un minuto)"; };
 chrome.storage.onChanged.addListener(render);
 render();

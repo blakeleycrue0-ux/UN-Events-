@@ -1820,6 +1820,11 @@
     saveGuard({ alert: "alarm" });
     home?.send({ action: "snap", reason: "alarm", who: desk.intruder?.who || "" });
     notifyPhone(settings.lang === "es" ? "\xA1ALARMA!" : "ALARM!", settings.lang === "es" ? `${desk.intruder?.who || "Alguien"} no ha puesto el c\xF3digo.` : `${desk.intruder?.who || "Someone"} didn't enter the code.`);
+    if (settings.key) {
+      const who = desk.intruder?.who && desk.intruder.who !== "Unknown" && desk.intruder.who !== "Desconocido" ? desk.intruder.who : "alguien";
+      void call("jarvis-call", { action: "alert", title: "Alarma: ha entrado " + who, say: `${settings.name}, soy Jarvis. Ha entrado ${who} en su habitaci\xF3n y no ha puesto el c\xF3digo. La alarma est\xE1 sonando. Le sugiero volver cuanto antes.` }, settings.key).catch(() => {
+      });
+    }
     const es = settings.lang === "es";
     $("intruderBanner").hidden = false;
     const siren = () => {
@@ -1980,6 +1985,22 @@
         return;
       }
       await talk(text, event.lang === "es" ? "es" : event.lang === "en" ? "en" : settings.lang);
+      ears.resume(true);
+      return;
+    }
+    if (event.action === "feed" && event.item) {
+      const f = event.item;
+      desk.feed = [f, ...desk.feed || []].slice(0, 20);
+      if (f.level === "info" || desk.sleep || desk.guard.on) return;
+      wakeUp();
+      orb.flash(f.level === "call" ? "alert" : "arrival");
+      chime(f.level === "call" ? "alert" : void 0);
+      const line = String(f.say || f.title).slice(0, 400);
+      if (desk.voice.speaking || ears.mode === "direct") {
+        toast(line);
+        return;
+      }
+      await talk(line, "es");
       ears.resume(true);
       return;
     }

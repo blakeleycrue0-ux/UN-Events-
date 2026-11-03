@@ -12,7 +12,7 @@ function connect() {
   $("setup").hidden = true;
   mando.home = connectHome({
     key: settings.key,
-    onEvent: (e) => { if (e.action === "guard-state") onState(e); if (e.action === "ring") ring(); if (e.action === "snap") setTimeout(loadPhotos, 4000); },
+    onEvent: (e) => { if (e.action === "guard-state") onState(e); if (e.action === "ring") ring(); if (e.action === "snap") setTimeout(loadPhotos, 4000); if (e.action === "feed" && e.item) addFeed(e.item, true); },
     onStatus: (s) => { $("link").textContent = s === "online" ? "Conectado" : "Sin conexión"; $("link").classList.toggle("on", s === "online"); if (s === "online") ask(); },
   });
 }
@@ -78,7 +78,7 @@ document.addEventListener("pointerdown", unlock, { once: true });
 $("leave").onclick = () => { mando.home?.send({ action: "guard", on: true }); $("stateSub").textContent = "Enviando…"; };
 $("home").onclick = () => { mando.home?.send({ action: "guard", on: false }); $("stateSub").textContent = "Enviando…"; };
 $("silence").onclick = () => mando.home?.send({ action: "guard-silence" });
-$("saveKey").onclick = () => { settings.key = $("key").value.trim(); settings.save(); connect(); void loadPhotos(); };
+$("saveKey").onclick = () => { settings.key = $("key").value.trim(); settings.save(); connect(); void loadPhotos(); void loadFeed(); };
 $("link").onclick = () => { $("key").value = settings.key; $("setup").hidden = false; };
 
 // ---------- Notificaciones (iPhone: con la web añadida a la pantalla de inicio) ----------
@@ -149,3 +149,69 @@ $("found").onclick = stopRing;
 
 mando.started = Date.now();
 connect(); render(); void loadPhotos();
+
+// ---------- En directo: lo que Jarvis vigila ----------
+const SOURCE = { gmail: "Gmail", school: "Insti", teams: "Teams", instagram: "Insta", door: "Puerta", jarvis: "Jarvis" };
+mando.feed = [];
+function feedItem(f) {
+  const li = document.createElement("li"); li.className = "item " + (f.level || "info");
+  const src = document.createElement("span"); src.className = "src"; src.textContent = SOURCE[f.source] || f.source;
+  const t = document.createElement(f.url ? "a" : "span"); t.className = "t"; t.textContent = (f.called ? "📞 " : "") + f.title;
+  if (f.url) { t.href = f.url; t.target = "_blank"; t.rel = "noopener"; }
+  const w = document.createElement("time"); w.textContent = new Date(f.created_at || Date.now()).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const b = document.createElement("span"); b.className = "b"; b.textContent = f.body || f.say || "";
+  li.append(src, t, w, b); return li;
+}
+function renderFeed() {
+  if (!mando.feed.length) return;
+  $("feed").replaceChildren(...mando.feed.slice(0, 40).map(feedItem));
+}
+function addFeed(item, live = false) {
+  if (mando.feed.some((f) => f.id && f.id === item.id)) return;
+  mando.feed.unshift(item); renderFeed();
+  if (live && item.level !== "info") beep(item.level === "call");
+}
+mando.addFeed = addFeed;
+async function loadFeed() {
+  if (!settings.key) return;
+  try {
+    const data = await (await call("jarvis-call", { action: "feed" }, settings.key)).json();
+    if (Array.isArray(data.feed)) { mando.feed = data.feed; renderFeed(); }
+    if (location.hash === "#feed") $("feedBox").scrollIntoView({ behavior: "smooth" });
+  } catch { /* offline */ }
+}
+mando.loadFeed = loadFeed;
+document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadFeed(); });
+window.addEventListener("hashchange", () => { if (location.hash === "#feed") void loadFeed(); });
+void loadFeed();
+
+// ---------- Ajustes de vigilancia ----------
+async function watchConfig(set) {
+  const response = await call("jarvis-call", { action: "watch-config", ...(set ? { set } : {}) }, settings.key);
+  return response.json();
+}
+function fillWatch(c) {
+  $("wTeams").checked = !!c.teams; $("wSchool").checked = !!c.school; $("wInsta").checked = !!c.instagramOn;
+  $("wInstagram").value = c.instagram || ""; $("wCalls").value = c.callsPerDay ?? 6;
+  $("wQuietFrom").value = c.quietFrom || "23:00"; $("wQuietTo").value = c.quietTo || "07:30"; $("wRules").value = c.rules || "";
+  $("watchStatus").textContent = [c.callsReady ? "Llamadas: listas ✓" : "Llamadas: falta configurar Twilio en Supabase",
+    c.geminiReady ? "Cerebro gratis: listo ✓" : "Falta la clave de Gemini", c.quiet ? "Ahora es horario sin llamadas" : ""].filter(Boolean).join(" · ");
+}
+$("watchOpen").onclick = async () => {
+  $("watchSheet").hidden = false; $("watchStatus").textContent = "Cargando…";
+  try { fillWatch(await watchConfig()); } catch { $("watchStatus").textContent = "Sin conexión."; }
+};
+$("wClose").onclick = () => { $("watchSheet").hidden = true; };
+$("wSave").onclick = async () => {
+  $("watchStatus").textContent = "Guardando…";
+  try {
+    fillWatch(await watchConfig({ teams: $("wTeams").checked, school: $("wSchool").checked, instagramOn: $("wInsta").checked,
+      instagram: $("wInstagram").value.trim(), callsPerDay: +$("wCalls").value, quietFrom: $("wQuietFrom").value, quietTo: $("wQuietTo").value, rules: $("wRules").value.trim() }));
+    $("watchStatus").textContent = "Guardado ✓ · " + $("watchStatus").textContent;
+  } catch { $("watchStatus").textContent = "No se pudo guardar."; }
+};
+$("wTest").onclick = async () => {
+  $("watchStatus").textContent = "Llamando…";
+  try { const r = await (await call("jarvis-call", { action: "call-test" }, settings.key)).json(); $("watchStatus").textContent = r.called ? "Te estoy llamando ✓" : "No se pudo llamar: " + (/not set up/.test(r.reason || "") ? "falta configurar Twilio en Supabase" : r.reason || "error"); }
+  catch { $("watchStatus").textContent = "Sin conexión."; }
+};

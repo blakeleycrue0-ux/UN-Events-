@@ -1,6 +1,6 @@
 // Jarvis para Chromebook: listens on Jarvis's private channel (Supabase Realtime)
 // and carries out the fixed actions in commands.js.
-importScripts("config.js", "commands.js", "agent.js");
+importScripts("config.js", "commands.js", "agent.js", "watch.js");
 
 let socket = null, heartbeat = null, ref = 0, topic = "", lastAt = 0;
 let lastStatus = "";

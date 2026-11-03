@@ -129,6 +129,7 @@
         if (e.action === "guard-state") onState(e);
         if (e.action === "ring") ring();
         if (e.action === "snap") setTimeout(loadPhotos, 4e3);
+        if (e.action === "feed" && e.item) addFeed(e.item, true);
       },
       onStatus: (s) => {
         $("link").textContent = s === "online" ? "Conectado" : "Sin conexi\xF3n";
@@ -244,6 +245,7 @@
     settings.save();
     connect();
     void loadPhotos();
+    void loadFeed();
   };
   $("link").onclick = () => {
     $("key").value = settings.key;
@@ -355,4 +357,117 @@
   connect();
   render();
   void loadPhotos();
+  var SOURCE = { gmail: "Gmail", school: "Insti", teams: "Teams", instagram: "Insta", door: "Puerta", jarvis: "Jarvis" };
+  mando.feed = [];
+  function feedItem(f) {
+    const li = document.createElement("li");
+    li.className = "item " + (f.level || "info");
+    const src = document.createElement("span");
+    src.className = "src";
+    src.textContent = SOURCE[f.source] || f.source;
+    const t = document.createElement(f.url ? "a" : "span");
+    t.className = "t";
+    t.textContent = (f.called ? "\u{1F4DE} " : "") + f.title;
+    if (f.url) {
+      t.href = f.url;
+      t.target = "_blank";
+      t.rel = "noopener";
+    }
+    const w = document.createElement("time");
+    w.textContent = new Date(f.created_at || Date.now()).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    const b = document.createElement("span");
+    b.className = "b";
+    b.textContent = f.body || f.say || "";
+    li.append(src, t, w, b);
+    return li;
+  }
+  function renderFeed() {
+    if (!mando.feed.length) return;
+    $("feed").replaceChildren(...mando.feed.slice(0, 40).map(feedItem));
+  }
+  function addFeed(item, live = false) {
+    if (mando.feed.some((f) => f.id && f.id === item.id)) return;
+    mando.feed.unshift(item);
+    renderFeed();
+    if (live && item.level !== "info") beep(item.level === "call");
+  }
+  mando.addFeed = addFeed;
+  async function loadFeed() {
+    if (!settings.key) return;
+    try {
+      const data = await (await call("jarvis-call", { action: "feed" }, settings.key)).json();
+      if (Array.isArray(data.feed)) {
+        mando.feed = data.feed;
+        renderFeed();
+      }
+      if (location.hash === "#feed") $("feedBox").scrollIntoView({ behavior: "smooth" });
+    } catch {
+    }
+  }
+  mando.loadFeed = loadFeed;
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void loadFeed();
+  });
+  window.addEventListener("hashchange", () => {
+    if (location.hash === "#feed") void loadFeed();
+  });
+  void loadFeed();
+  async function watchConfig(set) {
+    const response = await call("jarvis-call", { action: "watch-config", ...set ? { set } : {} }, settings.key);
+    return response.json();
+  }
+  function fillWatch(c) {
+    $("wTeams").checked = !!c.teams;
+    $("wSchool").checked = !!c.school;
+    $("wInsta").checked = !!c.instagramOn;
+    $("wInstagram").value = c.instagram || "";
+    $("wCalls").value = c.callsPerDay ?? 6;
+    $("wQuietFrom").value = c.quietFrom || "23:00";
+    $("wQuietTo").value = c.quietTo || "07:30";
+    $("wRules").value = c.rules || "";
+    $("watchStatus").textContent = [
+      c.callsReady ? "Llamadas: listas \u2713" : "Llamadas: falta configurar Twilio en Supabase",
+      c.geminiReady ? "Cerebro gratis: listo \u2713" : "Falta la clave de Gemini",
+      c.quiet ? "Ahora es horario sin llamadas" : ""
+    ].filter(Boolean).join(" \xB7 ");
+  }
+  $("watchOpen").onclick = async () => {
+    $("watchSheet").hidden = false;
+    $("watchStatus").textContent = "Cargando\u2026";
+    try {
+      fillWatch(await watchConfig());
+    } catch {
+      $("watchStatus").textContent = "Sin conexi\xF3n.";
+    }
+  };
+  $("wClose").onclick = () => {
+    $("watchSheet").hidden = true;
+  };
+  $("wSave").onclick = async () => {
+    $("watchStatus").textContent = "Guardando\u2026";
+    try {
+      fillWatch(await watchConfig({
+        teams: $("wTeams").checked,
+        school: $("wSchool").checked,
+        instagramOn: $("wInsta").checked,
+        instagram: $("wInstagram").value.trim(),
+        callsPerDay: +$("wCalls").value,
+        quietFrom: $("wQuietFrom").value,
+        quietTo: $("wQuietTo").value,
+        rules: $("wRules").value.trim()
+      }));
+      $("watchStatus").textContent = "Guardado \u2713 \xB7 " + $("watchStatus").textContent;
+    } catch {
+      $("watchStatus").textContent = "No se pudo guardar.";
+    }
+  };
+  $("wTest").onclick = async () => {
+    $("watchStatus").textContent = "Llamando\u2026";
+    try {
+      const r = await (await call("jarvis-call", { action: "call-test" }, settings.key)).json();
+      $("watchStatus").textContent = r.called ? "Te estoy llamando \u2713" : "No se pudo llamar: " + (/not set up/.test(r.reason || "") ? "falta configurar Twilio en Supabase" : r.reason || "error");
+    } catch {
+      $("watchStatus").textContent = "Sin conexi\xF3n.";
+    }
+  };
 })();
