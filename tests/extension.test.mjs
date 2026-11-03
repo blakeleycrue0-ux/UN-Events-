@@ -126,3 +126,17 @@ test('watching: every 10 minutes, in its own minimised window, each enabled site
  // Not again until 10 minutes have passed.
  await vm.runInContext('watchAll()',ctx);assert.equal(calls.length,4);
 });
+test('Outlook in a minimised window: a debugger screenshot makes it draw; if that fails the window is shown unfocused, then minimised again',async()=>{
+ const sent=[],updates=[];let drawn=false,shotFails=false;
+ const chrome={debugger:{attach:async()=>{},detach:async()=>sent.push('detach'),sendCommand:async(t,m)=>{sent.push(m);if(m==='Page.captureScreenshot'){if(shotFails)throw Error('minimized');drawn=true}return {}}},
+  tabs:{get:async()=>({windowId:9})},windows:{update:async(id,o)=>{updates.push(o.state);if(o.state==='normal')drawn=true}},
+  storage:{local:{get:async()=>({})}},alarms:{onAlarm:{addListener(){}}},runtime:{onMessage:{addListener(){}}}};
+ const ctx=vm.createContext({chrome,setTimeout:(f)=>setTimeout(f,0),Date,console,String,Object,JSON,Set,Promise});
+ vm.runInContext(fs.readFileSync('extension/watch.js','utf8'),ctx);
+ ctx.ready=async()=>drawn;
+ assert.equal(await vm.runInContext('wakePage(5, ready, 30000)',ctx),true);
+ assert.deepEqual(sent,['Emulation.setFocusEmulationEnabled','Page.captureScreenshot','detach']);assert.deepEqual(updates,[]);
+ drawn=false;shotFails=true;sent.length=0;
+ assert.equal(await vm.runInContext('wakePage(5, ready, 30000)',ctx),true);
+ assert.deepEqual(updates,['normal','minimized']);assert.equal(sent.at(-1),'detach');
+});

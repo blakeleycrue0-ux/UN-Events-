@@ -56,6 +56,34 @@ function watchTeamsActivity() {
   if (button) button.click();
   return !!button;
 }
+// Outlook only draws its message list when the page is painted, and a minimised
+// window never paints. Through the debugger, asking for a (tiny) screenshot makes
+// Chrome draw the page; if even that fails, the watch window is un-minimised
+// (unfocused, behind your windows) for a moment and minimised again.
+async function wakePage(tabId, ready, maxMs) {
+  const target = { tabId };
+  let attached = false, shown = false;
+  try { await chrome.debugger.attach(target, "1.3"); attached = true; } catch { /* the agent may be using it */ }
+  try {
+    if (attached) await chrome.debugger.sendCommand(target, "Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
+    for (let t = 0; t < maxMs; t += 1500) {
+      if (attached) {
+        const shot = await chrome.debugger.sendCommand(target, "Page.captureScreenshot", { format: "jpeg", quality: 5 }).catch(() => null);
+        if (!shot && !shown) {
+          const tab = await chrome.tabs.get(tabId);
+          await chrome.windows.update(tab.windowId, { state: "normal", focused: false }).catch(() => {});
+          shown = true;
+        }
+      }
+      await nap(1500);
+      if (await ready()) return true;
+    }
+    return false;
+  } finally {
+    if (attached) await chrome.debugger.detach(target).catch(() => {});
+    if (shown) { const tab = await chrome.tabs.get(tabId).catch(() => null); if (tab) await chrome.windows.update(tab.windowId, { state: "minimized" }).catch(() => {}); }
+  }
+}
 // Waits until a page has really drawn its content (these apps keep loading after "complete").
 async function waitForContent(tabId, minChars, maxMs) {
   let last = -1, steady = 0, len = 0;
@@ -92,7 +120,10 @@ async function watchOne(tabId, source, cfg) {
     await chrome.scripting.executeScript({ target: { tabId }, func: watchTeamsActivity }).catch(() => null);
     await nap(3000);
   }
-  if (site.min) await waitForContent(tabId, site.min, 40000);
+  if (source === "school") {
+    const count = async () => (await chrome.scripting.executeScript({ target: { tabId }, func: () => document.querySelectorAll('[data-convid], div[role="option"][aria-label]').length }).catch(() => [{}]))[0]?.result > 0;
+    if (!(await count())) await wakePage(tabId, count, 30000);
+  } else if (site.min) await waitForContent(tabId, site.min, 40000);
   const func = source === "instagram" ? watchInstagramPosts : source === "school" ? watchOutlookMail : watchPageText;
   const [{ result } = {}] = await chrome.scripting.executeScript({ target: { tabId }, func });
   if (!result) return "sin datos";
