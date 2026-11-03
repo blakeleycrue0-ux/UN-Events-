@@ -87,6 +87,9 @@ body.night .side { opacity: .5; }
 .timers b { font-weight: 300; color: var(--accent); font-variant-numeric: tabular-nums; font-size: calc(var(--u) * 1.4); }
 
 /* ---------- Core ---------- */
+/* The orb draws past its box; the side panels stay on top so their buttons work. */
+.side { position: relative; z-index: 2; }
+.core { position: relative; z-index: 1; }
 .core { display: grid; justify-items: center; align-content: center; text-align: center; gap: calc(var(--u) * 1.2); min-width: 0; }
 .orb { width: min(58vh, 100%); aspect-ratio: 1; cursor: pointer; transform: scale(1.32);
   /* Bigger drawing area with soft round edges: the orb can swell freely, no square border. */
