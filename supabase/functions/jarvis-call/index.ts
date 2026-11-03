@@ -1,4 +1,4 @@
-// Supabase Edge Function: Jarvis's background jobs (no phone calls).
+// Supabase Edge Function: Jarvis's background jobs, watching and phone calls.
 // - step=cron: called every minute by pg_cron; delivers due reminders, spoken
 //   on the desk computer (or by email when Resend is set up).
 // - POST {action: "state"} with the Jarvis key: what Jarvis remembers, so a
