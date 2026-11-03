@@ -51,7 +51,7 @@ test('ElevenLabs out of credit → Gemini free voice as WAV; model ladder on 429
  assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'audio/wav');
  const bytes=new Uint8Array(await r.arrayBuffer());assert.equal(new TextDecoder().decode(bytes.slice(0,4)),'RIFF');assert.equal(bytes.length,48);
  assert.equal(new DataView(bytes.buffer).getUint32(24,true),24000);
- const g=calls.filter(c=>c.url.includes('generativelanguage'));assert.equal(g.length,2);assert.match(g[1].url,/gemini-2\.5-flash-tts:generateContent/);
+ const g=calls.filter(c=>c.url.includes('generativelanguage'));assert.equal(g.length,2);assert.match(g[1].url,/gemini-2\.5-pro-preview-tts:generateContent/);
  const body=JSON.parse(g[1].opts.body);assert.match(body.contents[0].parts[0].text,/español de España: Hola, señor\.$/);assert.deepEqual(body.generationConfig.responseModalities,['AUDIO']);
  // Only Gemini configured: still talks. Nothing works: clear error.
  delete env.ELEVENLABS_API_KEY;assert.equal((await handler(req())).status,200);
