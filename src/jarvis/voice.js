@@ -11,12 +11,37 @@ const MESSAGES = {
   "ElevenLabs quota reached": "Se han acabado los créditos de ElevenLabs este mes.",
 };
 
-// The best built-in voice for a language (Mac: Jorge/Mónica, Daniel; Chrome: Google voices).
-function localVoice(lang) {
+// The best built-in voice for a language. The Mac's classic voices (Jorge,
+// Mónica…) sound robotic; Chrome's "Google" voices and the Mac's downloadable
+// Premium/Enhanced voices sound natural, so those come first. A voice chosen
+// in settings always wins.
+export function voicesFor(lang) {
   const all = window.speechSynthesis?.getVoices?.() || [];
-  const want = lang === "es" ? ["Jorge", "Google español", "Mónica", "Monica", "Paulina", "Diego"] : ["Daniel", "Google UK English Male", "Arthur", "Google UK English Female", "Samantha"];
-  for (const name of want) { const v = all.find((x) => x.name.startsWith(name)); if (v) return v; }
-  return all.find((x) => x.lang?.toLowerCase().startsWith(lang === "es" ? "es-es" : "en-gb")) || all.find((x) => x.lang?.toLowerCase().startsWith(lang)) || null;
+  const code = lang === "es" ? "es" : "en";
+  const rank = (v) => {
+    const n = v.name, l = (v.lang || "").toLowerCase().replace("_", "-");
+    let r = 0;
+    if (/premium|mejorad|enhanced|neural|natural/i.test(n)) r += 40;
+    if (/^google/i.test(n)) r += 30;
+    if (l === (code === "es" ? "es-es" : "en-gb")) r += 10;
+    if (/daniel|jorge|alvaro|álvaro/i.test(n)) r += 3;   // male butler voices
+    if (/eloquence|bad news|bells|boing|bubbles|cellos|whisper|zarvox|trinoids|organ|albert|jester|superstar|wobble|grandma|grandpa|rocko|shelley|flo|reed|sandy/i.test(n)) r -= 100;   // novelty voices
+    return r;
+  };
+  return all.filter((v) => (v.lang || "").toLowerCase().startsWith(code)).sort((a, b) => rank(b) - rank(a));
+}
+function localVoice(lang, wanted = "") {
+  const list = voicesFor(lang);
+  return (wanted && list.find((v) => v.name === wanted)) || list[0] || null;
+}
+// Long text in short pieces: Chrome's Google voices stop after ~15 seconds otherwise.
+function pieces(text) {
+  const out = [];
+  for (const s of text.match(/[^.!?¡¿;:]+[.!?;:]*\s*/g) || [text]) {
+    const last = out[out.length - 1];
+    if (last && (last + s).length < 160) out[out.length - 1] = last + s; else out.push(s);
+  }
+  return out.map((x) => x.trim()).filter(Boolean);
 }
 
 export function createVoice({ settings, onState = () => {} }) {
@@ -74,23 +99,33 @@ export function createVoice({ settings, onState = () => {} }) {
     const synth = window.speechSynthesis;
     if (!synth || !window.SpeechSynthesisUtterance) return Promise.resolve(false);
     return new Promise((resolve) => {
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang === "es" ? "es-ES" : "en-GB"; const v = localVoice(lang); if (v) u.voice = v;
-      u.rate = 1; u.pitch = 0.9; u.volume = voice.volume;
-      const done = () => { clearTimeout(guard); finish = null; voice.local = false; resolve(true); };
-      const guard = setTimeout(() => { synth.cancel(); done(); }, 30000);
-      u.onend = u.onerror = done; finish = () => { synth.cancel(); done(); };
       if (mine !== id) { resolve(false); return; }
+      const v = localVoice(lang, settings.localVoice), parts = pieces(text);
+      let i = 0, ended = false;
+      const done = () => { if (ended) return; ended = true; clearTimeout(guard); finish = null; voice.local = false; resolve(true); };
+      const guard = setTimeout(() => { synth.cancel(); done(); }, 60000);
+      finish = () => { synth.cancel(); done(); };
+      const next = () => {
+        if (ended || mine !== id) { done(); return; }
+        if (i >= parts.length) { done(); return; }
+        const u = new SpeechSynthesisUtterance(parts[i++]);
+        u.lang = v?.lang || (lang === "es" ? "es-ES" : "en-GB"); if (v) u.voice = v;
+        u.rate = 1; u.pitch = /^google/i.test(v?.name || "") ? 1 : 0.95; u.volume = voice.volume;
+        u.onend = next; u.onerror = done;
+        synth.speak(u);
+      };
       voice.local = true; voice.speaking = true; onState("speaking", text);
-      synth.cancel(); synth.speak(u);
+      synth.cancel(); next();
     });
   }
+  voice.voicesFor = voicesFor;
   voice.speak = async (text, lang = settings.lang) => {
     const mine = ++id;
     audio.pause();
     onState("thinking", text);
     let url;
     try {
+      if (settings.voiceMode === "local" && !voice.forceCloud) throw Error("cloud voice resting");   // chosen in settings: always instant
       if (Date.now() < cloudDownUntil && !voice.forceCloud) throw Error("cloud voice resting");
       // Don't keep the room waiting: if the cloud voice is slow, the computer speaks.
       const slow = new Promise((_, reject) => setTimeout(() => reject(Error("cloud voice slow")), voice.maxWaitMS));

@@ -252,14 +252,33 @@
     "ElevenLabs key lacks text to speech permission": "A la clave de ElevenLabs le falta el permiso Text to Speech.",
     "ElevenLabs quota reached": "Se han acabado los cr\xE9ditos de ElevenLabs este mes."
   };
-  function localVoice(lang) {
+  function voicesFor(lang) {
     const all = window.speechSynthesis?.getVoices?.() || [];
-    const want = lang === "es" ? ["Jorge", "Google espa\xF1ol", "M\xF3nica", "Monica", "Paulina", "Diego"] : ["Daniel", "Google UK English Male", "Arthur", "Google UK English Female", "Samantha"];
-    for (const name of want) {
-      const v = all.find((x) => x.name.startsWith(name));
-      if (v) return v;
+    const code = lang === "es" ? "es" : "en";
+    const rank = (v) => {
+      const n = v.name, l = (v.lang || "").toLowerCase().replace("_", "-");
+      let r = 0;
+      if (/premium|mejorad|enhanced|neural|natural/i.test(n)) r += 40;
+      if (/^google/i.test(n)) r += 30;
+      if (l === (code === "es" ? "es-es" : "en-gb")) r += 10;
+      if (/daniel|jorge|alvaro|álvaro/i.test(n)) r += 3;
+      if (/eloquence|bad news|bells|boing|bubbles|cellos|whisper|zarvox|trinoids|organ|albert|jester|superstar|wobble|grandma|grandpa|rocko|shelley|flo|reed|sandy/i.test(n)) r -= 100;
+      return r;
+    };
+    return all.filter((v) => (v.lang || "").toLowerCase().startsWith(code)).sort((a, b) => rank(b) - rank(a));
+  }
+  function localVoice(lang, wanted = "") {
+    const list = voicesFor(lang);
+    return wanted && list.find((v) => v.name === wanted) || list[0] || null;
+  }
+  function pieces(text) {
+    const out = [];
+    for (const s of text.match(/[^.!?¡¿;:]+[.!?;:]*\s*/g) || [text]) {
+      const last = out[out.length - 1];
+      if (last && (last + s).length < 160) out[out.length - 1] = last + s;
+      else out.push(s);
     }
-    return all.find((x) => x.lang?.toLowerCase().startsWith(lang === "es" ? "es-es" : "en-gb")) || all.find((x) => x.lang?.toLowerCase().startsWith(lang)) || null;
+    return out.map((x) => x.trim()).filter(Boolean);
   }
   function createVoice({ settings: settings2, onState = () => {
   } }) {
@@ -347,14 +366,15 @@
       const synth = window.speechSynthesis;
       if (!synth || !window.SpeechSynthesisUtterance) return Promise.resolve(false);
       return new Promise((resolve) => {
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = lang === "es" ? "es-ES" : "en-GB";
-        const v = localVoice(lang);
-        if (v) u.voice = v;
-        u.rate = 1;
-        u.pitch = 0.9;
-        u.volume = voice2.volume;
+        if (mine !== id) {
+          resolve(false);
+          return;
+        }
+        const v = localVoice(lang, settings2.localVoice), parts = pieces(text);
+        let i = 0, ended = false;
         const done = () => {
+          if (ended) return;
+          ended = true;
           clearTimeout(guard);
           finish = null;
           voice2.local = false;
@@ -363,29 +383,45 @@
         const guard = setTimeout(() => {
           synth.cancel();
           done();
-        }, 3e4);
-        u.onend = u.onerror = done;
+        }, 6e4);
         finish = () => {
           synth.cancel();
           done();
         };
-        if (mine !== id) {
-          resolve(false);
-          return;
-        }
+        const next = () => {
+          if (ended || mine !== id) {
+            done();
+            return;
+          }
+          if (i >= parts.length) {
+            done();
+            return;
+          }
+          const u = new SpeechSynthesisUtterance(parts[i++]);
+          u.lang = v?.lang || (lang === "es" ? "es-ES" : "en-GB");
+          if (v) u.voice = v;
+          u.rate = 1;
+          u.pitch = /^google/i.test(v?.name || "") ? 1 : 0.95;
+          u.volume = voice2.volume;
+          u.onend = next;
+          u.onerror = done;
+          synth.speak(u);
+        };
         voice2.local = true;
         voice2.speaking = true;
         onState("speaking", text);
         synth.cancel();
-        synth.speak(u);
+        next();
       });
     }
+    voice2.voicesFor = voicesFor;
     voice2.speak = async (text, lang = settings2.lang) => {
       const mine = ++id;
       audio.pause();
       onState("thinking", text);
       let url;
       try {
+        if (settings2.voiceMode === "local" && !voice2.forceCloud) throw Error("cloud voice resting");
         if (Date.now() < cloudDownUntil && !voice2.forceCloud) throw Error("cloud voice resting");
         const slow = new Promise((_, reject) => setTimeout(() => reject(Error("cloud voice slow")), voice2.maxWaitMS));
         url = URL.createObjectURL(await Promise.race([blob(text, lang), slow]));
@@ -2329,6 +2365,7 @@
     for (const id of ["name", "lang", "hear", "city"]) $(id).value = settings[id];
     $("guardPin").value = settings.guardPin || "";
     $("wakeTime").value = desk.wake.time || "";
+    fillVoices();
     $("voiceKey").value = settings.key;
     $("wakeOn").checked = settings.wake;
     $("greetOn").checked = settings.greet;
@@ -2405,6 +2442,7 @@
   };
   bind("name", "name", (v) => v.trim() || "Crew");
   bind("lang", "lang");
+  $("lang").addEventListener("change", () => setTimeout(fillVoices, 0));
   bind("hear", "hear");
   bind("greetOn", "greet");
   bind("quietFrom", "quietFrom", Number);
@@ -2447,6 +2485,34 @@
     } catch {
       toast("Sin conexi\xF3n");
     }
+  };
+  function fillVoices() {
+    const lang = settings.lang === "es" ? "es" : "en", list = voice.voicesFor(lang);
+    const sel = $("localVoice");
+    if (!sel) return;
+    sel.replaceChildren(...list.map((v, i) => Object.assign(document.createElement("option"), { value: v.name, textContent: v.name + (i === 0 ? " (recomendada)" : "") })));
+    if (!list.length) sel.append(Object.assign(document.createElement("option"), { value: "", textContent: "Ninguna disponible" }));
+    if (settings.localVoice && list.some((v) => v.name === settings.localVoice)) sel.value = settings.localVoice;
+    $("voiceMode").value = settings.voiceMode === "local" ? "local" : "auto";
+  }
+  try {
+    window.speechSynthesis?.addEventListener?.("voiceschanged", fillVoices);
+  } catch {
+  }
+  desk.fillVoices = fillVoices;
+  $("voiceMode").onchange = () => {
+    settings.voiceMode = $("voiceMode").value;
+    settings.save();
+  };
+  $("localVoice").onchange = () => {
+    settings.localVoice = $("localVoice").value;
+    settings.save();
+  };
+  $("testLocal").onclick = async () => {
+    const keep = settings.voiceMode;
+    settings.voiceMode = "local";
+    await talk(t().online(settings.name));
+    settings.voiceMode = keep;
   };
   $("testVoice").onclick = async () => {
     voice.unlock();

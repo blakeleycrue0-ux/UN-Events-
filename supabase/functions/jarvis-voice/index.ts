@@ -13,7 +13,7 @@ function wav(pcm: Uint8Array, rate: number) {
   return out;
 }
 async function geminiVoice(key: string, text: string, lang: string) {
-  const models = (Deno.env.get("GEMINI_TTS_MODEL") || "gemini-2.5-flash-preview-tts,gemini-2.5-flash-tts").split(",").map((m) => m.trim()).filter(Boolean);
+  const models = (Deno.env.get("GEMINI_TTS_MODEL") || "gemini-2.5-flash-preview-tts,gemini-2.5-pro-preview-tts").split(",").map((m) => m.trim()).filter(Boolean);
   const style = lang === "es" ? "Lee con voz de mayordomo, grave, tranquila y elegante, en español de España: " : "Say in a calm, deep, elegant British butler voice: ";
   const body = JSON.stringify({
     contents: [{ role: "user", parts: [{ text: style + text }] }],

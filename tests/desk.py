@@ -393,10 +393,21 @@ with sync_playwright() as p:
     # Cloud voice out of credit: Jarvis still talks with the computer's own voice.
     page.unroute('https://*.supabase.co/functions/v1/jarvis-voice')
     page.route('https://*.supabase.co/functions/v1/jarvis-voice', lambda r: r.fulfill(status=502, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, body='{"error":"ElevenLabs quota reached"}'))
-    page.evaluate("""window.SpeechSynthesisUtterance=class{constructor(t){this.text=t}};Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{spoken:[],getVoices:()=>[{name:'Jorge',lang:'es-ES'}],cancel(){},speak(u){this.spoken.push([u.text,u.lang,u.voice&&u.voice.name]);setTimeout(()=>u.onend&&u.onend(),50)}}})""")
+    page.evaluate("""window.SpeechSynthesisUtterance=class{constructor(t){this.text=t}};Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{spoken:[],getVoices:()=>[{name:'Jorge',lang:'es-ES'},{name:'Bad News',lang:'es-ES'},{name:'Google español',lang:'es-ES'},{name:'Daniel',lang:'en-GB'}],cancel(){},speak(u){this.spoken.push([u.text,u.lang,u.voice&&u.voice.name]);setTimeout(()=>u.onend&&u.onend(),50)}}})""")
     assert page.evaluate("desk.voice.speak('Prueba 1, todo bien.','es')") is True
-    assert page.evaluate("speechSynthesis.spoken") == [['Prueba 1, todo bien.', 'es-ES', 'Jorge']]
+    assert page.evaluate("speechSynthesis.spoken") == [['Prueba 1, todo bien.', 'es-ES', 'Google español']], 'the natural Google voice, not the robotic one'
+    assert page.evaluate("desk.voice.voicesFor('es').map(v=>v.name)") == ['Google español', 'Jorge', 'Bad News']
     assert page.evaluate("desk.voice.speak('Prueba 2','es')") is True and len(page.evaluate("speechSynthesis.spoken")) == 2, 'goes straight to the built-in voice while the cloud rests'
+    # Long replies are spoken in short pieces (Chrome's Google voices stop after ~15 s).
+    page.evaluate("speechSynthesis.spoken=[]")
+    long = 'Buenas tardes, señor. Hoy tiene entreno a las seis y el examen de matemáticas es el viernes. Le recomiendo repasar fracciones esta noche. Y no olvide la mochila del fútbol, que ayer se la dejó.'
+    assert page.evaluate("t=>desk.voice.speak(t,'es')", long) is True
+    parts = [p[0] for p in page.evaluate("speechSynthesis.spoken")]
+    assert len(parts) >= 2 and ' '.join(parts) == long and all(len(p) < 170 for p in parts), parts
+    # A voice chosen in settings wins.
+    page.evaluate("desk.settings.localVoice='Jorge'; speechSynthesis.spoken=[]"); page.evaluate("desk.voice.speak('Hola','es')")
+    assert page.evaluate("speechSynthesis.spoken[0][2]") == 'Jorge'
+    page.evaluate("desk.settings.localVoice=''")
     # A slow cloud voice (over 6 s) doesn't keep the room waiting.
     page.evaluate("desk.voice.forceCloud=true; desk.voice.maxWaitMS=300")
     page.unroute('https://*.supabase.co/functions/v1/jarvis-voice')

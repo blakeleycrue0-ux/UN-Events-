@@ -1045,6 +1045,7 @@ $("typeForm").onsubmit = (e) => { e.preventDefault(); const v = $("typeInput").v
 function openSettings() {
   for (const id of ["name", "lang", "hear", "city"]) $(id).value = settings[id];
   $("guardPin").value = settings.guardPin || ""; $("wakeTime").value = desk.wake.time || "";
+  fillVoices();
   $("voiceKey").value = settings.key; $("wakeOn").checked = settings.wake; $("greetOn").checked = settings.greet;
   $("quietFrom").value = settings.quietFrom; $("quietTo").value = settings.quietTo;
   $("memoryList").replaceChildren(...desk.memory.map((m, i) => {
@@ -1090,7 +1091,7 @@ $("camBack").onclick = () => switchWallCamera("environment");
 $("openSettings").onclick = openSettings;
 $("closeSettings").onclick = () => { $("settings").hidden = true; };
 const bind = (id, key, conv = (v) => v) => { $(id).onchange = () => { settings[key] = conv($(id).type === "checkbox" ? $(id).checked : $(id).value); settings.save(); render(); }; };
-bind("name", "name", (v) => v.trim() || "Crew"); bind("lang", "lang"); bind("hear", "hear"); bind("greetOn", "greet");
+bind("name", "name", (v) => v.trim() || "Crew"); bind("lang", "lang"); $("lang").addEventListener("change", () => setTimeout(fillVoices, 0)); bind("hear", "hear"); bind("greetOn", "greet");
 bind("quietFrom", "quietFrom", Number); bind("quietTo", "quietTo", Number);
 $("guardPin").onchange = () => {
   const v = $("guardPin").value.replace(/\D/g, "").slice(0, 4); $("guardPin").value = v;
@@ -1108,6 +1109,20 @@ $("city").onchange = async () => {
     Object.assign(settings, { city: place.name, lat: place.latitude, lon: place.longitude }); settings.save(); $("city").value = place.name; void loadWeather();
   } catch { toast("Sin conexión"); }
 };
+// The computer's voice: a list of what this Mac/Chrome offers, best first.
+function fillVoices() {
+  const lang = settings.lang === "es" ? "es" : "en", list = voice.voicesFor(lang);
+  const sel = $("localVoice"); if (!sel) return;
+  sel.replaceChildren(...list.map((v, i) => Object.assign(document.createElement("option"), { value: v.name, textContent: v.name + (i === 0 ? " (recomendada)" : "") })));
+  if (!list.length) sel.append(Object.assign(document.createElement("option"), { value: "", textContent: "Ninguna disponible" }));
+  if (settings.localVoice && list.some((v) => v.name === settings.localVoice)) sel.value = settings.localVoice;
+  $("voiceMode").value = settings.voiceMode === "local" ? "local" : "auto";
+}
+try { window.speechSynthesis?.addEventListener?.("voiceschanged", fillVoices); } catch {}
+desk.fillVoices = fillVoices;
+$("voiceMode").onchange = () => { settings.voiceMode = $("voiceMode").value; settings.save(); };
+$("localVoice").onchange = () => { settings.localVoice = $("localVoice").value; settings.save(); };
+$("testLocal").onclick = async () => { const keep = settings.voiceMode; settings.voiceMode = "local"; await talk(t().online(settings.name)); settings.voiceMode = keep; };
 $("testVoice").onclick = async () => { voice.unlock(); voice.forceCloud = true; await talk(t().online(settings.name)); voice.forceCloud = false; $("voiceInfo").textContent = voice.error ? voice.error + " Mientras tanto hablo con la voz del ordenador." : "Voz funcionando."; ears.resume(); };
 $("showType").onchange = () => { $("typeForm").hidden = !$("showType").checked; };
 $("toWall").onclick = (e) => { e.preventDefault(); chooseRole("wall"); };

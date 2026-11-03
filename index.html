@@ -137,7 +137,9 @@
       <div class="drawer-head"><h2>Ajustes</h2><button id="closeSettings" class="icon-btn" aria-label="Cerrar">✕</button></div>
       <label>Tu nombre<input id="name" maxlength="30" autocomplete="off" /></label>
       <label>Clave de Jarvis<input id="voiceKey" type="password" autocomplete="off" placeholder="La que pusiste en Supabase" /></label>
-      <div class="row"><button id="testVoice" class="pill">Probar voz</button></div>
+      <label>Voz de Jarvis<select id="voiceMode"><option value="auto">Gemini (si tarda, la del ordenador)</option><option value="local">Siempre la del ordenador (al instante)</option></select></label>
+      <label>Voz del ordenador<select id="localVoice"></select></label>
+      <div class="row"><button id="testVoice" class="pill">Probar voz</button><button id="testLocal" class="pill">Escuchar la del ordenador</button></div>
       <p id="voiceInfo" class="muted"></p>
 
       <h3>Conversación</h3>
