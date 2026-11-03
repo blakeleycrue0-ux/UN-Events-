@@ -90,3 +90,9 @@ test('"llámame a las 8": a due call reminder rings the phone',async()=>{
  assert.deepEqual(r,{delivered:['call']});
  assert.match(new URLSearchParams(s.out.find(o=>o.url.includes('twilio')).body).get('Twiml'),/despierte: entreno/);
 });
+test('switching a source from page text to items: the first list is learned, not announced',async()=>{
+ const s=setup({watchRows:{school:{source:'school',hash:'h',snapshot:'Outlook Inbox',seen:[]}},judged:[{title:'x',say:'x',level:'call'}]});
+ const r=await (await s.handler(req({action:'watch',source:'school',items:[{id:'c1',title:'Old email'},{id:'c2',title:'Older'}]}))).json();
+ assert.deepEqual(r,{baseline:true,added:0});assert.equal(s.out.filter(o=>o.url.includes('generativelanguage')).length,0);
+ assert.deepEqual(s.db.watch.school.seen,['c1','c2']);
+});

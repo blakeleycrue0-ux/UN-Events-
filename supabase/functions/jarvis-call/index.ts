@@ -260,7 +260,8 @@ async function watch(body: any) {
   if (!["gmail", "school", "teams", "instagram"].includes(source)) return { error: "Unknown source" };
   const cfg = await watchConfig();
   const [state] = await rows(`jarvis_watch?source=eq.${source}&select=hash,snapshot,seen`);
-  const first = !state;
+  // First look (or first look with ids after page snapshots): just learn what's there.
+  const first = !state || (Array.isArray(body.items) && body.items.length > 0 && !(Array.isArray(state.seen) && state.seen.length));
   let fresh = "", seen: string[] = Array.isArray(state?.seen) ? state.seen : [], hash = state?.hash || "", snapshot = state?.snapshot || "";
   // deno-lint-ignore no-explicit-any
   const items: Item[] = (Array.isArray(body.items) ? body.items : []).slice(0, 40).map((i: any) => ({

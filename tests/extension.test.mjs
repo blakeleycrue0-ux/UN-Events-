@@ -104,7 +104,7 @@ test('agent clicks and types for real (DevTools input), like a person; falls bac
 });
 test('watching: every 10 minutes, in its own minimised window, each enabled site is read and sent to Jarvis',async()=>{
  const store={key:'clave-larga'},session={},calls=[],opened=[],windows=[];
- const pages={'https://teams.microsoft.com/v2/':{signIn:false,text:'Actividad: nueva nota de Matemáticas'},'https://outlook.office.com/mail/inbox':{signIn:true,text:''},
+ const pages={'https://teams.microsoft.com/v2/':{signIn:false,text:'Actividad: nueva nota de Matemáticas'},'https://outlook.office.com/mail/inbox':{signIn:false,ready:true,items:[{id:'conv1',title:'Profesora García, Examen el viernes',text:'',url:'https://outlook.office.com/mail/inbox'}]},
   'https://www.instagram.com/cd.calvia/':{signIn:false,items:[{id:'ABC',title:'Nueva publicación',text:'Partido el sábado',url:'https://www.instagram.com/p/ABC/'}]}};
  let current='';const listeners={};const on=(n)=>({addListener:(f)=>(listeners[n]=f)});
  const chrome={storage:{local:{get:async(k)=>typeof k==='string'?{[k]:store[k]}:Object.fromEntries([].concat(k).map(x=>[x,store[x]])),set:async(o)=>Object.assign(store,o)},session:{get:async(k)=>({[k]:session[k]}),set:async(o)=>Object.assign(session,o)}},
@@ -121,8 +121,8 @@ test('watching: every 10 minutes, in its own minimised window, each enabled site
  assert.deepEqual(plain(windows),[{url:'about:blank',focused:false,state:'minimized'}]);
  assert.deepEqual(opened,['https://teams.microsoft.com/v2/','https://outlook.office.com/mail/inbox','https://www.instagram.com/cd.calvia/','about:blank']);
  assert.ok(calls.every(c=>c.url==='https://x.supabase.co/functions/v1/jarvis-call'&&c.key==='clave-larga'));
- assert.deepEqual(calls.slice(1).map(c=>[c.body.source,c.body.text||c.body.items[0].id]),[['teams','Actividad: nueva nota de Matemáticas'],['instagram','ABC']]);
- assert.deepEqual(plain(store.watchReport.report),{teams:'1 nuevo(s) · te he llamado',school:'inicia sesión en Chrome',instagram:'listo (primera vez)'});
+ assert.deepEqual(calls.slice(1).map(c=>[c.body.source,c.body.text||c.body.items[0].id]),[['teams','Actividad: nueva nota de Matemáticas'],['school','conv1'],['instagram','ABC']]);
+ assert.deepEqual(plain(store.watchReport.report),{teams:'1 nuevo(s) · te he llamado',school:'listo (primera vez)',instagram:'listo (primera vez)'});
  // Not again until 10 minutes have passed.
- await vm.runInContext('watchAll()',ctx);assert.equal(calls.length,3);
+ await vm.runInContext('watchAll()',ctx);assert.equal(calls.length,4);
 });
