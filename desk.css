@@ -300,5 +300,3 @@ body.boot .hud-grid, body.boot .hud-cells { animation: hudBoot 1.6s ease-out bot
 body.boot .core { animation: coreBoot 1.4s cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes hudBoot { 0% { opacity: 0; filter: brightness(3); } 30% { opacity: 1; filter: brightness(2.5); } 100% { opacity: 1; filter: none; } }
 @keyframes coreBoot { 0% { transform: scale(.6); opacity: 0; filter: brightness(3) blur(6px); } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: none; filter: none; } }
-/* The welcome-home song plays in a tiny player, out of sight. */
-.intro-player { position: fixed; left: -400px; bottom: 0; width: 320px; height: 180px; border: 0; opacity: .01; pointer-events: none; }

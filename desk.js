@@ -1226,10 +1226,6 @@
       }
       if ((data.actions || []).some((a) => String(a).startsWith("reminder:"))) void loadReminders();
       if (data.lists) applyLists(data.lists);
-      if (desk.intro) for (const a of data.actions || []) {
-        if (["pause", "resume", "next", "previous", "louder", "quieter"].includes(a)) void media(a);
-        if (a === "play") stopIntro();
-      }
       const play = (data.actions || []).includes("play");
       if (play) {
         const m = /play(?:ing)? (.+?)(?: on (?:youtube|spotify))?[.!]?$/i.exec(reply);
@@ -2326,18 +2322,6 @@
   async function media(action) {
     desk.ducked = false;
     if (action === "toggle") action = playing ? "pause" : "resume";
-    if (desk.intro) {
-      if (action === "pause") {
-        introCommand("pauseVideo");
-        playing = false;
-      } else if (action === "resume") {
-        introCommand("playVideo");
-        playing = true;
-      } else if (action === "louder" || action === "quieter") introCommand("setVolume", [action === "louder" ? 100 : 40]);
-      else stopIntro();
-      $("mPlayIcon").innerHTML = ICONS[playing ? "pause" : "play"];
-      return true;
-    }
     if (action === "pause") playing = false;
     if (action === "resume") playing = true;
     $("mPlayIcon").innerHTML = ICONS[playing ? "pause" : "play"];
@@ -2349,123 +2333,6 @@
   $("mPrev").onclick = () => media("previous");
   $("mPlay").onclick = () => media("toggle");
   $("mNext").onclick = () => media("next");
-  var INTRO = { video: "pAgnJDJN4VA", query: "AC/DC Back in Black" };
-  function songDb() {
-    return new Promise((resolve, reject) => {
-      const r = indexedDB.open("jarvis-song", 1);
-      r.onupgradeneeded = () => r.result.createObjectStore("song");
-      r.onsuccess = () => resolve(r.result);
-      r.onerror = () => reject(r.error);
-    });
-  }
-  async function songGet() {
-    try {
-      const db = await songDb();
-      return await new Promise((res) => {
-        const q = db.transaction("song").objectStore("song").get("intro");
-        q.onsuccess = () => res(q.result || null);
-        q.onerror = () => res(null);
-      });
-    } catch {
-      return null;
-    }
-  }
-  async function songSet(file) {
-    const db = await songDb();
-    await new Promise((res, rej) => {
-      const tx = db.transaction("song", "readwrite");
-      file ? tx.objectStore("song").put(file, "intro") : tx.objectStore("song").delete("intro");
-      tx.oncomplete = res;
-      tx.onerror = () => rej(tx.error);
-    });
-  }
-  desk.songSet = songSet;
-  async function introMusic() {
-    stopIntro();
-    const own = await songGet();
-    if (own) {
-      const a = new Audio(URL.createObjectURL(own));
-      a.volume = 1;
-      const intro2 = desk.intro = { audio: a, playing: false };
-      a.onplaying = () => {
-        intro2.playing = true;
-      };
-      a.onended = () => {
-        if (desk.intro === intro2) stopIntro();
-      };
-      a.play().catch(() => {
-      });
-      desk.music = { query: own.name ? own.name.replace(/\.[a-z0-9]+$/i, "") : "Tu canci\xF3n", service: "" };
-      render();
-      return;
-    }
-    const f = document.createElement("iframe");
-    f.id = "introPlayer";
-    f.className = "intro-player";
-    f.title = "Back in Black";
-    f.allow = "autoplay; encrypted-media";
-    f.src = `https://www.youtube-nocookie.com/embed/${INTRO.video}?autoplay=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(location.origin)}`;
-    const intro = desk.intro = { frame: f, playing: false };
-    const hello = () => {
-      try {
-        f.contentWindow.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*");
-      } catch {
-      }
-    };
-    f.onload = () => {
-      hello();
-      setTimeout(hello, 800);
-    };
-    document.body.append(f);
-    desk.music = { query: "Back in Black \xB7 AC/DC", service: "youtube" };
-    render();
-    setTimeout(() => {
-      if (desk.intro === intro && !intro.playing) {
-        stopIntro();
-        void extension("play", { service: "youtube", query: INTRO.query, lang: settings.lang });
-      }
-    }, 8e3);
-  }
-  function introCommand(func, args = []) {
-    const a = desk.intro?.audio;
-    if (a) {
-      if (func === "pauseVideo") a.pause();
-      if (func === "playVideo") void a.play().catch(() => {
-      });
-      if (func === "setVolume") a.volume = Math.max(0, Math.min(1, args[0] / 100));
-      return;
-    }
-    try {
-      desk.intro?.frame.contentWindow.postMessage(JSON.stringify({ event: "command", func, args }), "*");
-    } catch {
-    }
-  }
-  function stopIntro() {
-    const i = desk.intro;
-    desk.intro = null;
-    if (!i) return;
-    i.frame?.remove();
-    if (i.audio) {
-      i.audio.pause();
-      URL.revokeObjectURL(i.audio.src);
-    }
-  }
-  desk.stopIntro = stopIntro;
-  window.addEventListener("message", (m) => {
-    if (!desk.intro?.frame || m.source !== desk.intro.frame.contentWindow) return;
-    let data = m.data;
-    try {
-      if (typeof data === "string") data = JSON.parse(data);
-    } catch {
-      return;
-    }
-    if (data?.event === "onError") {
-      stopIntro();
-      void extension("play", { service: "youtube", query: INTRO.query, lang: settings.lang });
-    }
-    if (data?.info?.playerState === 1) desk.intro.playing = true;
-    if (data?.info?.playerState === 0) stopIntro();
-  });
   async function homecoming(extra = "") {
     desk.clapAt = Date.now();
     if (desk.sleep || desk.sunrise) exitSleep();
@@ -2476,12 +2343,9 @@
     orb.flash("arrival");
     orb.burst?.();
     void extension("focus");
-    await introMusic();
     const es = settings.lang === "es", temp = desk.weather?.temp;
     const line = (es ? `Bienvenido a casa, ${settings.name}. Todos los sistemas en l\xEDnea.${Number.isFinite(temp) ? ` Fuera hace ${Math.round(temp)} grados.` : ""}` : `Welcome home, ${settings.name}. All systems online.${Number.isFinite(temp) ? ` It's ${Math.round(temp)} degrees outside.` : ""}`) + extra;
-    setTimeout(() => introCommand("setVolume", [35]), 1200);
     await talk(line);
-    introCommand("setVolume", [100]);
     ears.resume();
   }
   desk.homecoming = homecoming;
@@ -2598,9 +2462,6 @@
     $("wakeTime").value = desk.wake.time || "";
     fillVoices();
     $("clapOn").checked = settings.clap !== false;
-    void songGet().then((f) => {
-      $("songInfo").textContent = f ? "Canci\xF3n guardada: " + (f.name || "tu canci\xF3n") : "Sin canci\xF3n propia: usar\xE9 YouTube (puede salir un anuncio).";
-    });
     $("voiceKey").value = settings.key;
     $("wakeOn").checked = settings.wake;
     $("greetOn").checked = settings.greet;
@@ -2735,21 +2596,6 @@
   } catch {
   }
   desk.fillVoices = fillVoices;
-  $("songFile").onchange = async () => {
-    const f = $("songFile").files?.[0];
-    if (!f) return;
-    try {
-      await songSet(f);
-      $("songInfo").textContent = "Canci\xF3n guardada: " + f.name;
-    } catch {
-      $("songInfo").textContent = "No se pudo guardar la canci\xF3n.";
-    }
-  };
-  $("songClear").onclick = async () => {
-    await songSet(null).catch(() => {
-    });
-    $("songInfo").textContent = "Sin canci\xF3n propia: usar\xE9 YouTube.";
-  };
   $("clapOn").onchange = () => {
     settings.clap = $("clapOn").checked;
     settings.save();

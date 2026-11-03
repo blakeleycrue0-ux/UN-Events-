@@ -235,10 +235,9 @@ with sync_playwright() as p:
     home({'action': 'arrival', 'person': {'name': 'Crew', 'role': 'me', 'greeting': ''}})
     wait_voice(page, "just in case you're not really you")
     assert page.evaluate("desk.guard.on") and page.locator('#keypad').is_visible()
-    page.route('https://www.youtube-nocookie.com/**', lambda r: r.fulfill(status=200, headers={'Content-Type': 'text/html'}, body='<html></html>'))
-    page.keyboard.type('2580'); wait_voice(page, 'Welcome home, Crew. All systems online')   # back after "me voy": the welcome with the song
-    assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden() and page.evaluate("!!desk.intro")
-    page.evaluate("desk.stopIntro(); desk.clapAt=0")
+    page.keyboard.type('2580'); wait_voice(page, 'Welcome home, Crew. All systems online')   # back after "me voy": welcome home
+    assert not page.evaluate("desk.guard.on") and page.locator('#keypad').is_hidden()
+    page.evaluate("desk.clapAt=0")
     calm(page)
 
     # Your phone as a microphone: it sends the text, Jarvis answers aloud and back to the phone.
@@ -385,19 +384,15 @@ with sync_playwright() as p:
     assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == []
     page.click('#closeSettings')
 
-    # Double clap on the wall phone: "Welcome home" and the Iron Man song inside Jarvis.
-    page.route('https://www.youtube-nocookie.com/**', lambda r: r.fulfill(status=200, headers={'Content-Type': 'text/html'}, body='<html></html>'))
+    # Double clap on the wall phone: the screen powers up and Jarvis says "Welcome home" (no song).
     calm(page); home({'action': 'clap'})
     wait_voice(page, '^Welcome home, Crew. All systems online')
-    assert page.evaluate("!!document.getElementById('introPlayer') && document.getElementById('introPlayer').src.includes('pAgnJDJN4VA')")
-    assert page.evaluate("document.body.classList.contains('boot')")
+    assert page.evaluate("document.body.classList.contains('boot')") and page.evaluate("!document.querySelector('iframe')")
     n = len(voice); home({'action': 'clap'}); page.wait_for_timeout(600); assert len(voice) == n, 'not again within 20 s'
-    page.evaluate("desk.media('pause')"); assert page.evaluate("!!desk.intro"), 'the music buttons control the song'
-    page.evaluate("desk.stopIntro()"); calm(page)
+    calm(page)
     # Back after "me voy": you (not Mum, not a glass of water) get the welcome home with the song after the code.
     page.evaluate("desk.clapAt=0; desk.lastIn={who:'Crew',role:'me'}"); page.evaluate("desk.homecoming(' Mientras no estabas: nadie.')")
-    wait_voice(page, 'Welcome home, Crew.*nadie')
-    assert page.evaluate("!!desk.intro"); page.evaluate("desk.stopIntro()"); calm(page)
+    wait_voice(page, 'Welcome home, Crew.*nadie'); calm(page)
 
     # Something important in Teams: Jarvis says it out loud.
     calm(page)
