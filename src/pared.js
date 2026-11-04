@@ -34,7 +34,7 @@ async function tell(kind, extra = {}) {
     $("linkDot").classList.remove("on"); status("Sin conexión"); return false;
   }
 }
-setInterval(() => { if (wall.started) void tell("status", { camera: true }); }, 120000);
+setInterval(() => { if (wall.started && settings.camera) void tell("status", { camera: true }); }, 120000);
 
 // ---------- Caras ----------
 async function realDetector() {
@@ -393,6 +393,18 @@ $("frameSlot").addEventListener("pointercancel", endDrag);
 async function keepAwake() { try { if (navigator.wakeLock && !document.hidden) await navigator.wakeLock.request("screen"); } catch {} }
 async function start() {
   if (settings.listen) wall.ears.prime();   // inside the tap, or iPhone keeps audio off
+  // Microphone only (default): no camera, black screen, so the phone stays cool.
+  if (!settings.camera) {
+    $("wallStart").disabled = true;
+    wall.started = true; $("wallStart").hidden = true;
+    document.body.classList.add("mic-only");
+    status(settings.key ? "Escuchando · solo micro" : "Falta la clave de Jarvis (toca la pantalla)");
+    await keepAwake();
+    listenToDesk();
+    if (!settings.listen) { settings.listen = true; settings.save(); }
+    await startEars();
+    return;
+  }
   $("wallStart").disabled = true; status("Encendiendo la cámara…");
   try {
     await startCamera();
@@ -412,6 +424,10 @@ async function start() {
 }
 wall.start = start;
 $("wallStart").onclick = start;
+const startLabel = () => { $("wallStart").textContent = settings.camera ? "Empezar a vigilar la puerta" : "Empezar a escuchar"; };
+startLabel();
+$("cameraOn").checked = !!settings.camera;
+$("cameraOn").onchange = () => { settings.camera = $("cameraOn").checked; settings.save(); startLabel(); if (wall.started) location.reload(); };
 $("wall").onclick = (e) => { if (e.target !== $("wallStart")) openSettings(); };
 function openSettings() {
   $("name").value = settings.name; $("voiceKey").value = settings.key; $("facing").value = settings.facing; $("listenOn").checked = !!settings.listen;

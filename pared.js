@@ -30,6 +30,7 @@
       crop: { cx: 0.5, cy: 0.5, zoom: 1 },
       guardPin: "",
       listen: true,
+      camera: false,
       wake: true,
       quietFrom: 23,
       quietTo: 8,
@@ -439,7 +440,7 @@
     }
   }
   setInterval(() => {
-    if (wall.started) void tell("status", { camera: true });
+    if (wall.started && settings.camera) void tell("status", { camera: true });
   }, 12e4);
   async function realDetector() {
     if (!window.Human) await loadScript("vendor/human.js");
@@ -919,6 +920,21 @@
   }
   async function start() {
     if (settings.listen) wall.ears.prime();
+    if (!settings.camera) {
+      $("wallStart").disabled = true;
+      wall.started = true;
+      $("wallStart").hidden = true;
+      document.body.classList.add("mic-only");
+      status(settings.key ? "Escuchando \xB7 solo micro" : "Falta la clave de Jarvis (toca la pantalla)");
+      await keepAwake();
+      listenToDesk();
+      if (!settings.listen) {
+        settings.listen = true;
+        settings.save();
+      }
+      await startEars();
+      return;
+    }
     $("wallStart").disabled = true;
     status("Encendiendo la c\xE1mara\u2026");
     try {
@@ -939,6 +955,17 @@
   }
   wall.start = start;
   $("wallStart").onclick = start;
+  var startLabel = () => {
+    $("wallStart").textContent = settings.camera ? "Empezar a vigilar la puerta" : "Empezar a escuchar";
+  };
+  startLabel();
+  $("cameraOn").checked = !!settings.camera;
+  $("cameraOn").onchange = () => {
+    settings.camera = $("cameraOn").checked;
+    settings.save();
+    startLabel();
+    if (wall.started) location.reload();
+  };
   $("wall").onclick = (e) => {
     if (e.target !== $("wallStart")) openSettings();
   };

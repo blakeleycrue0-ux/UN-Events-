@@ -59,3 +59,8 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .wall-heard { color: rgba(169, 207, 255, .55); font-size: 14px; min-height: 1.3em; max-width: 80vw; }
 .check { display: flex; gap: 10px; align-items: flex-start; }
 .check input { width: auto; margin-top: 3px; }
+
+/* Microphone only: almost black, so the iPhone screen uses next to no power. */
+body.mic-only .wall-face { opacity: .28; }
+body.mic-only .wall-clock { font-size: 18vw; }
+body.mic-only #camDot { display: none; }

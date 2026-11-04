@@ -7,7 +7,7 @@ from playwright.sync_api import sync_playwright
 URL = 'http://127.0.0.1:8001/'
 CORS = {'Access-Control-Allow-Origin': 'http://127.0.0.1:8001', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS'}
 INIT = """
-if(!localStorage.getItem('jarvis-settings'))localStorage.setItem('jarvis-settings',JSON.stringify({key:'mi-clave-secreta',name:'Crew'}));
+if(!localStorage.getItem('jarvis-settings'))localStorage.setItem('jarvis-settings',JSON.stringify({key:'mi-clave-secreta',name:'Crew',camera:true}));
 """
 FAKE = """(vec)=>{
   window.nextFace=vec; window.inputs=[];
@@ -54,6 +54,7 @@ def wait_event(page, kind, n=1, timeout=6000):
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'])
     c = b.new_context(viewport={'width': 390, 'height': 844}, permissions=['camera', 'microphone'])
+    # These checks are for the camera mode (the default is microphone only).
     page = c.new_page(); errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.add_init_script(INIT)
@@ -214,6 +215,14 @@ with sync_playwright() as p:
     old.add_init_script("localStorage.setItem('jarvis-faces', JSON.stringify([[1,0,0,0]]))")
     old.goto(URL + 'pared.html'); old.click('#wall', position={'x': 50, 'y': 100})
     assert 'cara registrada' in old.locator('#people').inner_text()
+    # Microphone only (the default now): no camera at all, black screen, ears on, claps go to the desk.
+    m = b.new_context(viewport={'width': 390, 'height': 844}, permissions=['microphone']).new_page()
+    m.add_init_script("localStorage.setItem('jarvis-role','\"wall\"');localStorage.setItem('jarvis-settings',JSON.stringify({key:'mi-clave-secreta'}))")
+    m.route('https://*.supabase.co/functions/v1/jarvis-hear', lambda route: route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body='{"text":""}'))
+    m.route_web_socket('wss://*.supabase.co/**', realtime)
+    m.goto(URL + 'pared.html'); assert m.locator('#wallStart').inner_text() == 'Empezar a escuchar'
+    m.click('#wallStart'); m.wait_for_function('wall.started && wall.ears.on', timeout=10000)
+    assert m.evaluate("!wall.stream && document.body.classList.contains('mic-only')") and 'solo micro' in m.locator('#wallState').inner_text()
     assert not errors, errors
-    print('PASS Jarvis wall: phone chooses "Pared"; real face models on camera without microphone; you/Mum/Dad enrolment; door framing crop; arrivals relayed once per visit with custom greetings; strangers rate-limited; online status; link test and wrong-key message; burn-in drift; never calls voice/brain (hearing only when its microphone is switched on, skipping music and Jarvis own voice); first-version face kept')
+    print('PASS Jarvis wall: phone chooses "Pared"; real face models on camera without microphone; you/Mum/Dad enrolment; door framing crop; arrivals relayed once per visit with custom greetings; strangers rate-limited; online status; link test and wrong-key message; burn-in drift; never calls voice/brain (hearing only when its microphone is switched on, skipping music and Jarvis own voice); first-version face kept; microphone-only mode by default (no camera)')
     b.close()
