@@ -6,6 +6,7 @@ import { T, FAMILY, greeting, quick, offline } from "./jarvis/words.js";
 import { createVoice } from "./jarvis/voice.js";
 import { createEars, afterWake } from "./jarvis/ears.js";
 import { createOrb } from "./jarvis/orb.js";
+import { createClapDetector } from "./jarvis/clap.js";
 import { ICONS, weatherKind } from "./jarvis/icons.js";
 
 // Old pairing links pointed at the home page; the camera app lives at /camara.
@@ -1015,8 +1016,31 @@ async function homecoming(extra = "") {
 desk.homecoming = homecoming;
 async function clapIntro() {
   if (!desk.started || settings.clap === false || Date.now() - (desk.clapAt || 0) < 20000) return;
+  if (desk.sleep) { log("palmadas ignoradas: modo noche"); return; }   // asleep: a noise in the night never wakes Jarvis up
+  // Back after "me voy": two claps switch the watch off and tell you what happened while you were out.
+  if (desk.guard.on) {
+    const since = desk.guard.leftAt || 0, summary = since ? whoCameIn(since) : "";
+    setGuard(false, "palmadas");
+    await homecoming(summary ? (settings.lang === "es" ? " Mientras no estabas: " : " While you were out: ") + summary : "");
+    return;
+  }
   await homecoming();
 }
+// This computer's own microphone listens for the double clap, raw (no noise
+// suppression, which would swallow claps). Audio callbacks keep running even
+// when the Jarvis tab is behind other windows.
+async function startClapEars() {
+  if (desk.clapEars || settings.clap === false) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    const Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx();
+    const proc = ctx.createScriptProcessor(2048, 1, 1), detector = createClapDetector({ onDouble: () => { log("doble palmada"); void clapIntro(); } });
+    proc.onaudioprocess = (ev) => { if (!desk.voice.speaking && !desk.sleep) detector.samples(ev.inputBuffer.getChannelData(0), ctx.sampleRate, performance.now()); };
+    ctx.createMediaStreamSource(stream).connect(proc); proc.connect(ctx.destination);
+    desk.clapEars = { stream, ctx, detector };
+  } catch (e) { log("palmadas: " + e.name); }
+}
+desk.startClapEars = startClapEars;
 desk.clapIntro = clapIntro;
 
 // ---------- Arranque ----------
@@ -1038,6 +1062,7 @@ async function start() {
   voice.unlock();
   setState("thinking"); say(t().waking);
   await ears.openMeter();
+  void startClapEars();
   if (!home) connectDesk();
   void restoreMemory(); void loadReminders(); void keepScreenOn();
   setTimeout(guardSend, 2500);
@@ -1087,7 +1112,7 @@ function openSettings() {
     const mic = all.find((d) => d.kind === "audioinput" && d.deviceId === "default") || all.find((d) => d.kind === "audioinput");
     $("micName").textContent = mic?.label ? "Usando: " + mic.label.replace(/^Default - |^Predeterminado - /, "") : "No encuentro ningún micrófono.";
   }).catch(() => {});
-  startPeek();
+  // (The wall camera was removed.)
 }
 // ---------- Ver la cámara de la pared ----------
 // While settings are open, ask the wall phone for snapshots every few seconds.

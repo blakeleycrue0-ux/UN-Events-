@@ -285,7 +285,7 @@
     const audio = new Audio();
     audio.preload = "auto";
     let id = 0, finish = null, ctx = null, analyser = null, data = null;
-    const voice2 = { speaking: false, error: "", volume: 1, local: false, maxWaitMS: 6e3 };
+    const voice2 = { speaking: false, error: "", volume: 1, local: false, maxWaitMS: 4e3 };
     let cloudDownUntil = 0;
     try {
       window.speechSynthesis?.getVoices?.();
@@ -477,7 +477,7 @@
   function createEars({ settings: settings2, onHeard, onState = () => {
   }, log: log2 = () => {
   } }) {
-    const ears2 = { listening: false, mode: "", paused: false, limits: { silenceMS: 2200, directMS: 8e3, followMS: 6e3, maxMS: 45e3 }, blocked: false };
+    const ears2 = { listening: false, mode: "", paused: false, limits: { silenceMS: 1300, directMS: 8e3, followMS: 6e3, maxMS: 45e3 }, blocked: false };
     let session = null, restart = null, quickFails = 0, mic = null, analyser = null, data = null;
     const Recognition = () => window.SpeechRecognition || window.webkitSpeechRecognition;
     ears2.openMeter = async () => {
@@ -843,6 +843,52 @@
     raf = requestAnimationFrame(frame);
     orb2.stop = () => cancelAnimationFrame(raf);
     return orb2;
+  }
+
+  // src/jarvis/clap.js
+  function createClapDetector({ onDouble, min = 0.25 } = {}) {
+    let floor = 0.01, prev = 0.01, onset = null, lastClap = -1e9, coolUntil = -1e9;
+    const d = { claps: 0 };
+    d.feed = (peak, rms, t2, zcr = 1) => {
+      if (onset) {
+        const dt = t2 - onset.t;
+        if (dt > 40 && dt < 160) onset.tail = Math.max(onset.tail, rms);
+        if (dt >= 160) {
+          if (onset.tail < onset.rms * 0.4) clap(onset.t);
+          onset = null;
+        }
+      }
+      if (!onset && peak > min && peak > floor * 8 && rms > prev * 2.5 && zcr > 0.1) onset = { t: t2, rms: Math.max(rms, 1e-4), tail: 0 };
+      if (!onset && rms < floor * 4) floor = floor * 0.98 + rms * 0.02;
+      prev = Math.max(rms, 1e-4);
+    };
+    function clap(t2) {
+      d.claps++;
+      if (t2 < coolUntil) return;
+      const gap = t2 - lastClap;
+      if (gap > 150 && gap < 800) {
+        lastClap = -1e9;
+        coolUntil = t2 + 3e3;
+        onDouble?.();
+        return;
+      }
+      lastClap = t2;
+    }
+    d.samples = (input, rate, t0) => {
+      const size = Math.max(64, Math.round(rate / 100));
+      for (let i = 0; i < input.length; i += size) {
+        let peak = 0, sum = 0, cross = 0;
+        const end = Math.min(input.length, i + size);
+        for (let j = i; j < end; j++) {
+          const v = input[j], a = v < 0 ? -v : v;
+          if (a > peak) peak = a;
+          sum += v * v;
+          if (j > i && v >= 0 !== input[j - 1] >= 0) cross++;
+        }
+        d.feed(peak, Math.sqrt(sum / (end - i)), t0 + i / rate * 1e3, cross / (end - i) * (rate / 48e3));
+      }
+    };
+    return d;
   }
 
   // src/jarvis/icons.js
@@ -2351,8 +2397,38 @@
   desk.homecoming = homecoming;
   async function clapIntro() {
     if (!desk.started || settings.clap === false || Date.now() - (desk.clapAt || 0) < 2e4) return;
+    if (desk.sleep) {
+      log("palmadas ignoradas: modo noche");
+      return;
+    }
+    if (desk.guard.on) {
+      const since = desk.guard.leftAt || 0, summary = since ? whoCameIn(since) : "";
+      setGuard(false, "palmadas");
+      await homecoming(summary ? (settings.lang === "es" ? " Mientras no estabas: " : " While you were out: ") + summary : "");
+      return;
+    }
     await homecoming();
   }
+  async function startClapEars() {
+    if (desk.clapEars || settings.clap === false) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      const Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx();
+      const proc = ctx.createScriptProcessor(2048, 1, 1), detector = createClapDetector({ onDouble: () => {
+        log("doble palmada");
+        void clapIntro();
+      } });
+      proc.onaudioprocess = (ev) => {
+        if (!desk.voice.speaking && !desk.sleep) detector.samples(ev.inputBuffer.getChannelData(0), ctx.sampleRate, performance.now());
+      };
+      ctx.createMediaStreamSource(stream).connect(proc);
+      proc.connect(ctx.destination);
+      desk.clapEars = { stream, ctx, detector };
+    } catch (e) {
+      log("palmadas: " + e.name);
+    }
+  }
+  desk.startClapEars = startClapEars;
   desk.clapIntro = clapIntro;
   var home = null;
   var wallListening = () => Date.now() - (desk.wallEarsAt || 0) < 15e4;
@@ -2382,6 +2458,7 @@
     setState("thinking");
     say(t().waking);
     await ears.openMeter();
+    void startClapEars();
     if (!home) connectDesk();
     void restoreMemory();
     void loadReminders();
@@ -2489,25 +2566,6 @@
       $("micName").textContent = mic?.label ? "Usando: " + mic.label.replace(/^Default - |^Predeterminado - /, "") : "No encuentro ning\xFAn micr\xF3fono.";
     }).catch(() => {
     });
-    startPeek();
-  }
-  function startPeek() {
-    clearInterval(desk.peekTimer);
-    desk.lastFrame = 0;
-    $("peekInfo").textContent = "Conectando con el m\xF3vil de la pared\u2026";
-    const ask = () => {
-      if ($("settings").hidden) {
-        clearInterval(desk.peekTimer);
-        return;
-      }
-      if (!home?.send({ action: "peek" })) $("peekInfo").textContent = settings.key ? "Sin conexi\xF3n. Pulsa para despertar a Jarvis primero." : "Falta la clave de Jarvis.";
-      else if (Date.now() - desk.lastFrame > 4e3) {
-        $("peekImg").hidden = !desk.lastFrame;
-        if (!desk.lastFrame || Date.now() - desk.lastFrame > 6e3) $("peekInfo").textContent = "Sin imagen: abre la pared en el m\xF3vil, pulsa \xABEmpezar a vigilar\xBB y usa la misma clave.";
-      }
-    };
-    ask();
-    desk.peekTimer = setInterval(ask, 3e3);
   }
   function onFrame(e) {
     if ($("settings").hidden || !/^data:image\/jpeg;base64,/.test(String(e.img || ""))) return;

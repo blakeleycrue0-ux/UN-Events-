@@ -21,3 +21,9 @@ test('raw samples are cut into 10 ms chunks',()=>{
  for(const at of [0.5,0.85])for(let i=0;i<rate*0.02;i++)buf[Math.floor(at*rate)+i]=(Math.random()*2-1)*0.9*Math.exp(-i/(rate*0.006));
  d.samples(buf,rate,0);assert.equal(n,1);
 });
+test('beeps and tones (pure sounds) are not claps, even when sharp',()=>{
+ let n=0;const d=createClapDetector({onDouble:()=>n++});const rate=48000;
+ const buf=new Float32Array(rate*2);
+ for(const at of [0.5,0.85])for(let i=0;i<rate*0.05;i++)buf[Math.floor(at*rate)+i]=0.9*Math.sin(2*Math.PI*1000*i/rate)*Math.exp(-i/(rate*0.01));
+ d.samples(buf,rate,0);assert.equal(n,0);
+});

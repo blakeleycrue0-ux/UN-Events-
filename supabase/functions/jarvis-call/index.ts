@@ -236,9 +236,11 @@ async function deliver(source: string, judged: Judged[], cfg: Awaited<ReturnType
   const keep = judged.filter((j) => j.title).slice(0, 12);
   if (!keep.length) return { added: 0, called: false };
   const urgent = keep.filter((j) => j.level === "call");
-  const why = urgent.length ? await mayCall(cfg, force) : "nothing urgent";
+  const why = !force ? "calls only for reminders" : urgent.length ? await mayCall(cfg, force) : "nothing urgent";
   let called = false, reason = why;
-  if (urgent.length && !why) {
+  // Only emergencies (force) ring the phone; things seen in email, Teams or Instagram
+  // are pushed to the phone and said on the desk, never a call.
+  if (urgent.length && !why && force) {
     const r = await placeCall(urgent.map((u) => u.say || u.title).join(" Además, ").slice(0, 380));
     called = r.called; reason = r.reason || "";
   }

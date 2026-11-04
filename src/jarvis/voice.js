@@ -48,7 +48,7 @@ export function createVoice({ settings, onState = () => {} }) {
   const audio = new Audio();
   audio.preload = "auto";
   let id = 0, finish = null, ctx = null, analyser = null, data = null;
-  const voice = { speaking: false, error: "", volume: 1, local: false, maxWaitMS: 6000 };
+  const voice = { speaking: false, error: "", volume: 1, local: false, maxWaitMS: 4000 };
   let cloudDownUntil = 0;   // after a cloud failure, use the built-in voice for a while (no waiting)
   try { window.speechSynthesis?.getVoices?.(); } catch {}
 

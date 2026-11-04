@@ -365,30 +365,25 @@ with sync_playwright() as p:
     page.screenshot(path='/tmp/desk-live.png')
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth && document.documentElement.scrollHeight<=innerHeight')
     page.click('#openSettings')
-    # Settings show the wall camera: the desk asks for frames and can switch cameras.
-    for _ in range(30):
-        if any(x.get('action') == 'peek' for x in to_wall): break
-        page.wait_for_timeout(100)
-    assert any(x.get('action') == 'peek' for x in to_wall)
-    home({'action': 'frame', 'img': 'data:image/jpeg;base64,' + PIXEL, 'facing': 'environment', 'faces': ['Crew']})
-    page.wait_for_function("!document.getElementById('peekImg').hidden && document.getElementById('peekInfo').textContent.includes('trasera')")
-    assert 'Crew' in page.locator('#peekInfo').inner_text() and page.evaluate("document.getElementById('camBack').classList.contains('on')")
-    page.click('#camFront')
-    for _ in range(30):
-        if {'action': 'camera', 'facing': 'user'} in to_wall: break
-        page.wait_for_timeout(100)
-    assert {'action': 'camera', 'facing': 'user'} in to_wall
+    # No wall camera any more: settings don't ask for camera frames.
+    page.wait_for_timeout(800); assert not any(x.get('action') == 'peek' for x in to_wall)
     page.wait_for_timeout(400); page.screenshot(path='/tmp/desk-settings.png')
     assert 'maths exam' in page.locator('#memoryList').inner_text()
     page.locator('#memoryList button').first.click(); page.locator('#memoryList button').first.click()
     assert page.evaluate("JSON.parse(localStorage.getItem('jarvis-memory'))") == []
     page.click('#closeSettings')
 
-    # Double clap on the wall phone: the screen powers up and Jarvis says "Welcome home" (no song).
+    # This computer's microphone listens for claps too (raw audio, no noise suppression).
+    assert page.evaluate("!!desk.clapEars && desk.clapEars.ctx.state !== 'closed'")
+    # Double clap: the screen powers up and Jarvis says "Welcome home" (no song).
     calm(page); home({'action': 'clap'})
     wait_voice(page, '^Welcome home, Crew. All systems online')
     assert page.evaluate("document.body.classList.contains('boot')") and page.evaluate("!document.querySelector('iframe')")
     n = len(voice); home({'action': 'clap'}); page.wait_for_timeout(600); assert len(voice) == n, 'not again within 20 s'
+    # Asleep ("me voy a dormir"): claps are ignored, Jarvis stays quiet.
+    page.evaluate("desk.clapAt=0; desk.sleep=true"); n = len(voice)
+    home({'action': 'clap'}); page.wait_for_timeout(800); assert len(voice) == n and page.evaluate("desk.sleep"), 'no clap at night'
+    page.evaluate("desk.sleep=false")
     calm(page)
     # Back after "me voy": you (not Mum, not a glass of water) get the welcome home with the song after the code.
     page.evaluate("desk.clapAt=0; desk.lastIn={who:'Crew',role:'me'}"); page.evaluate("desk.homecoming(' Mientras no estabas: nadie.')")

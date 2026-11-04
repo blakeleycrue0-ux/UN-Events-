@@ -146,7 +146,7 @@
       <label>Jarvis habla en<select id="lang"><option value="en">English</option><option value="es">Español</option></select></label>
       <label>Yo le hablo en<select id="hear"><option value="es-ES">Español</option><option value="en-US">English</option></select></label>
       <label class="check"><input id="wakeOn" type="checkbox" /> Escuchar siempre «Jarvis…»</label>
-      <label class="check"><input id="greetOn" type="checkbox" /> Saludar a quien entra</label>
+      <label class="check" hidden><input id="greetOn" type="checkbox" /> Saludar a quien entra</label>
       <label class="check"><input id="clapOn" type="checkbox" /> Doble palmada: «Bienvenido a casa»</label>
       <div class="row"><button id="testClap" class="pill">Probar la bienvenida</button></div>
       <label class="check"><input id="showType" type="checkbox" /> Escribir en vez de hablar</label>
@@ -154,9 +154,7 @@
       <label>Ciudad del tiempo<input id="city" autocomplete="off" /></label>
 
 
-      <h3>Cámara de la pared</h3>
-      <div class="peek"><img id="peekImg" alt="" hidden /><p id="peekInfo" class="peek-info">Conectando con el móvil de la pared…</p></div>
-      <div class="row"><button id="camFront" class="pill">Delantera</button><button id="camBack" class="pill">Trasera</button></div>
+      <div class="peek" hidden><img id="peekImg" alt="" hidden /><p id="peekInfo" class="peek-info"></p><button id="camFront" class="pill">Delantera</button><button id="camBack" class="pill">Trasera</button></div>
 
       <h3>Despertador amanecer</h3>
       <p class="muted">«Jarvis, despiértame a las 7». 15 minutos antes la pantalla amanece poco a poco (rojo, naranja, luz cálida) con sonidos de naturaleza; a la hora, Jarvis te da los buenos días.</p>
