@@ -37,15 +37,26 @@ async function groqHear(key: string, audio: ArrayBuffer, type: string, lang: str
   const form = new FormData();
   form.append("file", new Blob([audio], { type }), "speech." + (type.split("/")[1] || "wav").replace("x-", ""));
   form.append("model", Deno.env.get("GROQ_HEAR_MODEL") || "whisper-large-v3-turbo");
-  form.append("response_format", "json"); form.append("temperature", "0");
+  form.append("response_format", "verbose_json"); form.append("temperature", "0");
   if (lang) form.append("language", lang);
-  form.append("prompt", "Jarvis.");   // helps it spell the name
+  // No prompt: a hint like "Jarvis" makes Whisper "hear" the name in plain noise.
   const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
     method: "POST", headers: { Authorization: "Bearer " + key }, body: form, signal: AbortSignal.timeout(8000),
   });
   if (!r.ok) throw Error("groq " + r.status);
   const data = await r.json();
-  return { text: String(data?.text || ""), language: lang };
+  // Keep only the parts Whisper is sure are real speech (it invents words in noise).
+  const segs = Array.isArray(data?.segments) ? data.segments : null;
+  // deno-lint-ignore no-explicit-any
+  const text = segs ? segs.filter((s: any) => !(+s?.no_speech_prob > 0.5) && !(+s?.avg_logprob < -1)).map((s: any) => String(s?.text || "")).join(" ") : String(data?.text || "");
+  return { text: noHallucination(text), language: lang };
+}
+// Whisper's classic inventions on silence or noise (YouTube credits and the like).
+function noHallucination(text: string) {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (/^(gracias( por (ver|vernos|su atención))?|subt[ií]tulos.*|suscr[ií]bete.*|amara\.org.*|thank you( for watching)?|thanks for watching.*|you|\.+|¡?gracias!?)[.!¡ ]*$/i.test(t)) return "";
+  if (/(subt[ií]tulos (realizados )?por|amara\.org|suscr[ií]bete al canal|thanks for watching|gracias por ver (el|este) v[ií]deo|nos vemos en el pr[oó]ximo v[ií]deo|dale a like)/i.test(t)) return "";
+  return t;
 }
 
 Deno.serve(async (request: Request) => {
@@ -88,7 +99,7 @@ Deno.serve(async (request: Request) => {
     catch (error) { console.log("jarvis-hear Groq fallback:", String((error as Error).message).slice(0, 120)); if (!geminiKey && !apiKey) return json(502, { error: "Groq unavailable" }); }
   }
   if (geminiKey) {
-    try { const r = await geminiHear(geminiKey, audio, type); return json(200, { text: clean(r.text), language: r.language, via: "gemini" }); }
+    try { const r = await geminiHear(geminiKey, audio, type); return json(200, { text: clean(noHallucination(r.text)), language: r.language, via: "gemini" }); }
     catch (error) { console.log("jarvis-hear Gemini fallback:", String((error as Error).message).slice(0, 120)); if (!apiKey) return json(502, { error: "Gemini unavailable" }); }
   }
 
