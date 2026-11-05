@@ -183,3 +183,23 @@ test('Gemini model ladder, and Claude takes over when Gemini is out of free quot
  const noGem=gemSetup(()=>{throw Error('should not call')},{GEMINI_API_KEY:''});
  assert.equal((await (await noGem.handler(req(convo))).json()).reply,'Claude here.');assert.equal(noGem.gem.length,0);
 });
+
+test('Groq answers first (free, fast) with tools; then Gemini; then Claude',async()=>{
+ let handler;const sdk=fakeSdk(()=>({stop_reason:'end_turn',content:[{type:'text',text:'Claude here.'}]}));const calls=[];
+ const e={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',ANTHROPIC_API_KEY:'sk-ant-fixture',GEMINI_API_KEY:'gem',GROQ_API_KEY:'gsk-fixture',SUPABASE_URL:'https://fixture.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service-fixture'};
+ let groq=()=>Response.json({choices:[{message:{content:'Pongo lofi.',tool_calls:[{type:'function',function:{name:'play_music',arguments:'{"query":"lofi","service":"youtube"}'}}]}}]});
+ const fetch=async(url,opts)=>{url=String(url);calls.push({url,opts});
+  if(url.includes('api.groq.com'))return groq(url);
+  if(url.includes('generativelanguage'))return Response.json({candidates:[{content:{parts:[{text:'Gemini here.'}]}}]});
+  if(url.includes('/rest/v1/'))return new Response('[]',{status:200});
+  return Response.json({})};
+ new Function('Deno','Anthropic','fetch',code)({env:{get:n=>e[n]},serve:h=>handler=h},sdk.Anthropic,fetch);
+ const r=await (await handler(req({...convo,messages:[{role:'user',content:'pon lofi'}]}))).json();
+ assert.deepEqual(r,{reply:'Pongo lofi.',actions:['play']});
+ const g=calls.find(c=>c.url.includes('api.groq.com'));assert.equal(g.opts.headers.Authorization,'Bearer gsk-fixture');
+ const body=JSON.parse(g.opts.body);assert.equal(body.model,'llama-3.3-70b-versatile');assert.equal(body.messages[0].role,'system');
+ assert.ok(body.tools.some(t=>t.type==='function'&&t.function.name==='set_reminder'));
+ assert.equal(calls.filter(c=>c.url.includes('generativelanguage')).length,0);assert.equal(sdk.calls.filter(c=>c.params).length,0);
+ groq=()=>new Response('{}',{status:503});
+ assert.equal((await (await handler(req(convo))).json()).reply,'Gemini here.');
+});

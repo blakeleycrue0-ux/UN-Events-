@@ -1174,6 +1174,11 @@
       resume(follow);
     };
   }
+  if (!settings.computerMic) {
+    for (const k of ["direct", "background", "resume", "openMeter"]) ears[k] = async () => {
+    };
+    ears.level = () => 0;
+  }
   orb.levelSource = () => desk.state === "speaking" ? voice.level() : desk.state === "listening" ? ears.level() : 0;
   async function talk(text, lang) {
     ears.pause();
@@ -2411,7 +2416,7 @@
     await homecoming();
   }
   async function startClapEars() {
-    if (desk.clapEars || settings.clap === false) return;
+    if (desk.clapEars || settings.clap === false || !settings.computerMic) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       const Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx();
@@ -2506,7 +2511,8 @@
       ears.resume();
       return;
     }
-    ears.direct();
+    if (settings.computerMic) ears.direct();
+    else toast(settings.lang === "es" ? "H\xE1blale al iPhone: \xABJarvis\u2026\xBB" : 'Talk to the iPhone: "Jarvis\u2026"');
   };
   document.addEventListener("keydown", (e) => {
     if (e.target.closest?.("input, textarea, select") || !$("settings").hidden) return;

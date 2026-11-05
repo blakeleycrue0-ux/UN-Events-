@@ -149,15 +149,15 @@ async function askGemini(key: string, system: string, messages: { role: string; 
   };
   let last = "no model";
   for (const model of models) {
-    const left = 16000 - (Date.now() - started);
-    if (left < 2500) break;   // don't keep the user waiting: Claude answers instead
+    const left = 6000 - (Date.now() - started);
+    if (left < 2000) break;   // don't keep the user waiting: Claude answers instead
     const body = /2\.5/.test(model) ? { ...base, generationConfig: { ...base.generationConfig, thinkingConfig: { thinkingBudget: 0 } } } : base;
     let r: Response;
     try {
       r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body), signal: AbortSignal.timeout(Math.min(9000, left)),
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body), signal: AbortSignal.timeout(Math.min(4500, left)),
       });
-    } catch { last = model + " timeout"; continue; }
+    } catch { last = model + " timeout"; break; }
     // Each model has its own free quota: unavailable, out of quota or refusing the request → try the next one.
     if (!r.ok) { last = model + " " + r.status; continue; }
     const data = await r.json();
@@ -169,6 +169,45 @@ async function askGemini(key: string, system: string, messages: { role: string; 
     return { stop_reason: "end_turn", content, served_by: model };
   }
   throw Error("gemini: " + last);
+}
+
+// ---------- Groq (free and very fast: answers in about a second) ----------
+// OpenAI-style chat with tools; the answer is translated to Claude's shape.
+// deno-lint-ignore no-explicit-any
+async function askGroq(key: string, system: string, messages: { role: string; content: string }[], tools: any[]) {
+  const models = (Deno.env.get("GROQ_MODEL") || "llama-3.3-70b-versatile,openai/gpt-oss-120b,meta-llama/llama-4-scout-17b-16e-instruct").split(",").map((m) => m.trim()).filter(Boolean);
+  const started = Date.now();
+  let last = "no model";
+  for (const model of models) {
+    const left = 8000 - (Date.now() - started);
+    if (left < 1500) break;
+    let r: Response | null = null;
+    try {
+      r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model, temperature: 0.6, max_tokens: 600,
+          messages: [{ role: "system", content: system }, ...messages],
+          tools: tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } })),
+          tool_choice: "auto",
+        }),
+        signal: AbortSignal.timeout(Math.min(6000, left)),
+      });
+    } catch { last = model + " timeout"; continue; }
+    if (!r.ok) { last = model + " " + r.status; continue; }
+    const data = await r.json().catch(() => ({}));
+    const msg = data?.choices?.[0]?.message || {};
+    // deno-lint-ignore no-explicit-any
+    const content: any[] = [];
+    if (typeof msg.content === "string" && msg.content.trim()) content.push({ type: "text", text: msg.content });
+    for (const c of Array.isArray(msg.tool_calls) ? msg.tool_calls : []) {
+      let input = {}; try { input = JSON.parse(c?.function?.arguments || "{}"); } catch { /* bad args */ }
+      if (c?.function?.name) content.push({ type: "tool_use", name: c.function.name, input });
+    }
+    if (!content.length) { last = model + " empty"; continue; }
+    return { stop_reason: "end_turn", content, served_by: model };
+  }
+  throw Error("groq: " + last);
 }
 
 async function emailMe(subject: string, body: string) {
@@ -204,7 +243,8 @@ Deno.serve(async (request: Request) => {
   const expected = (Deno.env.get("JARVIS_KEY") || "").trim();
   const apiKey = (Deno.env.get("ANTHROPIC_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
   const geminiKey = (Deno.env.get("GEMINI_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
-  if (expected.length < 6 || (!apiKey && !geminiKey)) return json(428, { error: "Brain not configured" });
+  const groqKey = (Deno.env.get("GROQ_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
+  if (expected.length < 6 || (!apiKey && !geminiKey && !groqKey)) return json(428, { error: "Brain not configured" });
   const given = (request.headers.get("x-jarvis-key") || "").trim();
   const a = new TextEncoder().encode(given), b = new TextEncoder().encode(expected);
   let diff = a.length ^ b.length;
@@ -266,13 +306,18 @@ Deno.serve(async (request: Request) => {
   // Claude Haiku 5.5 by default: ~40x cheaper than Opus. Set CLAUDE_MODEL to change it.
   const model = (Deno.env.get("CLAUDE_MODEL") || "claude-haiku-5-5").trim();
   try {
-    // Free first: Gemini. Anything goes wrong there → Claude takes over.
+    // Free first: Groq (fastest), then Gemini. If both fail, Claude answers.
     // deno-lint-ignore no-explicit-any
     let response: any = null;
-    if (geminiKey) {
-      try { response = await askGemini(geminiKey, system, messages, TOOLS); }
-      catch (error) { console.log("jarvis-brain Gemini fallback:", String((error as Error).message).slice(0, 120)); if (!apiKey) return json(502, { error: "Claude busy" }); }
+    if (groqKey) {
+      try { response = await askGroq(groqKey, system, messages, TOOLS); }
+      catch (error) { console.log("jarvis-brain Groq fallback:", String((error as Error).message).slice(0, 120)); }
     }
+    if (!response && geminiKey) {
+      try { response = await askGemini(geminiKey, system, messages, TOOLS); }
+      catch (error) { console.log("jarvis-brain Gemini fallback:", String((error as Error).message).slice(0, 120)); }
+    }
+    if (!response && !apiKey) return json(502, { error: "Claude busy" });
     if (!response) {
       const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 45000 });
       const params: Record<string, unknown> = {

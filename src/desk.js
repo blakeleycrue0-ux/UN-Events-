@@ -169,6 +169,12 @@ const ears = desk.ears = createEars({ settings, log, onHeard: (text, via) => voi
 } });
 // While the wall phone listens, this computer never opens its own microphone in the background.
 { const resume = ears.resume; ears.resume = (follow = false) => { if (wallListening()) { ears.paused = true; return; } resume(follow); }; }
+// The iPhone is Jarvis's only microphone: this computer never listens (unless
+// "computerMic" is switched on). No wake word here, no clap mic, no level meter.
+if (!settings.computerMic) {
+  for (const k of ["direct", "background", "resume", "openMeter"]) ears[k] = async () => {};
+  ears.level = () => 0;
+}
 orb.levelSource = () => desk.state === "speaking" ? voice.level() : desk.state === "listening" ? ears.level() : 0;
 async function talk(text, lang) {
   ears.pause();
@@ -1030,7 +1036,7 @@ async function clapIntro() {
 // suppression, which would swallow claps). Audio callbacks keep running even
 // when the Jarvis tab is behind other windows.
 async function startClapEars() {
-  if (desk.clapEars || settings.clap === false) return;
+  if (desk.clapEars || settings.clap === false || !settings.computerMic) return;   // claps come from the iPhone
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
     const Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx();
@@ -1084,7 +1090,7 @@ $("asDesk").onclick = () => chooseRole("desk");
 $("asWall").onclick = () => chooseRole("wall");
 if (store.get("jarvis-role", "") !== "desk") $("chooser").hidden = false; else $("wake").hidden = false;
 $("wake").onclick = start;
-$("orb").onclick = () => { if (!desk.started) return start(); if (voice.speaking) { voice.stop(); ears.resume(); return; } ears.direct(); };
+$("orb").onclick = () => { if (!desk.started) return start(); if (voice.speaking) { voice.stop(); ears.resume(); return; } if (settings.computerMic) ears.direct(); else toast(settings.lang === "es" ? "Háblale al iPhone: «Jarvis…»" : "Talk to the iPhone: \"Jarvis…\""); };
 document.addEventListener("keydown", (e) => {
   if (e.target.closest?.("input, textarea, select") || !$("settings").hidden) return;
   if (e.code === "Space" && desk.sunrise) { e.preventDefault(); $("sunriseStop").click(); return; }

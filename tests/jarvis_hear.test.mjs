@@ -47,3 +47,15 @@ test('Gemini transcribes for free first; ElevenLabs is only the backup',async()=
  assert.equal((await (await handler(req())).json()).text,'from eleven');assert.ok(calls.some(c=>c.url.includes('elevenlabs')));
  delete env.ELEVENLABS_API_KEY;assert.equal((await handler(req())).status,502);
 });
+
+test('Groq Whisper hears first (fast, free); Gemini is the backup',async()=>{
+ let handler;const calls=[];
+ const env={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',GEMINI_API_KEY:'gem',GROQ_API_KEY:'gsk'};
+ let groq=()=>Response.json({text:' Jarvis, qué hora es '});
+ const fetch=async(url,opts)=>{url=String(url);calls.push({url,opts});return url.includes('api.groq.com')?groq():Response.json({candidates:[{content:{parts:[{text:'{"text":"desde gemini"}'}]}}]})};
+ new Function('Deno','fetch',code)({env:{get:n=>env[n]},serve:h=>handler=h},fetch);
+ assert.deepEqual(await (await handler(req({type:'audio/wav'}))).json(),{text:'Jarvis, qué hora es',language:'es',via:'groq'});
+ const f=calls[0].opts.body;assert.equal(f.get('model'),'whisper-large-v3-turbo');assert.equal(f.get('language'),'es');assert.equal(f.get('file').size,4000);
+ groq=()=>new Response('{}',{status:429});
+ assert.equal((await (await handler(req({type:'audio/wav'}))).json()).text,'desde gemini');
+});

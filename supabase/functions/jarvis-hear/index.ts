@@ -18,8 +18,9 @@ async function geminiHear(key: string, audio: ArrayBuffer, type: string): Promis
   let last = "no model";
   for (const model of models) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body, signal: AbortSignal.timeout(20000),
-    });
+      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body, signal: AbortSignal.timeout(7000),
+    }).catch(() => null);
+    if (!r) { last = model + " timeout"; break; }   // overloaded: don't make the user wait for another model
     // Each model has its own free quota: a 429 or 404 just moves to the next one.
     if (r.status === 404 || r.status === 429 || r.status >= 500) { last = model + " " + r.status; continue; }
     if (!r.ok) throw Error("gemini " + r.status);
@@ -29,6 +30,22 @@ async function geminiHear(key: string, audio: ArrayBuffer, type: string): Promis
     catch { return { text: raw, language: "" }; }
   }
   throw Error("gemini: " + last);
+}
+
+// Groq (free, very fast Whisper): usually under a second.
+async function groqHear(key: string, audio: ArrayBuffer, type: string, lang: string) {
+  const form = new FormData();
+  form.append("file", new Blob([audio], { type }), "speech." + (type.split("/")[1] || "wav").replace("x-", ""));
+  form.append("model", Deno.env.get("GROQ_HEAR_MODEL") || "whisper-large-v3-turbo");
+  form.append("response_format", "json"); form.append("temperature", "0");
+  if (lang) form.append("language", lang);
+  form.append("prompt", "Jarvis.");   // helps it spell the name
+  const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+    method: "POST", headers: { Authorization: "Bearer " + key }, body: form, signal: AbortSignal.timeout(8000),
+  });
+  if (!r.ok) throw Error("groq " + r.status);
+  const data = await r.json();
+  return { text: String(data?.text || ""), language: lang };
 }
 
 Deno.serve(async (request: Request) => {
@@ -51,7 +68,8 @@ Deno.serve(async (request: Request) => {
   const expected = (Deno.env.get("JARVIS_KEY") || "").trim();
   const apiKey = (Deno.env.get("ELEVENLABS_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
   const geminiKey = (Deno.env.get("GEMINI_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
-  if (expected.length < 6 || (!apiKey && !geminiKey)) return json(428, { error: "Hearing not configured" });
+  const groqKey = (Deno.env.get("GROQ_API_KEY") || "").trim().replace(/^["']+|["']+$/g, "");
+  if (expected.length < 6 || (!apiKey && !geminiKey && !groqKey)) return json(428, { error: "Hearing not configured" });
   const given = (request.headers.get("x-jarvis-key") || "").trim();
   const a = new TextEncoder().encode(given), b = new TextEncoder().encode(expected);
   let diff = a.length ^ b.length;
@@ -64,6 +82,11 @@ Deno.serve(async (request: Request) => {
   if (audio.byteLength < 200 || audio.byteLength > 5_000_000) return json(400, { error: "Audio size out of range" });
   const ext = type.split("/")[1].replace("x-", "");
   const clean = (t: string) => t.replace(/\s+/g, " ").trim().replace(/^["'«]+|["'»]+$/g, "").slice(0, 1000);
+  if (groqKey) {
+    const lang = (new URL(request.url).searchParams.get("lang") || "es").slice(0, 2);
+    try { const r = await groqHear(groqKey, audio, type, /^(es|en)$/.test(lang) ? lang : "es"); return json(200, { text: clean(r.text), language: r.language, via: "groq" }); }
+    catch (error) { console.log("jarvis-hear Groq fallback:", String((error as Error).message).slice(0, 120)); if (!geminiKey && !apiKey) return json(502, { error: "Groq unavailable" }); }
+  }
   if (geminiKey) {
     try { const r = await geminiHear(geminiKey, audio, type); return json(200, { text: clean(r.text), language: r.language, via: "gemini" }); }
     catch (error) { console.log("jarvis-hear Gemini fallback:", String((error as Error).message).slice(0, 120)); if (!apiKey) return json(502, { error: "Gemini unavailable" }); }

@@ -12,7 +12,7 @@ INIT = """Object.defineProperty(window,'caches',{value:undefined,configurable:tr
 window.said=[];
 document.addEventListener('DOMContentLoaded',()=>{const say=document.getElementById('say');if(!say)return;
   new MutationObserver(()=>said.push(say.textContent)).observe(say,{subtree:true,childList:true,characterData:true});});
-if(!localStorage.getItem('jarvis-settings'))localStorage.setItem('jarvis-settings',JSON.stringify({key:'mi-clave-secreta',name:'Crew',quietFrom:3,quietTo:3}));
+if(!localStorage.getItem('jarvis-settings'))localStorage.setItem('jarvis-settings',JSON.stringify({key:'mi-clave-secreta',name:'Crew',quietFrom:3,quietTo:3,computerMic:true}));
 window.recQueue=[];window.recLog=[];
 window.webkitSpeechRecognition=class{
   start(){const s=window.recQueue.shift()||{results:[],end:true,endDelay:400};
@@ -428,6 +428,13 @@ with sync_playwright() as p:
     page.reload(); assert page.locator('#wake').is_visible() and page.locator('#chooser').is_hidden()
     # Old invitation links still reach the camera app.
     page.goto(URL + '#invite=' + 'a' * 64); page.wait_for_url('**/camara.html**')
+    # By default the computer never opens its microphone: the iPhone is the only ear.
+    q = c.new_page()
+    q.add_init_script("localStorage.setItem('jarvis-role','\"desk\"');localStorage.setItem('jarvis-settings',JSON.stringify({name:'Crew'}));window.__mics=0;const g=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=(c)=>{if(c&&c.audio)window.__mics++;return g(c)};window.webkitSpeechRecognition=window.SpeechRecognition=class{start(){window.__mics+=100}stop(){}abort(){}}")
+    q.goto(URL); q.click('#wake'); q.wait_for_function('desk.started'); q.wait_for_timeout(1500)
+    q.click('#orb'); q.wait_for_timeout(500)
+    assert q.evaluate('window.__mics') == 0 and q.evaluate('!desk.clapEars'), 'no microphone on the computer'
+    q.close()
     # A device that chose "wall" goes to the wall page.
     page.goto(URL); page.evaluate("localStorage.setItem('jarvis-role','\"wall\"')"); page.goto(URL); page.wait_for_url('**/pared.html')
     assert not errors, errors
