@@ -60,3 +60,21 @@ test('click_at and press_key: real input on any point of the page',async()=>{
  assert.deepEqual((await (await s.handler(req({...body,page:{...page,vw:1280,vh:800,dpr:2}}))).json()).action,{type:'press_key',key:'Escape',say:'Closing the pop-up'});
  assert.match(s.calls[0].messages[0].content[1].text,/Screenshot size: 2560×1600 pixels/);
 });
+
+test('free first: Groq vision picks the step from the screenshot; Gemini next; Claude only last',async()=>{
+ const calls=[];let groq=()=>Response.json({choices:[{message:{tool_calls:[{type:'function',function:{name:'click',arguments:'{"id":2,"risky":true,"say":"Entregando"}'}}]}}]});
+ const fetch=async(url,opts)=>{url=String(url);calls.push({url,body:JSON.parse(opts.body)});
+  if(url.includes('api.groq.com'))return groq();
+  return Response.json({candidates:[{content:{parts:[{functionCall:{name:'scroll',args:{direction:'down',say:'Bajando'}}}]}}]})};
+ class APIError extends Error{} const sdkCalls=[];
+ class Anthropic{constructor(){this.beta={messages:{create:async(p)=>{sdkCalls.push(p);return {content:[]}}}}}}
+ Object.assign(Anthropic,{APIError,AuthenticationError:APIError,PermissionDeniedError:APIError,RateLimitError:APIError});
+ let handler;const e={APP_ORIGINS:'https://app.example.com',JARVIS_KEY:'clave-larga-de-prueba',GROQ_API_KEY:'gsk',GEMINI_API_KEY:'gem'};
+ new Function('Deno','Anthropic','fetch',code)({env:{get:n=>e[n]},serve:h=>handler=h},Anthropic,fetch);
+ assert.deepEqual((await (await handler(req(body))).json()).action,{type:'click',id:2,risky:true,say:'Entregando'});
+ const g=calls[0].body;assert.equal(g.tool_choice,'required');assert.equal(g.messages[1].content[1].type,'image_url');assert.match(g.messages[1].content[1].image_url.url,/^data:image\/jpeg;base64,AAAA/);
+ assert.equal(sdkCalls.length,0,'no Claude');
+ groq=()=>new Response('{}',{status:429});
+ assert.deepEqual((await (await handler(req(body))).json()).action,{type:'scroll',direction:'down',say:'Bajando'});
+ const m=calls.at(-1).body;assert.equal(m.toolConfig.functionCallingConfig.mode,'ANY');assert.equal(m.contents[0].parts[0].inlineData.mimeType,'image/jpeg');
+});
