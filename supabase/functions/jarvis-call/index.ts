@@ -301,7 +301,10 @@ async function deliverDue() {
     // Claim it first so two cron runs never deliver the same reminder twice.
     const claimed = await rows(`jarvis_reminders?id=eq.${encodeURIComponent(r.id)}&done=eq.false`, { method: "PATCH", body: JSON.stringify({ done: true, delivered_at: new Date().toISOString() }) });
     if (!claimed.length) continue;
-    let via = r.via === "email" ? "email" : r.via === "call" ? "call" : "desk";
+    // No phone calls any more (the free Twilio trial plays a robot message first):
+    // a reminder is a notification on the phone and Jarvis says it on the Mac.
+    let via = r.via === "email" ? "email" : r.via === "call" && env("JARVIS_CALL_REMINDERS") === "on" ? "call" : "desk";
+    if (via === "desk") await notifyAll({ title: "⏰ Recordatorio", body: clean(r.text, 180), tag: "remind", url: "/mando" }).catch(() => {});
     if (via === "call") {
       // "Llámame a las 8": a real call; if it can't ring, Jarvis says it on the desk and pushes it.
       const placed = await placeCall(r.text).catch(() => ({ called: false }));

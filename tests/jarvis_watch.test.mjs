@@ -86,11 +86,13 @@ test('config, feed, test call and the door alarm (calls even in quiet hours)',as
  const feed=await (await s.handler(req({action:'feed'},app))).json();assert.equal(feed.feed.length,1);
 });
 
-test('"llámame a las 8": a due call reminder rings the phone',async()=>{
+test('no phone calls: a due reminder is a phone notification and is said on the desk',async()=>{
  const s=setup({env:TWILIO});
  const r=await (await s.handler(new Request(BASE+'?step=cron',{method:'POST',headers:{'x-jarvis-cron':'cron-secret-1234567890'}}))).json();
- assert.deepEqual(r,{delivered:['call']});
- assert.match(new URLSearchParams(s.out.find(o=>o.url.includes('twilio')).body).get('Twiml'),/despierte: entreno/);
+ assert.deepEqual(r,{delivered:['desk']});
+ assert.equal(s.out.filter(o=>o.url.includes('twilio')).length,0);
+ const b=s.out.find(o=>o.url.endsWith('/realtime/v1/api/broadcast'));assert.match(JSON.parse(b.body).messages[0].payload.text,/despierte: entreno/);
+ assert.ok(s.out.some(o=>o.url.includes('rpc/jarvis_vapid')),'push notification attempted');
 });
 test('switching a source from page text to items: the first list is learned, not announced',async()=>{
  const s=setup({watchRows:{school:{source:'school',hash:'h',snapshot:'Outlook Inbox',seen:[]}},judged:[{title:'x',say:'x',level:'call'}]});
